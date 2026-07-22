@@ -217,7 +217,7 @@ a single service.
 | Layer | Mechanism | Purpose |
 |---|---|---|
 | 1. Kill-switch | Billing budget → Pub/Sub → Cloud Function that detaches the billing account (`projects.updateBillingInfo`) at $20. Google publishes the ~40-line sample. Not instant (few-min lag) and takes the whole project down. | The only true stop — a backstop, not the primary control. |
-| 2. Cloud Run flags | On every service: `--max-instances=2` (hard ceiling on concurrent compute — excess requests queue or get HTTP 429 Too Many Requests instead of spinning up 100 containers), `--concurrency=80` (many requests per instance instead of scaling out per-request), `--min-instances=0` (idle cost ~$0), `--timeout=60s` (nothing hangs and bills for minutes). | The real day-to-day cap: a runaway bill comes from autoscaling under load/loops/bots; this caps it at the source. |
+| 2. Cloud Run flags | On every service: `--max-instances=2` (hard ceiling on concurrent compute — excess requests queue or get HTTP 429 Too Many Requests instead of spinning up 100 containers) and `--min-instances=0` (idle cost ~$0). Then per service, because Cloud Run counts an open WebSocket as one in-flight request for its entire life and the socket traverses both Gateway and Collab: Core gets `--concurrency=80` (many requests per instance instead of scaling out per-request) and `--timeout=60s` (a hung request is killed in a minute instead of holding a slot and billing forever — ~1000× a normal request, so it never fires on real traffic); Gateway and Collab get `--concurrency=250` and `--timeout=3600s`, since a 60s timeout would sever every collab session each minute, and concurrency here is the hard cap on concurrent sockets (250 × 2 instances = 500). | The real day-to-day cap: a runaway bill comes from autoscaling under load/loops/bots; this caps it at the source. |
 | 3. API surface | Enable only the APIs used: Cloud Run, Artifact Registry, Secret Manager, Cloud Storage. | Every disabled API is a whole category of bill that can't happen. |
 | 4. Public URL | The gateway's token-bucket rate limit caps traffic that would drive Cloud Run scaling. Neon (0.5GB) and Upstash (10K cmd/day) throttle rather than overage-bill. | The stateful layer isn't the risk — Cloud Run is. |
 | 5. Early warning | Budget alerts at 50 / 90 / 100% ($10 / $18 / $20). | Email before the kill-switch fires, so you can look first. |
@@ -264,7 +264,11 @@ deliberate phase rather than skipped:
   docker-compose (find bugs cheaply), then against Cloud Run — watching the
   Grafana dashboard live — to produce the headline number: *"holds N
   concurrent WebSocket connections per instance at p95 X ms edit-propagation
-  latency"* (p95: 95% of edits arrive faster than X ms).
+  latency"* (p95: 95% of edits arrive faster than X ms). The Cloud Run run
+  measures the system under the §7 flags — `--concurrency` counts each open
+  WebSocket as one in-flight request, so the configured ceiling (250 per
+  instance), not hardware, is the first limit N can hit; raise the flag before
+  chasing a bigger number.
 
 ---
 
