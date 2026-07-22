@@ -1,28 +1,20 @@
 # DeepCS — Design Doc
 
-> Solo real-time collaborative platform, built as the **production web-backend**
-> half of a two-project portfolio for new-grad backend roles at Google & Meta.
->
-> **Design rule that drives every cut below:** DeepCS must NOT duplicate
-> StudySearch. StudySearch owns DS&A, information retrieval, distributed
-> compute, concurrency, and the entire AI story. DeepCS therefore only covers
-> what StudySearch can't show — **real-time collaboration, microservices +
-> gateway, auth, rate limiting, and a live cloud deploy** — and cuts everything
-> else. Two projects, complementary ground, zero overlap.
+> A deliberately lean, production-grade web backend: **real-time collaboration,
+> microservices + gateway, auth, rate limiting, and a live cloud deploy** —
+> everything else is cut.
 
 **Repo description:** CS fundamentals question bank with real-time
 collaborative solving. Practice solo or get matched with someone.
 
 ---
 
-## 1. What DeepCS uniquely proves
+## 1. What DeepCS proves
 
-- Real-time collaborative editing (CRDT) with cross-instance sync — StudySearch has nothing like it.
+- Real-time collaborative editing (CRDT) with cross-instance sync.
 - Microservices behind a custom gateway (JWT verification, routing, rate limiting).
 - Stateful auth done properly (JWT + refresh rotation).
 - A system that's actually **deployed** at a live URL — the "dev → release → ship" signal.
-
-If a reviewer opens both repos, StudySearch says "this person can build hard algorithms and reason about systems," and DeepCS says "this person can ship a real, live, multi-service web backend." That pairing is the goal.
 
 ---
 
@@ -46,10 +38,11 @@ solo); join queue with topic + difficulty preferences; match; shared real-time
 **scaffolded session document** with presence; **mutual-consent reference
 reveal**; reconnect after disconnect; end session + summary.
 
-**Out of scope:** AI features (StudySearch carries the AI signal — see §11);
-mobile; polished UI (minimal functional React only); payments; social features
-(friends/leaderboards); **interviewer/interviewee roles; role swapping;
-voice/video; rubrics and scoring.**
+**Out of scope:** AI features; mobile; polished UI (minimal functional React
+only); payments; social features (friends/leaderboards);
+**interviewer/interviewee roles; role swapping; voice/video; rubrics and
+scoring; question authoring until Phase 4 matching works (bank capped at ~30
+questions).**
 
 ---
 
@@ -96,7 +89,7 @@ interview answer than "one service per table."
 
 | Layer | Choice | Why |
 |-------|--------|-----|
-| All services | TypeScript + Fastify | One language = fast solo iteration. Polyglot is already covered — StudySearch is all-Go. |
+| All services | TypeScript + Fastify | One language = fast solo iteration. |
 | Frontend | React + Vite + TS | Minimal, just enough to demo. |
 | Database | PostgreSQL (Neon, free) | Relational + `text[]`/GIN for tag filters + `tsvector` search. |
 | Cache/queue/pubsub | Redis (Upstash, free) | Queue, rate-limit state, cross-instance pub/sub, refresh tokens. |
@@ -104,9 +97,6 @@ interview answer than "one service per table."
 | Container | Docker + docker-compose | Local dev; dev/prod parity. |
 | Deploy | Cloud Run (GCP, `asia-southeast1`) | Scale-to-zero, free at this scale, live URL. |
 | CI | GitHub Actions | Lint → test → build → deploy on merge. |
-
-**Language:** all TypeScript — StudySearch already carries the portfolio's Go
-signal.
 
 ---
 
@@ -143,7 +133,7 @@ snapshots before SIGTERM. **This is the crown jewel — give it the most care.**
 - **Auth:** JWT RS256, 15-min access token; opaque refresh token in Redis, 7-day TTL, rotated on use; revoke on logout.
 - **Rate limiting:** token bucket via Redis Lua. Per-IP at gateway (unauth), per-user general, tighter per-user on `/match/*`. Returns `X-RateLimit-*` headers. (Be ready to compare token bucket vs sliding vs fixed window.)
 - **Input validation:** zod schemas on every endpoint; reject malformed with 400 before business logic. Parameterized queries always.
-- **Observability (lean, ~20% of the original):** structured JSON logs (Pino) with `service` + `request_id` + `user_id`; `/health/live` + `/health/ready` on every service; **one** small metrics view (request rate, error rate, p95, WS connection count). Full OTel/Prom/Grafana/Loki/Tempo tracing is an explicit **stretch, not core**.
+- **Observability (lean):** structured JSON logs (Pino) with `service` + `request_id` + `user_id`; `/health/live` + `/health/ready` on every service; **one** small metrics view (request rate, error rate, p95, WS connection count). Full OTel/Prom/Grafana/Loki/Tempo tracing is an explicit **stretch, not core**.
 - **Security:** HTTPS (Cloud Run free), CORS to one origin, helmet headers, secrets in GCP Secret Manager (never in code/logs), Dependabot.
 - **Graceful shutdown:** drain in-flight; Collab snapshots Yjs docs before exit.
 - **Idempotency:** queue-join idempotent by `user_id`; session-end idempotent by `session_id`.
@@ -193,9 +183,8 @@ Net: `--max-instances` makes a big bill nearly impossible at the source; the
 kill-switch guarantees a stop even if a config is fat-fingered. As close to a
 hard limit as GCP allows.
 
-**Kubernetes — optional stretch only, NOT core.** These two JDs don't ask for
-it (Google: "Unix/Linux"; Meta: nothing on orchestration). If you want the k8s
-signal later, add a lean deploy: **raw manifests** (Deployment, Service,
+**Kubernetes — optional stretch only, NOT core.** If you want the k8s signal
+later, add a lean deploy: **raw manifests** (Deployment, Service,
 Ingress, ConfigMap/Secret, liveness/readiness probes, optional HPA) on **GKE
 Autopilot** — no Helm, no Terraform, no k3d. Tear the cluster down between
 demos (GKE has idle cost; Cloud Run doesn't). Adds ~1 week. Write ADR-05 as
@@ -226,63 +215,19 @@ signal.
 
 ---
 
-## 10. Build phases (~6–8 weeks, part-time, AFTER StudySearch Phase A)
+## 10. Build phases
 
-Sequence: ship StudySearch Phase A by **31 July** first (it has the deadline).
-Build DeepCS across **Aug–Sept**, overlapping StudySearch's paced Phase B.
-
-| Phase | Week | Build | Demoable |
-|---|---|---|---|
-| 0 | 1 | Monorepo, docker-compose (PG+Redis), 2 hello-world Fastify services, CI lint/test, GCP project + billing guard, Neon/Upstash accounts | `docker-compose up` runs |
-| 1 | 2 | Core: auth (signup/login/JWT), refresh rotation in Redis; Gateway: JWT verify + route + per-IP rate limit | curl signup → login → protected call → refresh |
-| 2 | 3 | Core: question bank (filter/search/paginate/get) + Redis cache; per-user rate limit; **public bank UI (search, filter, read solo)** | browse and read questions solo, cache hits visible |
-| 3 | 4 | Core: reactive matching (Redis sorted set + Lua claim), session row, pub/sub match event | two users join → matched → session exists |
-| 4 | 5–7 | **Collab (hardest):** WS + Yjs, JWT-auth the socket, cross-instance pub/sub, presence/cursors, snapshot + reconnect, graceful shutdown | two tabs sync live; kill one instance, other keeps working |
-| 5 | 7 | Minimal React: login, question list, match button, session page (Monaco + Yjs) with **scaffolded editor and the reveal flow**, end | open two browsers, match, collaborate, reveal |
-| 6 | 8 | Deploy to Cloud Run + frontend to CDN; CI deploys on merge; lean logs + health + one metrics view; k6 load run; README + ADRs + demo GIF | live URL; headline load number in README |
+| Phase | Build | Demoable |
+|---|---|---|
+| 0 | Monorepo, docker-compose (PG+Redis), 2 hello-world Fastify services, CI lint/test, GCP project + billing guard, Neon/Upstash accounts | `docker-compose up` runs |
+| 1 | Core: auth (signup/login/JWT), refresh rotation in Redis; Gateway: JWT verify + route + per-IP rate limit | curl signup → login → protected call → refresh |
+| 2 | Core: question bank (filter/search/paginate/get) + Redis cache; per-user rate limit; **public bank UI (search, filter, read solo)** | browse and read questions solo, cache hits visible |
+| 3 | Core: reactive matching (Redis sorted set + Lua claim), session row, pub/sub match event | two users join → matched → session exists |
+| 4 | **Collab (hardest):** WS + Yjs, JWT-auth the socket, cross-instance pub/sub, presence/cursors, snapshot + reconnect, graceful shutdown | two tabs sync live; kill one instance, other keeps working |
+| 5 | Minimal React: login, question list, match button, session page (Monaco + Yjs) with **scaffolded editor and the reveal flow**, end | open two browsers, match, collaborate, reveal |
+| 6 | Deploy to Cloud Run + frontend to CDN; CI deploys on merge; lean logs + health + one metrics view; k6 load run; README + ADRs + demo GIF | live URL; headline load number in README |
 
 Buffer: things slip — don't add features, use slack to polish README + record a 2-min demo.
-
----
-
-## 11. Both-projects JD coverage (why the cuts are safe)
-
-| JD criterion | StudySearch | DeepCS |
-|---|---|---|
-| DS&A in projects | ✅ inverted index, BM25, heap, k-way merge, LRU | — |
-| Information retrieval | ✅ core | — |
-| Distributed & parallel systems | ✅ sharding, scatter-gather, concurrency | ✅ cross-instance real-time via pub/sub |
-| Developing large systems | ✅ | ✅ multi-service + gateway |
-| Web application development | ✅ HTTP API | ✅✅ full web backend + live app |
-| Networking | ✅ coordinator↔shards | ✅ WebSockets, gateway routing |
-| Unix/Linux, deploy | ✅ Docker/compose | ✅✅ Docker + Cloud Run + CI, live URL |
-| Security software dev | ✅ rate limit + auth | ✅✅ JWT + refresh rotation + token-bucket + validation |
-| Real-time engineering | — | ✅✅ CRDT collab (crown jewel) |
-| **Integrate AI, measurable impact** (Meta) | ✅ RAG + eval harness + numbers | — (not needed) |
-| **Responsible/ethical AI** (Meta) | ✅ cited answers + refuse-if-weak + accuracy eval | — |
-| **AI skill dev, agent orchestration** (Meta) | ✅ prompt/context design + B7 query-expansion agent | — |
-| Test coverage, quality code | ✅ unit + integration | ✅ unit + integration + e2e + load |
-
-**The key line:** StudySearch carries *all three* Meta AI bullets — including
-agent orchestration, which a simple hint feature never would. So cutting
-DeepCS's AI costs zero JD coverage and buys a much simpler, more focused
-project. The two repos together leave no bullet uncovered.
-
----
-
-## 12. Scope guards — what we are NOT doing
-
-- ❌ No Go — all TypeScript (StudySearch is the Go project).
-- ❌ No AI service — StudySearch owns the AI story.
-- ❌ No Kubernetes as core — Docker + Cloud Run; k8s is an optional 1-week stretch.
-- ❌ No Helm / Terraform / k3d.
-- ❌ No full OTel/Prometheus/Grafana/Loki/Tempo stack — lean logs + health + one view.
-- ❌ No 3-step AI pipeline, no 6 services, no polyglot, no 16-week timeline.
-- ❌ No polished UI — minimal functional React only.
-- ❌ No interviewer/interviewee roles, no swaps.
-- ❌ No voice or video.
-- ❌ No scoring or rubrics.
-- ❌ No question authoring until Phase 4 matching works. Cap at ~30 questions.
 
 ---
 
@@ -298,9 +243,8 @@ Repo `deepcs`, packages `@deepcs/core`, `@deepcs/gateway`, `@deepcs/collab`.
 
 ## Final note
 
-Ship StudySearch Phase A first (deadline). Then DeepCS in ~6–8 focused weeks.
-Build the Collab service with the most care — it's the one thing in your whole
-portfolio that says "real-time distributed systems," and a clean demo (two tabs
+Build the Collab service with the most care — it's the piece that says
+"real-time distributed systems," and a clean demo (two tabs
 syncing, presence, cursors, survive-an-instance-kill) lands harder than any
 amount of infrastructure. Everything else here is deliberately boring on
 purpose so that one thing can shine.
