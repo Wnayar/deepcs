@@ -149,6 +149,16 @@ instances) and failure domain (what breaks together), not by database table:
   session row, publish a match event on Redis pub/sub (publish/subscribe: a
   message published on a named channel reaches every subscriber to that
   channel).
+- **Matching crash recovery:** the claim (Redis) and the session row (Postgres)
+  live in two systems, so no transaction spans them — if Core crashes between
+  the two, a claimed pair would be out of the queue with no session and wait
+  forever. Recovery is client-driven: if no match event arrives within ~10s,
+  the client calls `match/status`; the server returns the user's active session
+  if one exists (also covers a crash after the insert but before the pub/sub
+  publish), otherwise re-enqueues them. Joining is idempotent (safe to repeat —
+  re-joining while queued or matched changes nothing), so the retry can never
+  double-book. Worst case a crash costs the user a few extra seconds of
+  waiting.
 - **Reveal rule:** the reference answer (`reference_md`) is served only after
   the server verifies both participants consented. It never reaches the client
   before that.
