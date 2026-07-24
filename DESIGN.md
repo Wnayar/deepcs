@@ -17,6 +17,9 @@ collaborative solving. Practice solo or get matched with someone.
 - Microservices behind a custom gateway (JWT verification, routing, rate
   limiting; a JWT is a signed token proving who the user is).
 - Stateful auth done properly (JWT + refresh rotation).
+- An event-driven pipeline: services append domain events (facts like "match
+  created", recorded as data) to a replayable log; a scheduled worker consumes
+  them into session summaries and live stats.
 - A system that's actually deployed at a live URL.
 
 ---
@@ -46,7 +49,8 @@ visitor — matchmaking alone would demo as an empty room.
 **In scope:** auth; public browsable question bank (search/filter/read solo);
 join queue with topic + difficulty preferences; match; shared real-time
 scaffolded session document with presence; mutual-consent reference reveal;
-reconnect after disconnect; end session + summary.
+reconnect after disconnect; end session + summary; public stats endpoint
+(sessions solved, popular topics — fed by the event log, §5).
 
 **Out of scope:** AI features; mobile; polished UI (minimal functional React
 only); payments; social features (friends/leaderboards); interviewer/interviewee
@@ -54,32 +58,53 @@ roles; role swapping; voice/video; rubrics and scoring; question authoring.
 
 ---
 
-## 3. Architecture — 3 services
+## 3. Architecture — 3 services + a scheduled worker
 
 ```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 70}}}%%
 flowchart TD
-    FE["Frontend (React)<br/>static hosting: Cloud Storage + CDN"]
+    U["User A + User B browsers<br/>(React app served from Cloud Storage + CDN)"]
 
-    subgraph RUN["Cloud Run — the 3 services"]
-        GW["<b>1. Gateway</b><br/>JWT verify · rate limit · routing · CORS"]
-        CORE["<b>2. Core</b><br/>auth · question bank · matching"]
-        COLLAB["<b>3. Collab</b><br/>WebSockets · Yjs CRDT · presence"]
+    U ==>|"all traffic: HTTP + WebSocket"| GW
+
+    subgraph RUN["Cloud Run — stateless, scales to zero"]
+        GW@{ shape: procs, label: "<b>1. Gateway</b> ×0–2<br/>JWT verify · rate limit<br/>routing · CORS" }
+        CORE@{ shape: procs, label: "<b>2. Core</b> ×0–2<br/>auth · question bank<br/>matching" }
+        COLLAB@{ shape: procs, label: "<b>3. Collab</b> ×0–2<br/>WebSockets · Yjs CRDT<br/>presence" }
+        WK["<b>4. Worker</b> ×0–1<br/>scheduled: runs every<br/>5 min, drains, exits"]
     end
 
-    subgraph DATA["Managed free tiers"]
-        PG[("PostgreSQL — Neon<br/>users · questions · sessions")]
-        RD[("Redis — Upstash<br/>match queue · rate limits<br/>pub/sub · refresh tokens")]
+    subgraph DATA["Managed free tiers — always-on, own the disks"]
+        PG[("PostgreSQL — Neon ×1<br/>users · questions · sessions<br/>snapshots · summaries · stats")]
+        RD[("Redis — Upstash ×1<br/>match queue · rate limits<br/>refresh tokens · pub/sub<br/>event stream")]
     end
 
-    FE -->|"all traffic: HTTP + WebSocket"| GW
     GW -->|HTTP| CORE
     GW -->|WebSocket| COLLAB
-    GW -->|"rate-limit state"| RD
+    GW -->|"rate-limit buckets"| RD
     CORE -->|SQL| PG
-    CORE -->|"queue · refresh tokens<br/>publish match events"| RD
-    COLLAB -->|"pub/sub: edits<br/>across instances"| RD
-    COLLAB -->|"snapshots every 30s"| PG
+    CORE -->|"queue · refresh tokens<br/>match + domain events"| RD
+    COLLAB <-->|"edit pub/sub<br/>domain events"| RD
+    COLLAB -->|"doc snapshots<br/>every 30s"| PG
+    WK -.->|"pulls new events<br/>every 5 min"| RD
+    WK -->|"summaries + stats"| PG
+
+    classDef client fill:#f3f4f6,stroke:#9ca3af,color:#111827
+    classDef ephemeral fill:#dbeafe,stroke:#2563eb,color:#0c2d6b
+    classDef scheduled fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-dasharray: 5 5
+    classDef stateful fill:#fef3c7,stroke:#d97706,color:#78350f
+    class U client
+    class GW,CORE,COLLAB ephemeral
+    class WK scheduled
+    class PG,RD stateful
 ```
+
+**Reading the diagram:** stacked blue boxes autoscale between 0 and 2
+instances — nobody using the app means zero instances running. The dashed
+green Worker never has an instance parked: one is started every 5 minutes and
+exits when done. The amber cylinders are the only always-on machines, run by
+Neon and Upstash, and they hold every byte of durable state — which is exactly
+what lets everything blue be disposable.
 
 Every browser request — HTTP or WebSocket — enters through the Gateway; Core
 and Collab are never called directly, and the browser never talks to Postgres
@@ -98,6 +123,11 @@ instances) and failure domain (what breaks together), not by database table:
   scaling on concurrent open connections — a completely different profile, so
   it gets its own service. The split also isolates failures: a Collab crash
   can't take down login or browsing.
+- **Worker** — not a fourth service: a scheduled job (a container Cloud
+  Scheduler — GCP's cron service — starts every 5 minutes; it runs to
+  completion and exits, billed only for its seconds of runtime). It consumes
+  the event stream and writes session summaries + aggregate stats to Postgres.
+  No user request ever waits on it, and it takes no traffic at all.
 
 ---
 
@@ -110,6 +140,7 @@ instances) and failure domain (what breaks together), not by database table:
 | Database | PostgreSQL (Neon, free) | Relational, plus built-in tag filtering (`text[]` column + GIN index) and full-text search (`tsvector`). |
 | Cache/queue/pubsub | Redis (Upstash, free) | Queue, rate-limit state, cross-instance pub/sub, refresh tokens. |
 | Real-time | WebSockets + Yjs (CRDT) | Concurrent edits merge without a central server ordering them; mature library. |
+| Event log | Redis Streams (prod) + Kafka (dev only) | Replayable domain-event log feeding summaries/stats; one `EventLog` interface, two adapters — hands-on Kafka with zero hosting cost. |
 | Container | Docker + docker-compose | Local dev; dev/prod parity. |
 | Deploy | Cloud Run (GCP, `asia-southeast1`) | Scale-to-zero (idle services stop entirely: idle cost $0, at the price of a cold start on the next request), free at this scale, live URL. |
 | CI (continuous integration) | GitHub Actions | Lint → test → build → deploy on merge. |
@@ -179,6 +210,58 @@ instances) and failure domain (what breaks together), not by database table:
   exists only in the instance's memory — without snapshots, a crash or restart
   would lose the session's text.
 
+The distributed-systems moment, drawn out — one edit crossing instances (the
+WebSocket's hop through the Gateway is omitted for clarity):
+
+```mermaid
+sequenceDiagram
+    participant A as User A's browser
+    participant C1 as Collab instance 1
+    participant R as Redis pub/sub
+    participant C2 as Collab instance 2
+    participant B as User B's browser
+    Note over A,B: matched into session s42 — but their sockets landed on different Collab instances
+    A->>C1: types "a SYN packet…" (arrives as a Yjs update)
+    C1->>C1: merge into instance 1's copy of the doc
+    C1->>R: publish update on channel session:s42
+    R-->>C2: deliver (instance 2 is subscribed)
+    C2->>C2: merge into instance 2's copy — CRDT: same result in any order
+    C2->>B: push over B's WebSocket
+    Note over C1,C2: every 30s, the doc is snapshotted to Postgres (crash safety)
+```
+
+### Worker + the event log
+
+- Core and Collab call a shared `emitEvent(type, data)` at six moments:
+  `user.signed_up`, `queue.joined`, `match.created`, `session.started`,
+  `reveal.consented`, `session.ended`. Each call appends one entry to an
+  `events` Redis Stream (an append-only log inside Redis: entries get ordered
+  IDs, reading never deletes them, and each reader keeps a server-side
+  bookmark). Fire-and-forget inside a try/catch — a log hiccup never fails a
+  user request.
+- The worker reads everything past its bookmark, processes, then acks each
+  entry; Redis keeps delivered-but-unacked entries in a pending list, so a
+  crash mid-batch means redelivery, not loss. Delivery is therefore
+  at-least-once — the worker can see an event twice — so its writes are
+  idempotent, same rule as the rest of the system (§6).
+- Outputs: on `session.ended`, the session-summary row behind
+  `GET /sessions/:id/summary` (duration, topic, reveal used); plus aggregate
+  stats (sessions per day, median match wait, popular topics) behind
+  `GET /stats`.
+- Because the log holds events while nobody is reading, the worker needs no
+  always-on instance: Cloud Scheduler triggers it as a Cloud Run job every
+  5 minutes; it drains the backlog and exits. Worst case a summary lands ~5
+  minutes after the session ends (the session page shows it as pending until
+  then). The kept log is also what makes reprocessing possible: rewind the
+  bookmark after a bug fix, or add a second consumer later, and history is
+  still there — the property plain pub/sub or a queue can't offer.
+- In dev, docker-compose runs a single-node Kafka (KRaft mode — no ZooKeeper
+  to manage), and the same code targets it through the 3-method `EventLog`
+  interface (append / readBatch / ack) with Kafka and Redis Streams adapters.
+  That's the hands-on Kafka — topics, offsets, consumer groups — without
+  hosting a broker: free managed Kafka effectively no longer exists, and an
+  always-on broker would break the §7 cost ceiling.
+
 ---
 
 ## 6. Shared concerns (auth, rate limiting, security, observability)
@@ -200,14 +283,15 @@ instances) and failure domain (what breaks together), not by database table:
     service it touches) remains an explicit stretch, not core.
 - **Security:** HTTPS (Cloud Run free), CORS to one origin, standard security headers via helmet middleware, secrets in GCP Secret Manager (never in code/logs), Dependabot (automated dependency-update PRs).
 - **Graceful shutdown:** drain in-flight requests (finish what's processing, accept nothing new); Collab snapshots Yjs docs before exit.
-- **Idempotency** (safe to run twice with the same effect as once): queue-join keyed by `user_id`, session-end by `session_id` — a retry can't double-join or double-end.
+- **Idempotency** (safe to run twice with the same effect as once): queue-join keyed by `user_id`, session-end by `session_id` — a retry can't double-join or double-end. Event consumption is keyed by entry ID: at-least-once delivery means the worker can see the same event twice, and must produce one summary, not two.
 
 ---
 
 ## 7. Deployment
 
-- **Local:** `docker-compose up` → all 3 services + Postgres + Redis.
-- **Prod:** Docker images → GCP Artifact Registry (GCP's image store) → Cloud Run (`asia-southeast1`); Neon + Upstash via env vars; secrets in Secret Manager; frontend on Cloud Storage + CDN. One live URL, accessible from Singapore.
+- **Local:** `docker-compose up` → all 3 services + worker + Postgres + Redis
+  + single-node Kafka (the dev backend for the event log).
+- **Prod:** Docker images → GCP Artifact Registry (GCP's image store) → Cloud Run (`asia-southeast1`); Neon + Upstash via env vars; secrets in Secret Manager; frontend on Cloud Storage + CDN; the worker as a Cloud Run job triggered by Cloud Scheduler every 5 minutes (never always-on). One live URL, accessible from Singapore.
 - **CI:** GitHub Actions — on PR: lint + test + build (no push); on merge to main: build → push → deploy to Cloud Run.
 
 ### Cost controls (before deploying anything)
@@ -228,7 +312,7 @@ a single service.
 |---|---|---|
 | 1. Kill-switch | Billing budget → Pub/Sub → Cloud Function that detaches the billing account (`projects.updateBillingInfo`) at $20. Google publishes the ~40-line sample. Not instant (few-min lag) and takes the whole project down. | The only true stop — a backstop, not the primary control. |
 | 2. Cloud Run flags | On every service: `--max-instances=2` (hard ceiling on concurrent compute — excess requests queue or get HTTP 429 Too Many Requests instead of spinning up 100 containers) and `--min-instances=0` (idle cost ~$0). Then per service, because Cloud Run counts an open WebSocket as one in-flight request for its entire life and the socket traverses both Gateway and Collab: Core gets `--concurrency=80` (many requests per instance instead of scaling out per-request) and `--timeout=60s` (a hung request is killed in a minute instead of holding a slot and billing forever — ~1000× a normal request, so it never fires on real traffic); Gateway and Collab get `--concurrency=250` and `--timeout=3600s`, since a 60s timeout would sever every collab session each minute, and concurrency here is the hard cap on concurrent sockets (250 × 2 instances = 500). | The real day-to-day cap: a runaway bill comes from autoscaling under load/loops/bots; this caps it at the source. |
-| 3. API surface | Enable only the APIs used: Cloud Run, Artifact Registry, Secret Manager, Cloud Storage. | Every disabled API is a whole category of bill that can't happen. |
+| 3. API surface | Enable only the APIs used: Cloud Run, Artifact Registry, Secret Manager, Cloud Storage, Cloud Scheduler. | Every disabled API is a whole category of bill that can't happen. |
 | 4. Public URL | The gateway's token-bucket rate limit caps traffic that would drive Cloud Run scaling. Neon (0.5GB) and Upstash (10K cmd/day) throttle rather than overage-bill. | The stateful layer isn't the risk — Cloud Run is. |
 | 5. Early warning | Budget alerts at 50 / 90 / 100% ($10 / $18 / $20). | Email before the kill-switch fires, so you can look first. |
 
@@ -237,7 +321,7 @@ a single service.
 First deploy is manual (console + `gcloud`) to learn what the pieces are. Once
 it works, capture it in Terraform: Cloud Run services (with the
 max-instances/concurrency flags above), Artifact Registry, Secret Manager
-secrets, the storage bucket, and budget alerts — all declared in `.tf` files in
+secrets, the storage bucket, the Cloud Scheduler job, and budget alerts — all declared in `.tf` files in
 the repo, applied with `terraform apply`. This makes the whole environment
 reproducible from git and locks the cost-control flags in code so they can't be
 fat-fingered away.
@@ -265,7 +349,8 @@ deliberate phase rather than skipped:
 
 ## 8. Testing + the headline load number
 
-- **Unit:** matching logic, rate-limit token bucket, question-bank filters.
+- **Unit:** matching logic, rate-limit token bucket, question-bank filters,
+  worker idempotency (same event twice → one summary).
 - **Integration:** testcontainers (a library that spins up real Postgres +
   Redis in Docker for the test run) for the auth flow and match flow.
 - **One end-to-end happy path:** signup → match → collab edit syncs → end.
@@ -289,7 +374,7 @@ the context, what was chosen, the alternatives rejected, and the tradeoffs
 accepted. They live in `docs/adr/` in the repo. Purpose: anyone reading the
 repo can see *why* each choice was made, not just what was built.
 
-The 6 decisions worth recording:
+The 7 decisions worth recording:
 
 1. **Service boundaries** — split by scaling profile and failure domain
    (3 services), not one service per database table.
@@ -306,6 +391,14 @@ The 6 decisions worth recording:
 6. **Reference answers never enter the shared doc** — a Yjs doc replicates to
    all peers, so the answer key can't live there; Core serves it per-user
    after server-side consent checks.
+7. **A replayable event log for summaries/stats** (Redis Streams in prod,
+   Kafka in dev) — log over queue semantics, so consumed events stay
+   readable: rewind the bookmark to recompute after a bug, or add a consumer
+   later and it still sees history. Considered: a Postgres events table
+   (viable at this scale — rejected for the cleaner scale-up path and the
+   learning value) and real Kafka in prod (no free managed option; an
+   always-on broker breaks the §7 cost ceiling). Live Yjs sync stays on Redis
+   pub/sub — latency-critical fanout is the wrong shape for a polled log.
 
 ---
 
@@ -320,8 +413,10 @@ The 6 decisions worth recording:
 | 4 | **Collab (hardest):** WebSockets + Yjs, JWT-auth the socket, cross-instance pub/sub, presence/cursors, snapshot + reconnect, graceful shutdown | two tabs sync live; kill one instance, other keeps working |
 | 5 | Minimal React: login, question list, match button, session page (Monaco — the VS Code editor component — wired to Yjs) with scaffolded editor and the reveal flow, end | open two browsers, match, collaborate, reveal |
 | 6 | Deploy to Cloud Run + frontend to CDN; CI deploys on merge; logs + health + `/metrics` → Grafana Cloud dashboard; k6 load run (local, then Cloud Run); README + ADRs + demo GIF | live URL; headline load number in README |
-| 7 | Terraform: import the manual GCP setup into `.tf` files (Cloud Run + flags, registry, secrets, bucket, budget alerts) | `terraform apply` rebuilds the environment |
-| 8 | k8s learning sprint (on trial credits): raw manifests for the 3 services → GKE Autopilot → run/roll out/self-heal demo → migrate back to Cloud Run, delete cluster, keep `k8s/` in repo | app runs on Kubernetes; manifests in repo; cluster deleted |
+| 7 | Event pipeline: `emitEvent` in Core/Collab → `events` stream on Upstash (behind the 3-method `EventLog` interface); idempotent worker consumer → summary + stats; `GET /sessions/:id/summary` + `GET /stats`; Cloud Scheduler → Cloud Run job; ADR-07 | end a session on the live URL → summary renders; `/stats` shows real counts |
+| 8 | Terraform: import the manual GCP setup into `.tf` files (Cloud Run + flags, registry, secrets, bucket, scheduler job, budget alerts) | `terraform apply` rebuilds the environment |
+| 9 | k8s learning sprint (on trial credits): raw manifests for the 3 services → GKE Autopilot → run/roll out/self-heal demo → migrate back to Cloud Run, delete cluster, keep `k8s/` in repo | app runs on Kubernetes; manifests in repo; cluster deleted |
+| 10 | Kafka in dev: single-node Kafka (KRaft mode) in docker-compose + a Kafka adapter for `EventLog`; producers + worker run against it locally | same events flow end-to-end through Kafka on `docker-compose up`; prod unchanged |
 
 Buffer: things slip — don't add features, use slack to polish README + record a 2-min demo.
 
