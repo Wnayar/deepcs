@@ -8,19 +8,49 @@ collaborative solving. Practice solo or get matched with someone.
 
 ---
 
+## How to read this doc
+
+This is a learning project with a real deploy, so some choices optimise for the
+product and some optimise for what I wanted to understand. Rather than blur the
+two, every non-obvious decision carries one of three tags:
+
+| Tag | Meaning |
+|---|---|
+| **[bought]** | Deliberately not built. There's no interesting problem inside it, so paying for it is the correct engineering call, not a shortcut. |
+| **[built · learning]** | A mature off-the-shelf option exists and is what I'd use commercially. Built here because the problem underneath it is one I wanted to hit directly, and configuring a product hides exactly that problem. |
+| **[detour · learning]** | Built, run, and then deliberately **not kept in production**. Exists in the repo as evidence of the work, not as part of the running system. |
+
+Untagged decisions are ordinary product choices with no build-vs-buy tension.
+
+The rule behind every tag: **build what has a concurrency or distributed-systems
+problem inside it; buy what is risk without insight.** That's the line applied
+consistently below — it's why auth is bought (ADR-04) and the gateway is built
+(ADR-08), which are opposite answers from the same test.
+
+Short *Why not X* notes appear inline throughout. The nine decisions big enough
+to need full context, alternatives, and accepted tradeoffs are ADRs (§9).
+
+---
+
 ## 1. What DeepCS proves
 
 - Real-time collaborative editing with cross-instance sync, built on a CRDT
   (Conflict-free Replicated Data Type: concurrent edits on separate copies
   always merge to the same result, with no central referee — Yjs is the mature
-  CRDT library used here).
-- Microservices behind a custom gateway (JWT verification, routing, rate
-  limiting; a JWT is a signed token proving who the user is).
-- Stateful auth done properly (JWT + refresh rotation).
+  CRDT library used here). **This is the hard part of the project and the only
+  one I'd defend as genuinely difficult.**
+- A genuinely distributed system: **six independently deployable units** behind a
+  **[built · learning]** gateway, with service-to-service authentication, no
+  shared tables, and no transaction spanning a service boundary (ADR-01).
+- Federated auth done properly **[bought]**: Firebase Auth issues the tokens,
+  the gateway verifies them against Google's public keys and holds no credential
+  that could mint one (ADR-04).
 - An event-driven pipeline: services append domain events (facts like "match
-  created", recorded as data) to a replayable log; a scheduled worker consumes
-  them into session summaries and live stats.
-- A system that's actually deployed at a live URL.
+  created", recorded as data) to a replayable log; a scheduled job consumes them
+  into session summaries and live stats — which is where at-least-once delivery
+  forces idempotency (§6).
+- A system that's actually deployed at a live URL, inside a hard cost ceiling
+  (§7) — the constraint that shapes more of this design than any other.
 
 ---
 
@@ -58,160 +88,262 @@ roles; role swapping; voice/video; rubrics and scoring; question authoring.
 
 ---
 
-## 3. Architecture — 3 services + a scheduled worker
+## 3. Architecture — 6 deployables
 
 ```mermaid
-%%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 70}}}%%
+%%{init: {"flowchart": {"nodeSpacing": 45, "rankSpacing": 60}}}%%
 flowchart TD
     U["User A + User B browsers<br/>React app served from<br/>Cloud Storage + CDN"]
 
     U ==>|"all traffic: HTTP + WebSocket"| GW
 
     subgraph RUN["Cloud Run — stateless, scales to zero"]
-        GW@{ shape: procs, label: "<b>1. Gateway</b> ×0–2<br/>JWT verify · rate limit<br/>routing · CORS" }
-        CORE@{ shape: procs, label: "<b>2. Core</b> ×0–2<br/>auth · question bank<br/>matching" }
-        COLLAB@{ shape: procs, label: "<b>3. Collab</b> ×0–2<br/>WebSockets · Yjs CRDT<br/>presence" }
-        WK["<b>4. Worker</b> ×0–1<br/>scheduled: runs every<br/>5 min, drains, exits"]
+        GW@{ shape: procs, label: "<b>1. Gateway</b> ×0–2<br/>verify token · rate limit<br/>route · CORS" }
+        USR@{ shape: procs, label: "<b>2. Users</b> ×0–2<br/>profiles" }
+        QST@{ shape: procs, label: "<b>3. Questions</b> ×0–2<br/>bank · search<br/>reference answers" }
+        MCH@{ shape: procs, label: "<b>4. Matching</b> ×0–2<br/>queue · pair claim<br/>sessions · consent" }
+        COL@{ shape: procs, label: "<b>5. Collab</b> ×0–2<br/>WebSockets · Yjs CRDT<br/>presence" }
+        STA["<b>6. Stats</b> ×0–1<br/>scheduled job: every<br/>5 min, drains, exits"]
     end
 
     subgraph DATA["Managed free tiers — always-on, own the disks"]
-        PG[("PostgreSQL — Neon ×1<br/>users · questions · sessions<br/>snapshots · summaries · stats")]
-        RD[("Redis — Upstash ×1<br/>match queue · rate limits<br/>refresh tokens · pub/sub<br/>event stream")]
+        PG[("PostgreSQL — Neon ×1<br/>one instance, one schema<br/>per service, one role each")]
+        RD[("Redis — Upstash ×1<br/>match queue · rate limits<br/>pub/sub · event stream")]
     end
 
-    GW -->|HTTP| CORE
-    GW -->|WebSocket| COLLAB
+    GW -->|HTTP| USR
+    GW -->|HTTP| QST
+    GW -->|HTTP| MCH
+    GW -->|WebSocket| COL
     GW -->|"rate-limit buckets"| RD
-    CORE -->|SQL| PG
-    CORE -->|"queue · refresh tokens<br/>match + domain events"| RD
-    COLLAB <-->|"edit pub/sub<br/>domain events"| RD
-    COLLAB -->|"doc snapshots<br/>every 30s"| PG
-    WK -.->|"pulls new events<br/>every 5 min"| RD
-    WK -->|"summaries + stats"| PG
+    MCH -.->|"validate uid"| USR
+    MCH -.->|"parts[] · reference_md"| QST
+    COL -.->|"is user in session?"| MCH
+    USR --> PG
+    QST --> PG
+    MCH --> PG
+    COL --> PG
+    MCH -->|"queue · events"| RD
+    COL <-->|"edit pub/sub · events"| RD
+    STA -.->|"pulls events / 5 min"| RD
+    STA -->|"summaries + stats"| PG
 
     classDef client fill:#f3f4f6,stroke:#9ca3af,color:#111827
     classDef ephemeral fill:#dbeafe,stroke:#2563eb,color:#0c2d6b
     classDef scheduled fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-dasharray: 5 5
     classDef stateful fill:#fef3c7,stroke:#d97706,color:#78350f
     class U client
-    class GW,CORE,COLLAB ephemeral
-    class WK scheduled
+    class GW,USR,QST,MCH,COL ephemeral
+    class STA scheduled
     class PG,RD stateful
 ```
 
-**Reading the diagram:** stacked blue boxes autoscale between 0 and 2
-instances — nobody using the app means zero instances running. The dashed
-green Worker never has an instance parked: one is started every 5 minutes and
-exits when done. The amber cylinders are the only always-on machines, run by
-Neon and Upstash, and they hold every byte of durable state — which is exactly
-what lets everything blue be disposable.
+**Reading the diagram:** stacked blue boxes autoscale between 0 and 2 instances —
+nobody using the app means zero instances running. The dashed green Stats job
+never has an instance parked. Solid arrows are the request path; **dotted arrows
+are service-to-service calls**, which exist because no service may read another's
+tables. The amber cylinders are the only always-on machines.
 
-Every browser request — HTTP or WebSocket — enters through the Gateway; Core
-and Collab are never called directly, and the browser never talks to Postgres
+Every browser request — HTTP or WebSocket — enters through the Gateway. No other
+service is reachable from the internet, and the browser never talks to Postgres
 or Redis.
 
-**The 3 services**, split by scaling profile (what forces a service to add
-instances) and failure domain (what breaks together), not by database table:
+### The six capabilities, and why each is its own deployable
 
-- **Gateway** — the single entry point and trust boundary: past it, services
-  can assume every request's JWT was already checked. Verifies JWTs,
-  rate-limits, routes requests to the other two services.
-- **Core** — all the request/response CRUD (create/read/update/delete) work:
-  auth, question bank, matching. Same workload shape, so one service.
-- **Collab** — the real-time editor. Stateful and WebSocket-heavy (a WebSocket
-  is a long-lived two-way connection, unlike HTTP's one-shot request→response),
-  scaling on concurrent open connections — a completely different profile, so
-  it gets its own service. The split also isolates failures: a Collab crash
-  can't take down login or browsing.
-- **Worker** — not a fourth service: a scheduled job (a container Cloud
-  Scheduler — GCP's cron service — starts every 5 minutes; it runs to
-  completion and exits, billed only for its seconds of runtime). It consumes
-  the event stream and writes session summaries + aggregate stats to Postgres.
-  No user request ever waits on it, and it takes no traffic at all.
+| # | Service | Owns | Why it's separate |
+|---|---|---|---|
+| 1 | **Gateway** | nothing (stateless) | **Position.** A cross-cutting enforcement point has to sit *in front of* what it protects. This would be true even if its scaling profile matched everything else exactly. |
+| 2 | **Users** | profile rows keyed by `firebase_uid` | One capability, one owner. Small and stable — it will change less than anything else here. |
+| 3 | **Questions** | question bank, tags, full-text index, `reference_md` | Read-heavy and cacheable in a way nothing else is; also the only service holding answer keys, so a narrower blast radius is worth something. |
+| 4 | **Matching** | queue state, pair claim, session rows, consent | The only service with a hard concurrency problem (the atomic pair claim, ADR-03). |
+| 5 | **Collab** | live Yjs docs, snapshots | **Different scaling trigger and different failure mode.** One WebSocket occupies a concurrency slot for 20 minutes; Cloud Run needs opposite `--concurrency`/`--timeout` values from every other service, and those are per-service flags (§7). This boundary is forced by the platform, not chosen. |
+| 6 | **Stats** | summaries, aggregates | **Trigger.** Time-driven, not request-driven — and a scaled-to-zero service has no running process for a timer to fire in, so it can't be a server at all. It's a job. |
+
+**Two of these six are not really "splits."** The Gateway is a *position* and
+Stats is a *job* — judging either by scaling profiles would be a category error.
+The other four are ordinary services, one per capability.
+
+*Why one service per capability rather than grouping them?* Honestly: by a strict
+scaling-forces test, Users + Questions + Matching would merge — they share a
+request shape, a failure domain and a deploy cadence, and an earlier draft of
+this design did exactly that. They're kept separate for **independent
+deployability and one clear owner per capability**, and because operating a
+genuinely distributed system — service-to-service auth, validation across a
+boundary, no cross-service transaction — is a large part of what this project
+exists to teach. ADR-01 states the costs that buys and names the condition under
+which they'd merge back.
+
+*Why not a monolith?* Collab alone rules it out: one open WebSocket holds a
+concurrency slot for the whole session, so bundling it with the question bank
+means a hundred idle sockets starve a browse request, and the two scale on
+incompatible signals with no way to configure both.
+
+*Why does everything go through the Gateway?* So exactly one place verifies a
+token. The cost is a network hop, and for WebSockets a doubled concurrency slot —
+see §5.
 
 ---
 
 ## 4. Stack
 
-| Layer | Choice | Why |
+| Layer | Choice | Why — and why not the alternative |
 |-------|--------|-----|
-| All services | TypeScript + Fastify (Node web framework) | One language = fast solo iteration. |
-| Frontend | React + Vite (build tool) + TS | Minimal, just enough to demo. |
-| Database | PostgreSQL (Neon, free) | Relational, plus built-in tag filtering (`text[]` column + GIN index) and full-text search (`tsvector`). |
-| Cache/queue/pubsub | Redis (Upstash, free) | Queue, rate-limit state, cross-instance pub/sub, refresh tokens. |
-| Real-time | WebSockets + Yjs (CRDT) | Concurrent edits merge without a central server ordering them; mature library. |
-| Event log | Redis Streams (prod) + Kafka (dev only) | Replayable domain-event log feeding summaries/stats; one `EventLog` interface, two adapters — hands-on Kafka with zero hosting cost. |
-| Container | Docker + docker-compose | Local dev; dev/prod parity. |
-| Deploy | Cloud Run (GCP, `asia-southeast1`) | Scale-to-zero (idle services stop entirely: idle cost $0, at the price of a cold start on the next request), free at this scale, live URL. |
-| CI (continuous integration) | GitHub Actions | Lint → test → build → deploy on merge. |
+| All services | TypeScript + Fastify (Node web framework) | One language across six deployables + the frontend = fast solo iteration, and shared types across service boundaries, which matters much more now that boundaries exist. *Not Express:* Fastify has JSON-schema validation and a real plugin/encapsulation model built in, and is meaningfully faster. *Not NestJS:* heavy structure earns its keep on a team. |
+| Frontend | React + Vite (build tool) + TS | Minimal, just enough to demo; Yjs bindings for React editors are mature. *Not Next.js:* SSR buys nothing for an authenticated single-page editor and adds a server to deploy where a static bundle on a CDN costs nothing. |
+| Auth | Firebase Auth (email/password) **[bought]** | Identity is a solved, security-critical problem with no design insight left in it; Google's abuse detection and key rotation beat anything hand-rolled. *Not self-hosted:* ADR-04. Free at this scale. |
+| Database | PostgreSQL (Neon, free) **[bought]** — one instance, schema per service | Relational data, plus built-in tag filtering (`text[]` + GIN index) and full-text search (`tsvector`), so no separate search engine. *Not database-per-service:* ADR-09 — it would cost cross-service atomicity and force a saga. *Not Mongo:* the data is relational. *Not Cloud SQL:* no free tier, bills hourly. |
+| Cache/queue/pubsub | Redis (Upstash, free) **[bought]** | One dependency covering four jobs: match queue, rate-limit state, cross-instance pub/sub, event stream. Split from Postgres by **access pattern** (ephemeral shared state vs durable relational), not by service. *Not Memorystore:* no free tier. |
+| Real-time | WebSockets + Yjs (CRDT) | Concurrent edits merge without a central server ordering them (ADR-02). *Not SSE or polling:* one-directional, or too slow for ~100 ms keystroke echo. *Not Liveblocks/PartyKit:* they'd host the hard part, and the hard part is the project. |
+| Event log | Redis Streams (prod) + Kafka (dev only) **[detour · learning]** | Replayable domain-event log feeding summaries/stats; one `EventLog` interface, two adapters. Kafka exists **only in docker-compose**. *Not Kafka in prod:* no free managed option, and an always-on broker breaks §7. *Not GCP Pub/Sub:* more IAM surface, and it hides the bookmark mechanics that are the point. |
+| Editor | Monaco wired to Yjs | Familiar VS Code feel, mature `y-monaco` binding. *Not a plain textarea:* no cursor decorations, so presence would be invisible. *Not CodeMirror 6:* a fair alternative, lighter — Monaco chosen for recognisability in a demo. |
+| Container | Docker + docker-compose | Local dev; dev/prod parity — the same image runs locally, on Cloud Run, and on GKE, which makes the §7 migration a deploy command rather than a rewrite. |
+| Deploy | Cloud Run (GCP, `asia-southeast1`) **[bought]** | Scale-to-zero (idle cost $0, at the price of a cold start), free at this scale, live URL. *Not GKE:* ADR-05. *Not Vercel/Railway:* fine products, but the goal includes learning GCP's primitives. |
+| CI | GitHub Actions | Lint → test → build → deploy on merge, **per service** (§7). *Not Cloud Build:* the repo is on GitHub and Actions is free for public repos. |
 
 ---
 
 ## 5. Services
 
-### Gateway
-- Verifies JWT — RS256: tokens are signed with a private key only Core holds
-  and verified with a public key the Gateway caches, so the Gateway never has
-  the signing secret. Then injects `X-User-Id` / `X-Request-Id` headers so
-  downstream services know who's calling and logs can be correlated per request.
-- Token-bucket rate limiting: each client gets a bucket of N tokens, a request
-  spends one, tokens refill at a steady rate — bursts allowed, sustained
-  flooding blocked. Implemented as a Redis Lua script, which Redis runs
-  atomically (no other command interleaves), so two gateway instances can't
-  double-spend the same bucket.
-- Routes to Core and Collab; handles CORS (the browser rule controlling which
-  websites may call the API — locked to the one frontend origin).
-- Built custom (not an off-the-shelf gateway like Kong or Traefik) so the
-  rate-limit + auth mechanics are implemented in this codebase rather than
-  configured in a third-party product.
+### Gateway — **[built · learning]** (ADR-08)
 
-### Core
-- **Auth:** signup with bcrypt password hashing (slow by design — the standard
-  for storing passwords); short-lived JWT access token + rotating refresh token
-  in Redis. The refresh token is an opaque random ID (it carries no data
-  itself) stored server-side, exchanged for a new access token when the old
-  one expires; rotation means each exchange also issues a fresh refresh token,
-  so a stolen one dies fast.
-- **Question bank:** list / filter / search / paginate, get by id. Row shape:
-  `parts[]`, `reference_md`, `tags text[]`, `difficulty`.
-- **Matching:** reactive — matching runs at the moment a user joins, not on a
-  polling timer. On join: read the Redis queue, filter by compatible topic +
-  difficulty preferences, atomically claim a pair via a Lua script, create the
-  session row, publish a match event on Redis pub/sub (publish/subscribe: a
-  message published on a named channel reaches every subscriber to that
-  channel).
-- **Matching crash recovery:** the claim (Redis) and the session row (Postgres)
-  live in two systems, so no transaction spans them — if Core crashes between
-  the two, a claimed pair would be out of the queue with no session and wait
-  forever. Recovery is client-driven: if no match event arrives within ~10s,
-  the client calls `match/status`; the server returns the user's active session
-  if one exists (also covers a crash after the insert but before the pub/sub
-  publish), otherwise re-enqueues them. Joining is idempotent (safe to repeat —
-  re-joining while queued or matched changes nothing), so the retry can never
-  double-book. Worst case a crash costs the user a few extra seconds of
-  waiting.
-- **Reveal rule:** the reference answer (`reference_md`) is served only after
-  the server verifies both participants consented. It never reaches the client
-  before that.
+The one service where an off-the-shelf product would do the whole job. Kong
+DB-less covers routing, JWT verification, CORS and distributed rate limiting in
+roughly fifteen lines of config, and that is what I'd deploy at a company. It's
+built here for one reason: the rate limiter is the only place in this system
+where I could write the racy version, reproduce the double-count across two
+instances, and then fix it.
+
+- **Verifies the token.** Firebase Auth signs ID tokens (RS256) with a private
+  key Google holds; the Gateway verifies against Google's public keys, fetched
+  from the published **JWKS** endpoint (JSON Web Key Set — the signing public
+  keys, which Google rotates) and cached per its `Cache-Control`. Verified with
+  `jose` against that JWKS rather than the Firebase Admin SDK, deliberately:
+  verification needs only public keys, so the Gateway holds no service-account
+  credential and **cannot mint or revoke a token**. It checks signature, `exp`,
+  `iss`, and `aud` — an unchecked `aud` would accept a validly-signed token
+  issued for a *different* Firebase project, which is the classic mistake here.
+  Then injects `X-User-Id` (the Firebase UID from `sub`) and `X-Request-Id`.
+- **Token-bucket rate limiting.** Each client gets a bucket of N tokens, a
+  request spends one, tokens refill at a steady rate — bursts allowed, sustained
+  flooding blocked. Implemented as a Redis Lua script, which Redis runs
+  atomically, so two Gateway instances can't double-spend the same bucket.
+- **Routes** to the four downstream services; handles CORS (locked to the one
+  frontend origin).
+
+*Why a Lua script and not `INCR`?* A fixed-window counter needs only `INCR`,
+which is already atomic — that's how Kong's plugin does it. A **token bucket**
+reads two values (tokens remaining, last refill time), computes a refill from
+elapsed time, and writes both back. That's multi-step, so atomicity has to come
+from wrapping it in a script Redis runs start-to-finish with nothing interleaved.
+The bucket is worth it because it permits bursts, which a fixed window either
+forbids or lets through at the boundary.
+
+*Why not Envoy, the usual suggestion?* Its `jwt_authn` filter would replace token
+verification cleanly, but its **local** rate-limit filter is per-instance —
+exactly the split-bucket bug — and its **global** one delegates to a separate
+gRPC rate-limit service backed by Redis. Envoy doesn't remove this problem, it
+deploys another container to solve it the same way. Kong DB-less is the honest
+comparison.
+
+**The tradeoff this position costs:** every WebSocket is proxied, so one collab
+connection occupies a concurrency slot on the Gateway *and* on Collab, halving
+effective socket capacity under the §7 flags. Letting browsers connect straight
+to Collab would avoid it, and Collab verifies tokens itself anyway (§6). It's
+kept behind the Gateway for one public origin and for rate limiting on connection
+establishment. If the socket ceiling ever binds, this is the first thing to
+change.
+
+### Users
+
+- **No auth code.** Sign-up, sign-in, password storage, token issue and refresh
+  all happen client-side against Firebase; no service here ever sees a password.
+- Owns the **profile row**: `firebase_uid text unique` plus app-owned data
+  Firebase knows nothing about (display name, preferred topics). Created lazily —
+  the first authenticated request from an unknown UID does
+  `INSERT … ON CONFLICT (firebase_uid) DO NOTHING`, which is also where
+  `user.signed_up` is emitted, since there is no signup endpoint to emit it from.
+- Exposes `GET /users/:uid/exists` for Matching's validation call.
+
+*Why lazy upsert rather than a Firebase `onCreate` trigger?* One fewer deployed
+function, and it cannot drift out of sync with Firebase's user list.
+
+*Account deletion* is the one flow spanning Firebase and this service: delete
+from Firebase first, then here. If the second half fails, the row is unreachable
+(nobody can authenticate as that UID) and a retry is safe.
+
+### Questions
+
+- **Bank:** list / filter / search / paginate / get by id. Row shape: `parts[]`,
+  `reference_md`, `tags text[]` (GIN-indexed), `difficulty`.
+- Prefers **cursor pagination** (`WHERE id > $last ORDER BY id LIMIT 20`) over
+  `OFFSET`, which makes Postgres read and discard every skipped row and produces
+  duplicates when rows shift between requests.
+- **`reference_md` is never served to a browser by this service.** It's released
+  only to Matching, over the internal network, after Matching has verified
+  consent (ADR-06). Questions has no way to know who consented; Matching has no
+  way to know the answer text. Neither service can leak the answer alone.
+
+### Matching
+
+- **Reactive** — matching runs at the moment a user joins, not on a polling
+  timer. On join: read the Redis queue, filter by compatible topic + difficulty,
+  **atomically claim a pair via a Lua script**, create the session row, publish a
+  match event on Redis pub/sub.
+- Owns **session rows** and the **consent state** behind the reveal rule.
+- **Validates across boundaries by API call**, not by SQL: it asks Users whether
+  the UID exists and Questions for `parts[]`. It cannot join to those tables —
+  the database rejects it (ADR-09).
+- **Crash recovery:** the claim (Redis) and the session row (Postgres) live in
+  two systems, so no transaction spans them. If Matching crashes between the two,
+  a claimed pair is out of the queue with no session and would wait forever.
+  Recovery is client-driven: if no match event arrives within ~10 s the client
+  calls `/match/status`, which returns the active session if one exists (also
+  covering a crash after insert but before publish) and otherwise re-enqueues.
+  Joining is idempotent, so the retry can never double-book.
+
+*Why reactive and not a polling loop?* A loop scanning every second is easier to
+reason about but needs an always-on process, which §7 forbids, and adds up to a
+second of latency for no benefit. The cost is that the claim must be atomic,
+since two users can join simultaneously and race for the same partner — that's
+the Lua script (ADR-03).
 
 ### Collab
+
 - Authenticated WebSocket connections; one Yjs document per session.
-- Doc is seeded from the question's `parts[]` — one heading per part, plus
-  "## Our answer" and "## Scratch". The scaffold lets two people work in
-  parallel without colliding; "## Scratch" doubles as the chat channel.
-- Presence + cursors via Yjs awareness (its built-in side channel broadcasting
-  who's online and where their cursor is).
+- Doc seeded from the question's `parts[]` — one heading per part, plus
+  "## Our answer" and "## Scratch". The scaffold lets two people work in parallel
+  without colliding; "## Scratch" doubles as the chat channel.
+- Presence + cursors via Yjs **awareness** (its built-in side channel).
 - **Cross-instance sync** via a Redis pub/sub channel per session — needed
-  because the two users may be connected to *different* Collab instances
-  (edits flow: user A → instance 1 → Redis → instance 2 → user B).
-- Snapshots the Yjs doc to Postgres every 30s, on disconnect, and before
-  SIGTERM (the shut-down signal Cloud Run sends a container before killing
-  it); restores from snapshot on reconnect. Needed because the live doc
-  exists only in the instance's memory — without snapshots, a crash or restart
-  would lose the session's text.
+  because the two users may be connected to *different* Collab instances.
+- **Snapshots** the Yjs doc to Postgres every 30 s, on disconnect, and before
+  SIGTERM; restores on reconnect. The live doc exists only in one instance's
+  memory, so without this a restart loses the session's text.
+- **Authorizes its own sockets** by calling Matching: *is this UID a participant
+  in this session?* The Gateway cannot answer that — it has no session data.
+
+*Why Redis pub/sub and not sticky sessions?* The obvious fix is pinning both
+users to one instance. It doesn't work: Cloud Run's session affinity is
+best-effort and pins **a client**, not a group — the two people in a session are
+different clients connecting at different moments, so nothing would co-locate
+them in the first place, and affinity evaporates on scale-down. Fanning through
+Redis makes instance placement irrelevant, which is the property that survives
+autoscaling.
+
+*Why snapshot every 30 s and not on every edit?* Per-keystroke writes would
+exhaust Neon's free tier and add latency to the hot path. 30 s bounds worst-case
+loss to 30 s of typing, and the SIGTERM and disconnect snapshots mean the routine
+cases (deploy, scale-down, closed tab) lose nothing at all. Only an ungraceful
+crash hits the full window.
+
+*Why Yjs rather than writing the merge myself?* The interesting problem here is
+understanding CRDT convergence, not reimplementing it — a hand-rolled merge
+would be subtly wrong in ways that surface only under concurrent edits. The
+learning is in the sync topology (cross-instance fanout, snapshot, reconnect),
+which is exactly the part Yjs does *not* do for you.
 
 The distributed-systems moment, drawn out — one edit crossing instances (the
-WebSocket's hop through the Gateway is omitted for clarity):
+WebSocket's hop through the Gateway omitted for clarity):
 
 ```mermaid
 sequenceDiagram
@@ -230,175 +362,349 @@ sequenceDiagram
     Note over C1,C2: every 30s, the doc is snapshotted to Postgres (crash safety)
 ```
 
-### Worker + the event log
+### Stats — the scheduled job + the event log
 
-- Core and Collab call a shared `emitEvent(type, data)` at six moments:
+- Services call a shared `emitEvent(type, data)` at six moments:
   `user.signed_up`, `queue.joined`, `match.created`, `session.started`,
-  `reveal.consented`, `session.ended`. Each call appends one entry to an
-  `events` Redis Stream (an append-only log inside Redis: entries get ordered
-  IDs, reading never deletes them, and each reader keeps a server-side
-  bookmark). Fire-and-forget inside a try/catch — a log hiccup never fails a
-  user request.
-- The worker reads everything past its bookmark, processes, then acks each
-  entry; Redis keeps delivered-but-unacked entries in a pending list, so a
-  crash mid-batch means redelivery, not loss. Delivery is therefore
-  at-least-once — the worker can see an event twice — so its writes are
-  idempotent, same rule as the rest of the system (§6).
-- Outputs: on `session.ended`, the session-summary row behind
-  `GET /sessions/:id/summary` (duration, topic, reveal used); plus aggregate
-  stats (sessions per day, median match wait, popular topics) behind
+  `reveal.consented`, `session.ended`. Each appends one entry to an `events`
+  **Redis Stream** (an append-only log: entries get ordered IDs, reading never
+  deletes them, and each reader keeps a server-side bookmark). Fire-and-forget
+  inside a try/catch — a log hiccup never fails a user request.
+- The job reads everything past its bookmark, processes, then acks each entry.
+  Redis keeps delivered-but-unacked entries in a pending list, so a crash
+  mid-batch means redelivery, not loss. Delivery is therefore **at-least-once**,
+  so every write is idempotent (§6).
+- Outputs: on `session.ended`, a summary row behind `GET /sessions/:id/summary`;
+  plus aggregates (sessions per day, median match wait, popular topics) behind
   `GET /stats`.
-- Because the log holds events while nobody is reading, the worker needs no
-  always-on instance: Cloud Scheduler triggers it as a Cloud Run job every
-  5 minutes; it drains the backlog and exits. Worst case a summary lands ~5
-  minutes after the session ends (the session page shows it as pending until
-  then). The kept log is also what makes reprocessing possible: rewind the
-  bookmark after a bug fix, or add a second consumer later, and history is
-  still there — the property plain pub/sub or a queue can't offer.
-- In dev, docker-compose runs a single-node Kafka (KRaft mode — no ZooKeeper
-  to manage), and the same code targets it through the 3-method `EventLog`
-  interface (append / readBatch / ack) with Kafka and Redis Streams adapters.
-  That's the hands-on Kafka — topics, offsets, consumer groups — without
-  hosting a broker: free managed Kafka effectively no longer exists, and an
-  always-on broker would break the §7 cost ceiling.
+- Cloud Scheduler **[bought]** triggers it as a Cloud Run job every 5 minutes; it
+  drains the backlog and exits. Worst case a summary lands ~5 minutes after the
+  session ends. The retained log is what makes reprocessing possible: rewind the
+  bookmark after a bug fix, or add a consumer later, and history is still there.
+- **[detour · learning]** In dev only, docker-compose runs single-node Kafka
+  (KRaft mode), and the same code targets it through the 3-method `EventLog`
+  interface (append / readBatch / ack). **Nothing in production touches Kafka** —
+  it exists so topics, offsets and consumer groups are hands-on rather than read
+  about, confined behind the interface so prod is unaffected.
+
+*Why a log and not a queue?* A queue deletes on consume, so a bug in the summary
+logic means the data needed to recompute is gone. A log keeps entries after
+reading, so the fix is rewinding the bookmark (ADR-07).
+
+*Why not have Matching write summaries directly?* The write would sit on the
+user's request path, and there'd be no replay when the logic changes. The async
+split is also what creates the at-least-once problem that forces idempotency —
+which is the reason this phase is worth building.
+
+*Why a scheduled job and not an always-on consumer?* An always-on container is
+the one thing §7 rules out. The log holds events while nobody reads, so polling
+every 5 minutes costs only freshness.
 
 ---
 
-## 6. Shared concerns (auth, rate limiting, security, observability)
+## 6. Shared concerns
 
-- **Auth:** JWT RS256, 15-min access token; opaque refresh token in Redis, 7-day TTL (time-to-live before Redis auto-deletes it), rotated on use; revoke on logout.
-- **Rate limiting:** token bucket via Redis Lua. Per-IP at gateway (unauth), per-user general, tighter per-user on `/match/*`. Returns `X-RateLimit-*` headers.
-- **Input validation:** zod (TypeScript schema-validation library) on every endpoint; reject malformed input with 400 before business logic runs. Parameterized queries always (values bound as query parameters, never concatenated into SQL — blocks injection).
+### Authentication vs authorization — where each check lives
+
+The distinction matters more with six services than it would with one, so state
+it explicitly:
+
+- **Authentication** (*who are you*) happens **once, at the Gateway**. Downstream
+  services never re-verify; they read `X-User-Id` and trust it.
+- **Authorization** (*may you do this specific thing*) **cannot** be at the
+  Gateway, which has no domain data. It lives with whoever owns the record:
+  Collab asks whether a UID is a participant in a session; Matching enforces
+  mutual consent before releasing a reference answer.
+
+Auth is therefore spread across three places and **there is no auth service**:
+Firebase owns credentials and token issuance, the Gateway owns verification, and
+Users owns the profile row. Before ADR-04 there would have been a seventh
+service's worth of work here — buying identity deleted it.
+
+- **Token details:** Firebase ID tokens, RS256, ~1-hour expiry, refreshed
+  transparently by the client SDK. **The tradeoff to state, not hide:** with
+  plain verification, a revoked or deleted user's existing token stays valid
+  until it expires — up to an hour. Server-side revocation exists
+  (`revokeRefreshTokens` + `verifyIdToken(token, true)`) but needs the Admin SDK
+  and a round-trip per request, so it isn't on the hot path. For a shared answer
+  document that window is acceptable; with money involved it wouldn't be.
+
+### Service-to-service authentication
+
+Now that services call each other, "internal" has to mean something enforceable:
+
+- Every service except the Gateway is deployed with **internal-only ingress**, so
+  it has no route from the internet.
+- Each service runs as its **own service account**, and is granted
+  `roles/run.invoker` only on the specific services it calls — Matching on Users
+  and Questions, Collab on Matching, the Gateway on all four. Callers attach a
+  Google-signed ID token; Cloud Run rejects anything else.
+
+**This is the assumption the whole design rests on.** `X-User-Id` is trusted
+because only the Gateway can set it. If any service ever gains public ingress,
+that header becomes forgeable and it is an authentication bypass — so the ingress
+setting is a security control, not a deployment detail.
+
+### The rest
+
+- **Rate limiting:** token bucket via Redis Lua. Per-IP at the Gateway (unauth),
+  per-user general, tighter per-user on `/match/*`. Returns `X-RateLimit-*`.
+- **Input validation:** zod on every endpoint, rejecting malformed input with 400
+  before business logic. Parameterized queries always.
 - **Observability:**
-  - Structured JSON logs via Pino (fast Node JSON logger), each line carrying
-    `service` + `request_id` + `user_id`.
-  - `/health/live` + `/health/ready` on every service (is the process up / is
-    it ready to take traffic).
-  - Prometheus-style metrics (the standard metrics text format) on each
-    service: a `/metrics` endpoint via Fastify plugin exposing request rate,
-    error rate, latency histograms, and WebSocket connection count — shipped to
-    Grafana Cloud free tier for dashboards and watched live during the load
-    test (§8).
-  - Full OpenTelemetry distributed tracing (following one request across every
-    service it touches) remains an explicit stretch, not core.
-- **Security:** HTTPS (Cloud Run free), CORS to one origin, standard security headers via helmet middleware, secrets in GCP Secret Manager (never in code/logs), Dependabot (automated dependency-update PRs).
-- **Graceful shutdown:** drain in-flight requests (finish what's processing, accept nothing new); Collab snapshots Yjs docs before exit.
-- **Idempotency** (safe to run twice with the same effect as once): queue-join keyed by `user_id`, session-end by `session_id` — a retry can't double-join or double-end. Event consumption is keyed by entry ID: at-least-once delivery means the worker can see the same event twice, and must produce one summary, not two.
+  - Structured JSON logs via Pino, each line carrying `service` + `request_id` +
+    `user_id`. `X-Request-Id` propagates across service calls, which is what
+    makes a six-service request path debuggable at all.
+  - `/health/live` + `/health/ready` on every service.
+  - Prometheus-format `/metrics` per service: request rate, error rate, latency
+    histograms, WebSocket connection count.
+  - Grafana Cloud free tier **[bought]** stores and dashboards it. *Not a
+    self-hosted Prometheus server:* an always-on container with a disk, which §7
+    forbids. Consequence worth knowing — Prometheus normally **pulls**, and Cloud
+    Run instances aren't individually addressable and vanish when idle, so
+    metrics must be **pushed** (OTLP or `remote_write`), not scraped.
+  - Full OpenTelemetry tracing is an explicit stretch. It's worth more here than
+    it was with three services — a match request now touches four — but it's
+    still not core.
+- **Security:** HTTPS (Cloud Run free), CORS to one origin, helmet security
+  headers, secrets in Secret Manager, Dependabot.
+- **Graceful shutdown:** drain in-flight requests; Collab snapshots Yjs docs
+  before exit.
+- **Idempotency** (safe to run twice with the same effect as once): queue-join
+  keyed by `user_id`, session-end by `session_id`, event consumption by entry ID.
+  With at-least-once delivery this is not optional — it's what converts
+  "at-least-once" into "effectively exactly-once".
 
 ---
 
 ## 7. Deployment
 
-- **Local:** `docker-compose up` → all 3 services + worker + Postgres + Redis
-  + single-node Kafka (the dev backend for the event log).
-- **Prod:** Docker images → GCP Artifact Registry (GCP's image store) → Cloud Run (`asia-southeast1`); Neon + Upstash via env vars; secrets in Secret Manager; frontend on Cloud Storage + CDN; the worker as a Cloud Run job triggered by Cloud Scheduler every 5 minutes (never always-on). One live URL, accessible from Singapore.
-- **CI:** GitHub Actions — on PR: lint + test + build (no push); on merge to main: build → push → deploy to Cloud Run.
+- **Local:** `docker-compose up` → 5 services + the Stats job + Postgres + Redis
+  + single-node Kafka + the **Firebase Auth emulator**. The emulator keeps local
+  dev and CI offline and free, lets integration tests mint tokens for arbitrary
+  test users, and preserves the "one command runs everything" property that
+  buying a hosted identity provider would otherwise break. It issues *unsigned*
+  tokens, so the Gateway selects emulator mode purely on an env var — a flag that
+  must be impossible to set in prod.
+- **Prod:** Docker images → Artifact Registry → Cloud Run (`asia-southeast1`);
+  Neon + Upstash via env vars; secrets in Secret Manager; frontend on Cloud
+  Storage + CDN; Stats as a Cloud Run job triggered by Cloud Scheduler every 5
+  minutes. One live URL.
+- **CI:** GitHub Actions, **path-filtered per service** — a change under
+  `services/questions/` builds and deploys only Questions. Independent deploy is
+  most of the point of the split (ADR-01), and it doesn't exist unless CI is
+  wired for it.
+
+**The cost of six deployables, stated honestly:** a cold match request can chain
+cold starts — Gateway → Matching → Users → Questions, each potentially starting
+from zero. That's the real price of `--min-instances=0`, and it's accepted rather
+than mitigated, because the alternative is paying for parked instances. It is
+also why cross-service calls are kept to validation only, and never placed on the
+question-browsing path a first-time visitor hits.
 
 ### Cost controls (before deploying anything)
 
-The primary safety net is deploying on the GCP free trial ($300 credits /
-90 days): during the trial GCP cannot charge the card — when credits run out,
-services stop instead of billing. Upgrading to a paid account is a separate
-decision, made only if the demo needs to outlive the trial and only with the
-layers below in place.
+The primary safety net is the GCP free trial ($300 / 90 days): during the trial
+GCP cannot charge the card — when credits run out, services stop instead of
+billing. Upgrading to a paid account is a separate decision.
 
-GCP has no native "stop at $X" cap — budgets are alerts, not limits — so a
-hard ceiling is built in layers. Day to day, `--max-instances` makes a big
-bill nearly impossible at the source; the kill-switch guarantees a stop even
-if a config is fat-fingered. Build the kill-switch (layer 1) before deploying
-a single service.
+GCP has no native "stop at $X" cap — budgets are alerts, not limits — so the
+ceiling is built in layers. Build the kill-switch before deploying a single
+service.
 
 | Layer | Mechanism | Purpose |
 |---|---|---|
-| 1. Kill-switch | Billing budget → Pub/Sub → Cloud Function that detaches the billing account (`projects.updateBillingInfo`) at $20. Google publishes the ~40-line sample. Not instant (few-min lag) and takes the whole project down. | The only true stop — a backstop, not the primary control. |
-| 2. Cloud Run flags | On every service: `--max-instances=2` (hard ceiling on concurrent compute — excess requests queue or get HTTP 429 Too Many Requests instead of spinning up 100 containers) and `--min-instances=0` (idle cost ~$0). Then per service, because Cloud Run counts an open WebSocket as one in-flight request for its entire life and the socket traverses both Gateway and Collab: Core gets `--concurrency=80` (many requests per instance instead of scaling out per-request) and `--timeout=60s` (a hung request is killed in a minute instead of holding a slot and billing forever — ~1000× a normal request, so it never fires on real traffic); Gateway and Collab get `--concurrency=250` and `--timeout=3600s`, since a 60s timeout would sever every collab session each minute, and concurrency here is the hard cap on concurrent sockets (250 × 2 instances = 500). | The real day-to-day cap: a runaway bill comes from autoscaling under load/loops/bots; this caps it at the source. |
-| 3. API surface | Enable only the APIs used: Cloud Run, Artifact Registry, Secret Manager, Cloud Storage, Cloud Scheduler. | Every disabled API is a whole category of bill that can't happen. |
-| 4. Public URL | The gateway's token-bucket rate limit caps traffic that would drive Cloud Run scaling. Neon (0.5GB) and Upstash (10K cmd/day) throttle rather than overage-bill. | The stateful layer isn't the risk — Cloud Run is. |
-| 5. Early warning | Budget alerts at 50 / 90 / 100% ($10 / $18 / $20). | Email before the kill-switch fires, so you can look first. |
+| 1. Kill-switch | Billing budget → Pub/Sub → Cloud Function **[bought]** that detaches the billing account (`projects.updateBillingInfo`) at $20. Google publishes the ~40-line sample. **Three caveats that make it a backstop rather than a cap:** budget data lags, so the delay is hours not minutes and a genuine runaway can overshoot; detaching is *destructive*, not a pause — resources can be deleted, not merely suspended; and it fails **silently** unless the function's service account has Billing Account Administrator **on the billing account**, not just the project. Test it once on a throwaway project with a $0.01 budget. | The only true stop — a backstop, not the primary control. |
+| 2. Cloud Run flags | On all six: `--max-instances=2` (excess requests queue or get 429 instead of spinning up 100 containers) and `--min-instances=0` (idle ~$0). Then split by unit of work, since Cloud Run counts an open WebSocket as one in-flight request for its entire life: **Users / Questions / Matching** get `--concurrency=80` and `--timeout=60s`; **Gateway and Collab** get `--concurrency=250` and `--timeout=3600s`, since a 60 s timeout would sever every collab session each minute. Concurrency is the hard cap on sockets: 250 × 2 = 500. | The real day-to-day cap: runaway bills come from autoscaling, and this caps it at the source. |
+| 3. API surface | Enable only: Cloud Run, Artifact Registry, Secret Manager, Cloud Storage, Cloud Scheduler. | Every disabled API is a category of bill that can't happen. |
+| 4. Public URL | The Gateway's rate limit caps traffic that would drive Cloud Run scaling. Neon (0.5 GB) and Upstash (10K cmd/day) throttle rather than overage-bill. | The stateful layer isn't the risk — Cloud Run is, because its response to load is to provision more of itself. |
+| 5. Early warning | Budget alerts at 50 / 90 / 100% ($10 / $18 / $20). | Email before the kill-switch fires. |
 
-### Infrastructure as code (Terraform) — second pass, not first
+**Note that six deployables does not multiply the bill.** Everything scales to
+zero, so idle cost is unchanged; what grows is *ceiling* (12 possible instances
+instead of 8) and operational surface, not baseline spend.
 
-First deploy is manual (console + `gcloud`) to learn what the pieces are. Once
-it works, capture it in Terraform: Cloud Run services (with the
-max-instances/concurrency flags above), Artifact Registry, Secret Manager
-secrets, the storage bucket, the Cloud Scheduler job, and budget alerts — all declared in `.tf` files in
-the repo, applied with `terraform apply`. This makes the whole environment
-reproducible from git and locks the cost-control flags in code so they can't be
-fat-fingered away.
+### Infrastructure as code (Terraform) — second pass, not first · **[built · learning]**
 
-### Kubernetes — learning sprint, then migrate to Cloud Run
+*Why second?* Writing Terraform for infrastructure you don't yet understand means
+debugging two unfamiliar things at once — the cloud resource and the provider's
+model of it. Deploying manually first means the `.tf` files describe something
+already known to work. Six services makes this materially more valuable than it
+was with three: the service accounts, IAM invoker bindings and per-service flags
+are exactly the kind of thing that drifts when clicked into a console.
 
-Cloud Run is the final production state (scale-to-zero, no cluster to run,
-no idle cost). But k8s is worth learning hands-on, so it's worked in as a
-deliberate phase rather than skipped:
+First deploy is manual (console + `gcloud`). Then capture it: Cloud Run services
+with their flags, service accounts and invoker bindings, Artifact Registry,
+Secret Manager, the bucket, the Scheduler job, and budget alerts.
 
-1. **Learn on GKE (during the free trial):** write raw manifests for the 3
-   services — Deployment, Service, Ingress, ConfigMap/Secret,
-   liveness/readiness probes (the health checks k8s uses to restart or route
-   around a broken pod) — and deploy to GKE Autopilot (Google-managed
-   Kubernetes: you supply the YAML, Google runs the cluster machinery) on
-   trial credits. Run the app there for a few days: roll out a release with
-   `kubectl apply`, kill a pod and watch it self-heal, read logs via `kubectl`.
-   No Helm (k8s package manager), no k3d (local-cluster shortcut) — raw YAML
-   so every line is understood.
-2. **Migrate to Cloud Run** as the permanent deploy, then delete the
-   cluster (GKE bills while idle; Cloud Run doesn't). Keep the manifests in
-   `k8s/` in the repo. ADR-05 documents the choice.
+### Kubernetes — learning sprint, then migrate to Cloud Run · **[detour · learning]**
+
+**The clearest example of the tag in this doc: built, run, demonstrated, then
+deleted.** Kubernetes is not part of the production system and never will be —
+GKE bills 24/7 whether or not anyone visits, violating the §7 ceiling. It's here
+because orchestration can't be learned from reading, and because an idle cluster
+is the single most likely way to burn $300 of trial credits by accident, so doing
+it deliberately and on a deadline is safer than doing it casually.
+
+1. **Learn on GKE (during the trial):** raw manifests for the five services —
+   Deployment, Service, Ingress, ConfigMap/Secret, liveness/readiness probes —
+   on GKE Autopilot. Run it for a few days: roll out with `kubectl apply`, kill a
+   pod and watch it self-heal, read logs via `kubectl`. No Helm, no k3d — raw
+   YAML so every line is understood.
+2. **Migrate to Cloud Run**, delete the cluster, keep the manifests in `k8s/`.
+   ADR-05 records it.
 
 ---
 
 ## 8. Testing + the headline load number
 
-- **Unit:** matching logic, rate-limit token bucket, question-bank filters,
-  worker idempotency (same event twice → one summary).
-- **Integration:** testcontainers (a library that spins up real Postgres +
-  Redis in Docker for the test run) for the auth flow and match flow.
-- **One end-to-end happy path:** signup → match → collab edit syncs → end.
-- **k6 load test on Collab, run twice** (k6 scripts fake users hammering the
-  app and reports throughput + latency percentiles): first locally against
-  docker-compose (find bugs cheaply), then against Cloud Run — watching the
-  Grafana dashboard live — to produce the headline number: *"holds N
-  concurrent WebSocket connections per instance at p95 X ms edit-propagation
-  latency"* (p95: 95% of edits arrive faster than X ms). The Cloud Run run
-  measures the system under the §7 flags — `--concurrency` counts each open
-  WebSocket as one in-flight request, so the configured ceiling (250 per
-  instance), not hardware, is the first limit N can hit; raise the flag before
-  chasing a bigger number.
+- **Unit:** the pair-claim logic, rate-limit token bucket, question-bank filters,
+  Stats idempotency (same event twice → one summary).
+- **Integration:** testcontainers (real Postgres + Redis in Docker) plus the
+  Firebase Auth emulator, covering token verification and its rejection cases
+  (expired, tampered, wrong `aud`), the lazy `users` upsert, the match flow, and
+  — new with the split — **that a service cannot read another's schema.** That
+  last one is a test, not a convention: it asserts the database rejects the
+  query.
+- **Contract tests** on the three internal calls (Matching→Users,
+  Matching→Questions, Collab→Matching), so a response-shape change breaks CI
+  rather than production. This is the tax independent deployability charges.
+- **One end-to-end happy path:** sign in → match → collab edit syncs → end.
+- **k6 load test on Collab, run twice:** first locally against docker-compose
+  (find bugs cheaply), then against Cloud Run while watching Grafana — producing
+  the headline: *"holds N concurrent WebSocket connections per instance at p95
+  X ms edit-propagation latency"*. The Cloud Run run measures the system under
+  the §7 flags, so the configured ceiling (250/instance), not hardware, is the
+  first limit N hits — raise the flag deliberately before chasing a bigger
+  number.
+
+*Why these tests and not a coverage target?* A percentage pushes effort toward
+whatever is easiest to cover, which is rarely where this system breaks. The
+things tested are the places correctness is genuinely non-obvious: the token
+bucket under concurrency, the atomic claim, idempotency under redelivery,
+cross-instance propagation, and the schema boundary. *Why testcontainers rather
+than mocks?* The bugs worth catching are in real SQL and real Redis semantics — a
+mock would happily confirm that the racy rate limiter works.
 
 ---
 
 ## 9. Architecture Decision Records (ADRs)
 
-An ADR is a one-page document recording a significant technical decision:
-the context, what was chosen, the alternatives rejected, and the tradeoffs
-accepted. They live in `docs/adr/` in the repo. Purpose: anyone reading the
-repo can see *why* each choice was made, not just what was built.
+An ADR is a one-page document recording a significant technical decision: the
+context, what was chosen, the alternatives rejected, and the tradeoffs accepted.
+They live in `docs/adr/`.
 
-The 7 decisions worth recording:
+**Division of labour with the inline notes above:** the `**[tag]**` markers and
+short *Why not X* lines exist so the doc can be skimmed. ADRs are for the nine
+decisions where the *rejected* option was genuinely defensible and the tradeoff
+is still being paid. An obvious choice gets a one-line inline note, not an ADR.
 
-1. **Service boundaries** — split by scaling profile and failure domain
-   (3 services), not one service per database table.
-2. **Yjs (CRDT) over Operational Transforms** for collaborative editing — OT
-   (the older approach, used by Google Docs) needs a central server to order
-   every edit; a CRDT converges without one.
-3. **Reactive matching** with an atomic Redis Lua-script pair claim, instead
-   of a polling loop.
-4. **JWT + rotating refresh tokens**, instead of server-side sessions or a
-   static refresh token.
+1. **One service per capability (6 deployables).** Context: six capabilities —
+   verify/route, profiles, question bank, matching, real-time sync, stats.
+   Decision: each is its own deployable. Two of the six are not really splits at
+   all: the **Gateway** is a *position* (a cross-cutting enforcement point must
+   sit in front of what it protects), and **Stats** is a *job* (time-triggered,
+   which a scale-to-zero service physically cannot do). **Collab is forced by the
+   platform:** `--concurrency` and `--timeout` are per-service Cloud Run flags,
+   and a 20-minute WebSocket needs the opposite values from a 30 ms request — one
+   service cannot hold both. Rejected: **grouping Users + Questions + Matching
+   into one service**, which a strict scaling-forces test would recommend, since
+   they share a request shape, failure domain and deploy cadence; an earlier
+   draft did exactly that. Chosen against for independent deploy and rollback per
+   capability, one clear owner per capability, and because operating a genuinely
+   distributed system is a stated goal of the project. Also rejected: **one
+   service per database table**, which aligns boundaries with no force at all.
+   Tradeoffs accepted: six CI pipelines; two extra network hops on the match
+   path; chained cold starts under `--min-instances=0`; contract tests as the
+   price of independent deploys; and no transaction spanning a service boundary
+   (see ADR-09). **The condition to merge back:** if cold-start latency on the
+   match path or the per-service ops overhead starts dominating, Users +
+   Questions + Matching recombine cheaply — they already share a database
+   instance, so it's a code move, not a data migration.
+2. **Yjs (CRDT) over Operational Transforms** — OT (the older approach, used by
+   Google Docs) needs a central server to order every edit; a CRDT converges
+   without one.
+3. **Reactive matching** with an atomic Redis Lua-script pair claim, instead of a
+   polling loop.
+4. **Firebase Auth instead of self-hosted auth.** Context: the first draft built
+   auth directly — bcrypt, RS256 signing, opaque refresh tokens rotated in Redis.
+   Decision: buy it. Identity is security-critical, fully solved, and the flows
+   that make a managed provider worth its integration cost (password reset, OAuth
+   providers, MFA) are all out of scope (§2) — but so is the *risk* they carry,
+   and Google's credential-stuffing detection, leaked-password checks and
+   signing-key rotation are not things a solo project reproduces. Rejected:
+   self-hosting for the learning value — real, but it's the one component here
+   with no concurrency or distributed-systems problem inside it, so the learning
+   is procedural. Tradeoffs accepted: vendor lock-in on identity (mitigated — the
+   app keys off an opaque `firebase_uid`, so migration is a re-registration flow,
+   not a rewrite); a revoked token stays valid up to an hour (§6); local dev and
+   CI depend on the Auth emulator (§7); and login no longer traverses the
+   Gateway, so its rate limiter no longer protects that endpoint — Google's abuse
+   controls do instead, which is an upgrade, but it moves part of the threat
+   surface off this diagram. **Deliberately kept:** the Gateway verifies tokens
+   itself against a JWKS rather than delegating to an SDK, so the property that
+   mattered — the edge can verify but cannot mint — survives the switch.
 5. **Cloud Run over Kubernetes for production** — deployed to GKE during
-   development to learn it, migrated to Cloud Run for scale-to-zero and zero
-   idle cost; manifests retained in `k8s/`.
-6. **Reference answers never enter the shared doc** — a Yjs doc replicates to
-   all peers, so the answer key can't live there; Core serves it per-user
-   after server-side consent checks.
-7. **A replayable event log for summaries/stats** (Redis Streams in prod,
-   Kafka in dev) — log over queue semantics, so consumed events stay
-   readable: rewind the bookmark to recompute after a bug, or add a consumer
-   later and it still sees history. Considered: a Postgres events table
-   (viable at this scale — rejected for the cleaner scale-up path and the
-   learning value) and real Kafka in prod (no free managed option; an
-   always-on broker breaks the §7 cost ceiling). Live Yjs sync stays on Redis
-   pub/sub — latency-critical fanout is the wrong shape for a polled log.
+   development to learn it, migrated to Cloud Run for scale-to-zero and zero idle
+   cost; manifests retained in `k8s/`.
+6. **Reference answers never enter the shared doc** — a Yjs doc replicates to all
+   peers, so the answer key can't live there. Questions releases `reference_md`
+   only to Matching over the internal network, and only after Matching verifies
+   both participants consented. Neither service can leak it alone.
+7. **A replayable event log for summaries/stats** (Redis Streams in prod, Kafka
+   in dev) — log over queue semantics, so consumed events stay readable: rewind
+   the bookmark to recompute after a bug, or add a consumer later and it still
+   sees history. Considered: a Postgres events table (viable at this scale —
+   rejected for the cleaner scale-up path and the learning value) and real Kafka
+   in prod (no free managed option; an always-on broker breaks §7). Live Yjs sync
+   stays on Redis pub/sub — latency-critical fanout is the wrong shape for a
+   polled log.
+8. **A custom gateway instead of Kong.** Context: the Gateway does JWT
+   verification, routing, CORS and distributed rate limiting — all four of which
+   Kong DB-less provides, the rate limiter included, via its `policy: redis`
+   plugin. Decision: build it anyway. The token bucket is the one component here
+   with a reproducible concurrency bug inside it — two stateless instances doing
+   read-then-write on a shared bucket double-count under load — and the fix (a
+   Lua script Redis executes atomically) is only meaningful if you've seen the
+   broken version fail. Rejected: **Kong DB-less**, the honest alternative, ~15
+   lines of config and what I'd deploy commercially; **Envoy**, frequently
+   suggested but a worse fit — its local rate-limit filter is per-instance and
+   its global one delegates to a separate Redis-backed service, so the problem is
+   relocated, not solved; **GCP API Gateway**, which doesn't proxy WebSockets;
+   **Cloud Armor**, which needs an external load balancer at roughly $18/month
+   standing charge and breaks §7. Tradeoffs accepted: no circuit breaking,
+   retries or mTLS, none of which this system needs; a hand-written proxy is a
+   single point of failure I now own; and every WebSocket burns a concurrency
+   slot on the Gateway as well as on Collab (§5). **Note the symmetry with
+   ADR-04** — same test, opposite answer: auth bought because it is risk without
+   insight, the gateway built because the insight is what's inside it.
+9. **One Postgres instance, one schema per service, one role per service.**
+   Context: six services, and the question of who owns which tables. Decision: a
+   single Neon instance with a schema per service (`users`, `questions`,
+   `matching`, `collab`, `stats`), each accessed by its own Postgres role granted
+   privileges **only** on its own schema — so a cross-service read is rejected by
+   the database, not discouraged by convention. **No foreign key crosses a schema
+   boundary**: a session row stores `firebase_uid` and `question_id` as plain
+   columns, validated by API call at creation time. That's the concrete thing
+   given up, and it's deliberate — a cross-schema FK would re-couple the services
+   through the database. Rejected: **database-per-service**, the textbook answer,
+   because session creation touches profiles, questions and sessions, and across
+   separate databases there is no transaction covering them — it would need a
+   **saga** (each step given an explicit compensating action, plus persisted saga
+   state and a sweeper for crashed runs), which is a large amount of machinery
+   for a two-person editor and would want an always-on orchestrator that §7
+   forbids. Also rejected: **a shared schema**, which removes the boundary
+   entirely and makes the services non-independently-deployable in practice — a
+   distributed monolith. Tradeoffs accepted: one instance is a shared failure
+   domain and a shared connection budget (mitigated by Neon's pooled endpoint,
+   since six services × two instances × a pool would otherwise exhaust the free
+   tier's connection limit); and the "microservices" claim rests on services
+   owning their *tables*, not their *instances*. **The condition to split:** one
+   service's data outgrowing the instance, or needing a different store — Collab
+   snapshots moving to object storage is the likeliest first case — or separate
+   teams needing independent migrations. At that point cross-service atomicity is
+   lost and session creation needs a saga; the ordering here is chosen so that
+   split stays cheap, because no query crosses a boundary today.
 
 ---
 
@@ -406,24 +712,49 @@ The 7 decisions worth recording:
 
 | Phase | Build | Demoable |
 |---|---|---|
-| 0 | Monorepo (one repo holding all services + frontend), docker-compose (PG+Redis), 3 hello-world Fastify services, CI lint/test, GCP project (free trial) + billing guard, Neon/Upstash accounts | `docker-compose up` runs |
-| 1 | Core: auth (signup/login/JWT), refresh rotation in Redis; Gateway: JWT verify + route + per-IP rate limit | curl signup → login → protected call → refresh |
-| 2 | Core: question bank (filter/search/paginate/get) + Redis cache; per-user rate limit; public bank UI (search, filter, read solo) | browse and read questions solo, cache hits visible |
-| 3 | Core: reactive matching (Redis sorted set + Lua claim), session row, pub/sub match event | two users join → matched → session exists |
-| 4 | **Collab (hardest):** WebSockets + Yjs, JWT-auth the socket, cross-instance pub/sub, presence/cursors, snapshot + reconnect, graceful shutdown | two tabs sync live; kill one instance, other keeps working |
-| 5 | Minimal React: login, question list, match button, session page (Monaco — the VS Code editor component — wired to Yjs) with scaffolded editor and the reveal flow, end | open two browsers, match, collaborate, reveal |
-| 6 | Deploy to Cloud Run + frontend to CDN; CI deploys on merge; logs + health + `/metrics` → Grafana Cloud dashboard; k6 load run (local, then Cloud Run); README + ADRs + demo GIF | live URL; headline load number in README |
-| 7 | Event pipeline: `emitEvent` in Core/Collab → `events` stream on Upstash (behind the 3-method `EventLog` interface); idempotent worker consumer → summary + stats; `GET /sessions/:id/summary` + `GET /stats`; Cloud Scheduler → Cloud Run job; ADR-07 | end a session on the live URL → summary renders; `/stats` shows real counts |
-| 8 | Terraform: import the manual GCP setup into `.tf` files (Cloud Run + flags, registry, secrets, bucket, scheduler job, budget alerts) | `terraform apply` rebuilds the environment |
-| 9 | k8s learning sprint (on trial credits): raw manifests for the 3 services → GKE Autopilot → run/roll out/self-heal demo → migrate back to Cloud Run, delete cluster, keep `k8s/` in repo | app runs on Kubernetes; manifests in repo; cluster deleted |
-| 10 | Kafka in dev: single-node Kafka (KRaft mode) in docker-compose + a Kafka adapter for `EventLog`; producers + worker run against it locally | same events flow end-to-end through Kafka on `docker-compose up`; prod unchanged |
+| 0 | Monorepo, docker-compose (PG + Redis + Firebase Auth emulator), hello-world Fastify services, per-service CI, GCP project (free trial) + billing guard, Firebase/Neon/Upstash accounts | `docker-compose up` runs |
+| 1 | Firebase Auth + emulator wired in; **Gateway**: JWKS fetch/cache, verify ID token (sig/`exp`/`iss`/`aud`), inject `X-User-Id`, route, per-IP rate limit; **Users**: lazy upsert; schemas + per-service Postgres roles; internal-ingress + invoker IAM | emulator token → protected call succeeds; tampered/expired token 401s; `users` row appears once; a service querying another's schema is **rejected by Postgres** |
+| 2 | **Questions**: bank (filter/search/cursor-paginate/get) + Redis cache; per-user rate limit; public bank UI | browse and read questions solo, cache hits visible |
+| 3 | **Matching**: reactive matching (Redis sorted set + Lua claim), session rows, pub/sub match event, validation calls to Users + Questions, contract tests | two users join → matched → session exists; a Users outage fails the match cleanly rather than corrupting state |
+| 4 | **Collab (hardest):** WebSockets + Yjs, authorize the socket via Matching, cross-instance pub/sub, presence/cursors, snapshot + reconnect, graceful shutdown | two tabs sync live; kill one instance, the other keeps working |
+| 5 | Minimal React: login, question list, match button, session page (Monaco wired to Yjs) with scaffolded editor, reveal flow, end | open two browsers, match, collaborate, reveal |
+| 6 | Deploy all six to Cloud Run + frontend to CDN; CI deploys per service on merge; logs + health + `/metrics` → Grafana; k6 load run; README + ADRs + demo GIF | live URL; headline load number in README; deploying Questions alone doesn't restart Collab |
+| 7 | Event pipeline: `emitEvent` → `events` stream (behind the `EventLog` interface); idempotent **Stats** consumer → summaries + aggregates; Cloud Scheduler → Cloud Run job | end a session on the live URL → summary renders; `/stats` shows real counts |
+| 8 | **[built · learning]** Terraform: import the manual setup (services + flags, service accounts, invoker bindings, registry, secrets, bucket, scheduler job, budget alerts) | `terraform apply` rebuilds the environment |
+| 9 | **[detour · learning]** k8s sprint on trial credits: raw manifests → GKE Autopilot → roll out / self-heal demo → migrate back, delete cluster, keep `k8s/` | app runs on Kubernetes; manifests in repo; cluster deleted |
+| 10 | **[detour · learning]** Kafka in dev: single-node Kafka (KRaft) in compose + a Kafka adapter for `EventLog` | same events flow through Kafka on `docker-compose up`; prod unchanged |
+
+**The project is complete and public at phase 6.** Everything after is additive
+and independently droppable, in this order: 10 first (pure adapter work behind an
+existing interface), then 9, then 8. If time runs short, what gets cut is
+learning detours, never the running system.
+
+*Why is phase 0 non-negotiable?* The billing guard is the one item with no
+recovery path if skipped.
+
+*Why is Collab at phase 4 rather than last?* It's the piece that can genuinely
+fail — cross-instance sync, snapshot correctness, reconnect. Hitting that in
+phase 4 leaves room to change approach; hitting it in phase 9 leaves none. It
+sits as early as its dependencies (a session row, phase 3) allow.
+
+*Why do the schema roles land in phase 1?* Because a boundary that isn't enforced
+from the first table will be violated by the third, and retrofitting grants means
+untangling queries that already cross.
 
 ---
 
 ## Final note
 
-Build the Collab service with the most care — it's the piece that says
-"real-time distributed systems," and a clean demo (two tabs
-syncing, presence, cursors, survive-an-instance-kill) lands harder than any
-amount of infrastructure. Everything else here is deliberately boring on
-purpose so that one thing can shine.
+Build the Collab service with the most care — it's the piece that says "real-time
+distributed systems," and a clean demo (two tabs syncing, presence, cursors,
+survive-an-instance-kill) lands harder than any amount of infrastructure.
+
+That's the honest ranking of what's worth time: **Collab first, the event log and
+its idempotency second, the rate limiter third, everything else plumbing.** The
+**[bought]** tags exist to protect that ordering — every component handed to a
+managed service is time returned to the top of the list.
+
+The failure mode this doc is written to prevent isn't picking a wrong tool; it's
+spending three weeks on infrastructure and one on the only part that's hard. Six
+services makes that failure mode *easier* to hit, which is the honest cost of
+ADR-01 and the reason phases 8–10 are explicitly droppable.
