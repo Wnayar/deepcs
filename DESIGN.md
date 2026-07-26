@@ -63,7 +63,7 @@ roles; role swapping; voice/video; rubrics and scoring; question authoring.
 ```mermaid
 %%{init: {"flowchart": {"nodeSpacing": 55, "rankSpacing": 70}}}%%
 flowchart TD
-    U["User A + User B browsers<br/>(React app served from Cloud Storage + CDN)"]
+    U["User A + User B browsers<br/>React app served from<br/>Cloud Storage + CDN"]
 
     U ==>|"all traffic: HTTP + WebSocket"| GW
 
@@ -417,8 +417,6 @@ The 7 decisions worth recording:
 | 8 | Terraform: import the manual GCP setup into `.tf` files (Cloud Run + flags, registry, secrets, bucket, scheduler job, budget alerts) | `terraform apply` rebuilds the environment |
 | 9 | k8s learning sprint (on trial credits): raw manifests for the 3 services → GKE Autopilot → run/roll out/self-heal demo → migrate back to Cloud Run, delete cluster, keep `k8s/` in repo | app runs on Kubernetes; manifests in repo; cluster deleted |
 | 10 | Kafka in dev: single-node Kafka (KRaft mode) in docker-compose + a Kafka adapter for `EventLog`; producers + worker run against it locally | same events flow end-to-end through Kafka on `docker-compose up`; prod unchanged |
-
-Buffer: things slip — don't add features, use slack to polish README + record a 2-min demo.
 
 ---
 
