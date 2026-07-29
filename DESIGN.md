@@ -108,7 +108,7 @@ flowchart TD
 
     subgraph DATA["Managed free tiers — always-on, own the disks"]
         PG[("PostgreSQL — Neon ×1<br/>one instance, one schema<br/>per service, one role each")]
-        RD[("Redis — Upstash ×1<br/>match queue · rate limits<br/>pub/sub · event stream")]
+        RD[("Redis — Upstash ×1<br/>match queue · rate limits<br/>pub/sub · events · cache")]
     end
 
     GW -->|HTTP| USR
@@ -123,6 +123,7 @@ flowchart TD
     QST --> PG
     MCH --> PG
     COL --> PG
+    QST -->|"bank cache"| RD
     MCH -->|"queue · events"| RD
     COL <-->|"edit pub/sub · events"| RD
     STA -.->|"pulls events / 5 min"| RD
@@ -155,7 +156,7 @@ or Redis.
 | 1 | **Gateway** | nothing (stateless) | **Position.** A cross-cutting enforcement point has to sit *in front of* what it protects. This would be true even if its scaling profile matched everything else exactly. |
 | 2 | **Users** | profile rows keyed by `firebase_uid` | One capability, one owner. Small and stable — it will change less than anything else here. |
 | 3 | **Questions** | question bank, tags, full-text index, `reference_md` | Read-heavy and cacheable in a way nothing else is; also the only service holding answer keys, so a narrower blast radius is worth something. |
-| 4 | **Matching** | queue state, pair claim, session rows, consent | The only service with a hard concurrency problem (the atomic pair claim, ADR-03). |
+| 4 | **Matching** | queue state, pair claim, session rows, consent | A hard concurrency problem of its own: two users joining at the same instant race for the same partner, so the pair claim has to be atomic (ADR-03). |
 | 5 | **Collab** | live Yjs docs, snapshots | **Different scaling trigger and different failure mode.** One WebSocket occupies a concurrency slot for 20 minutes; Cloud Run needs opposite `--concurrency`/`--timeout` values from every other service, and those are per-service flags (§7). This boundary is forced by the platform, not chosen. |
 | 6 | **Stats** | summaries, aggregates | **Trigger.** Time-driven, not request-driven — and a scaled-to-zero service has no running process for a timer to fire in, so it can't be a server at all. It's a job. |
 
@@ -192,7 +193,7 @@ see §5.
 | Frontend | React + Vite (build tool) + TS | Minimal, just enough to demo; Yjs bindings for React editors are mature. *Not Next.js:* SSR buys nothing for an authenticated single-page editor and adds a server to deploy where a static bundle on a CDN costs nothing. |
 | Auth | Firebase Auth (email/password) **[bought]** | Identity is a solved, security-critical problem with no design insight left in it; Google's abuse detection and key rotation beat anything hand-rolled. *Not self-hosted:* ADR-04. Free at this scale. |
 | Database | PostgreSQL (Neon, free) **[bought]** — one instance, schema per service | Relational data, plus built-in tag filtering (`text[]` + GIN index) and full-text search (`tsvector`), so no separate search engine. *Not database-per-service:* ADR-09 — it would cost cross-service atomicity and force a saga. *Not Mongo:* the data is relational. *Not Cloud SQL:* no free tier, bills hourly. |
-| Cache/queue/pubsub | Redis (Upstash, free) **[bought]** | One dependency covering four jobs: match queue, rate-limit state, cross-instance pub/sub, event stream. Split from Postgres by **access pattern** (ephemeral shared state vs durable relational), not by service. *Not Memorystore:* no free tier. |
+| Cache/queue/pubsub | Redis (Upstash, free) **[bought]** | One dependency covering five jobs: match queue, rate-limit state, cross-instance pub/sub, event stream, question-bank cache. Split from Postgres by **access pattern** (ephemeral shared state vs durable relational), not by service. *Not Memorystore:* no free tier. |
 | Real-time | WebSockets + Yjs (CRDT) | Concurrent edits merge without a central server ordering them (ADR-02). *Not SSE or polling:* one-directional, or too slow for ~100 ms keystroke echo. *Not Liveblocks/PartyKit:* they'd host the hard part, and the hard part is the project. |
 | Event log | Redis Streams (prod) + Kafka (dev only) **[detour · learning]** | Replayable domain-event log feeding summaries/stats; one `EventLog` interface, two adapters. Kafka exists **only in docker-compose**. *Not Kafka in prod:* no free managed option, and an always-on broker breaks §7. *Not GCP Pub/Sub:* more IAM surface, and it hides the bookmark mechanics that are the point. |
 | Editor | Monaco wired to Yjs | Familiar VS Code feel, mature `y-monaco` binding. *Not a plain textarea:* no cursor decorations, so presence would be invisible. *Not CodeMirror 6:* a fair alternative, lighter — Monaco chosen for recognisability in a demo. |
@@ -209,9 +210,12 @@ see §5.
 The one service where an off-the-shelf product would do the whole job. Kong
 DB-less covers routing, JWT verification, CORS and distributed rate limiting in
 roughly fifteen lines of config, and that is what I'd deploy at a company. It's
-built here for one reason: the rate limiter is the only place in this system
-where I could write the racy version, reproduce the double-count across two
-instances, and then fix it.
+built here for one reason: the rate limiter is the only race in this system that
+a product would otherwise solve *on my behalf*. Matching's pair claim (ADR-03)
+has exactly the same shape, but nobody sells you a matchmaker — so the rate
+limiter is the one place where buying is a real option, and therefore the one
+place where writing the racy version, reproducing the double-count across two
+instances, and then fixing it is a choice rather than a chore.
 
 - **Verifies the token.** Firebase Auth signs ID tokens (RS256) with a private
   key Google holds; the Gateway verifies against Google's public keys, fetched
@@ -264,22 +268,34 @@ deploys another container to solve it the same way. Kong DB-less is the honest
 comparison.
 
 **The tradeoff this position costs:** every WebSocket is proxied, so one collab
-connection occupies a concurrency slot on the Gateway *and* on Collab, halving
-effective socket capacity under the §7 flags. Letting browsers connect straight
-to Collab would avoid it, and Collab verifies tokens itself anyway (§6). It's
-kept behind the Gateway for one public origin and for rate limiting on connection
-establishment. If the socket ceiling ever binds, this is the first thing to
-change.
+connection occupies a concurrency slot on the Gateway *and* one on Collab — two
+slots per socket instead of one. The sharp end isn't the socket ceiling itself
+(both are 250 per instance, §7) but that the Gateway's slots are shared with
+**every HTTP request in the system**: at 500 live sockets the Gateway has nothing
+left with which to serve a browse request. Letting browsers connect straight to
+Collab would remove that, at the price of Collab having to verify tokens itself —
+which today only the Gateway does (§6), so it is a real addition, not a
+formality. It's kept behind the Gateway for one public origin and for rate
+limiting on connection establishment. If the socket ceiling ever binds, this is
+the first thing to change.
 
 ### Users
 
 - **No auth code.** Sign-up, sign-in, password storage, token issue and refresh
   all happen client-side against Firebase; no service here ever sees a password.
 - Owns the **profile row**: `firebase_uid text unique` plus app-owned data
-  Firebase knows nothing about (display name, preferred topics). Created lazily —
-  the first authenticated request from an unknown UID does
-  `INSERT … ON CONFLICT (firebase_uid) DO NOTHING`, which is also where
-  `user.signed_up` is emitted, since there is no signup endpoint to emit it from.
+  Firebase knows nothing about (display name, preferred topics). Created lazily:
+  the client calls `GET /users/me` immediately after sign-in, and that request
+  runs `INSERT … ON CONFLICT (firebase_uid) DO NOTHING RETURNING id`. The
+  `RETURNING` is load-bearing — a conflicting insert returns **no row**, so it is
+  the signal that this was a genuine first sight of the UID, and therefore the
+  only place `user.signed_up` can be emitted (there is no signup endpoint to emit
+  it from). Without it the event fires on every request and the sign-up count in
+  `/stats` means nothing.
+- **The upsert has to precede matching.** Matching validates the UID against this
+  service, so a user who went straight from sign-in to the queue would be
+  rejected for having no row yet. Pinning the upsert to the post-sign-in call is
+  what guarantees the ordering.
 - Exposes `GET /users/:uid/exists` for Matching's validation call.
 
 *Why lazy upsert rather than a Firebase `onCreate` trigger?* One fewer deployed
@@ -296,6 +312,9 @@ from Firebase first, then here. If the second half fails, the row is unreachable
 - Prefers **cursor pagination** (`WHERE id > $last ORDER BY id LIMIT 20`) over
   `OFFSET`, which makes Postgres read and discard every skipped row and produces
   duplicates when rows shift between requests.
+- **Caches list and search results in Redis**, since the bank is read-heavy and
+  almost never written. This is the fifth job Redis does here (§4), and the only
+  one that is a pure optimisation rather than a correctness requirement.
 - **`reference_md` is never served to a browser by this service.** It's released
   only to Matching, over the internal network, after Matching has verified
   consent (ADR-06). Questions has no way to know who consented; Matching has no
@@ -384,8 +403,11 @@ sequenceDiagram
 
 - Services call a shared `emitEvent(type, data)` at six moments:
   `user.signed_up`, `queue.joined`, `match.created`, `session.started`,
-  `reveal.consented`, `session.ended`. Each appends one entry to an `events`
-  **Redis Stream** (an append-only log: entries get ordered IDs, reading never
+  `reveal.consented`, `session.ended`. **Users** emits the first, on the lazy
+  upsert; **Collab** emits `session.started` when a session's first socket
+  connects — that's the Collab→Redis `events` arrow in §3; **Matching** emits the
+  other four, since it owns queue and session lifecycle. Each appends one entry
+  to an `events` **Redis Stream** (an append-only log: entries get ordered IDs, reading never
   deletes them, and each reader keeps a server-side bookmark). Fire-and-forget
   inside a try/catch — a log hiccup never fails a user request.
 - The job reads everything past its bookmark, processes, then acks each entry.
@@ -433,6 +455,13 @@ it explicitly:
   Gateway, which has no domain data. It lives with whoever owns the record:
   Collab asks whether a UID is a participant in a session; Matching enforces
   mutual consent before releasing a reference answer.
+- **Not every route is authenticated.** The question bank and `/stats` are
+  public (§2), so the Gateway verifies a token when one is present, rejects a
+  malformed or expired one outright, and falls back to per-IP rate limiting when
+  there is none at all. The consequence downstream is easy to get wrong:
+  `X-User-Id` is *absent* on those requests, and absent has to be handled as
+  anonymous rather than as "trust whatever arrived" — the same header-forgery
+  mistake as public ingress, just reached from the other direction.
 
 Auth is therefore spread across three places and **there is no auth service**:
 Firebase owns credentials and token issuance, the Gateway owns verification, and
@@ -533,23 +562,29 @@ service.
 | Layer | Mechanism | Purpose |
 |---|---|---|
 | 1. Kill-switch | Billing budget → Pub/Sub → Cloud Function **[bought]** that detaches the billing account (`projects.updateBillingInfo`) at $20. Google publishes the ~40-line sample. **Three caveats that make it a backstop rather than a cap:** budget data lags, so the delay is hours not minutes and a genuine runaway can overshoot; detaching is *destructive*, not a pause — resources can be deleted, not merely suspended; and it fails **silently** unless the function's service account has Billing Account Administrator **on the billing account**, not just the project. Test it once on a throwaway project with a $0.01 budget. | The only true stop — a backstop, not the primary control. |
-| 2. Cloud Run flags | On all six: `--max-instances=2` (excess requests queue or get 429 instead of spinning up 100 containers) and `--min-instances=0` (idle ~$0). Then split by unit of work, since Cloud Run counts an open WebSocket as one in-flight request for its entire life: **Users / Questions / Matching** get `--concurrency=80` and `--timeout=60s`; **Gateway and Collab** get `--concurrency=250` and `--timeout=3600s`, since a 60 s timeout would sever every collab session each minute. Concurrency is the hard cap on sockets: 250 × 2 = 500. | The real day-to-day cap: runaway bills come from autoscaling, and this caps it at the source. |
+| 2. Cloud Run flags | On the **five services** (Stats is a job — it has no instances to cap; Cloud Scheduler starts it, it drains, it exits): `--max-instances=2` (excess requests queue or get 429 instead of spinning up 100 containers) and `--min-instances=0` (idle ~$0). Then split by unit of work, since Cloud Run counts an open WebSocket as one in-flight request for its entire life: **Users / Questions / Matching** get `--concurrency=80` and `--timeout=60s`; **Gateway and Collab** get `--concurrency=250` and `--timeout=3600s`, since a 60 s timeout would sever every collab session each minute. Concurrency is the hard cap on sockets: 250 × 2 = 500. | The real day-to-day cap: runaway bills come from autoscaling, and this caps it at the source. |
 | 3. API surface | Enable only: Cloud Run, Artifact Registry, Secret Manager, Cloud Storage, Cloud Scheduler. | Every disabled API is a category of bill that can't happen. |
-| 4. Public URL | The Gateway's rate limit caps traffic that would drive Cloud Run scaling. Neon (0.5 GB) and Upstash (10K cmd/day) throttle rather than overage-bill. | The stateful layer isn't the risk — Cloud Run is, because its response to load is to provision more of itself. |
+| 4. Public URL | The Gateway's rate limit caps traffic that would drive Cloud Run scaling. Neon (0.5 GB) and Upstash (10K cmd/day) throttle rather than overage-bill. Worth reading that Upstash figure as what it also is: **a ceiling on total daily requests**, since every request through the Gateway spends one Lua call on the bucket. | The stateful layer isn't the risk — Cloud Run is, because its response to load is to provision more of itself. |
 | 5. Early warning | Budget alerts at 50 / 90 / 100% ($10 / $18 / $20). | Email before the kill-switch fires. |
 
 **Note that six deployables does not multiply the bill.** Everything scales to
-zero, so idle cost is unchanged; what grows is *ceiling* (12 possible instances
-instead of 8) and operational surface, not baseline spend.
+zero, so idle cost is unchanged; what grows is the *ceiling* — at most eleven
+processes can exist at once, five services × two instances plus one Stats job —
+and the operational surface. Baseline spend doesn't move.
 
 ### What the concurrency flags actually mean
 
 `--max-instances` and `--concurrency` are independent axes and their product is
-the capacity ceiling: **2 × 80 = 160** simultaneous requests for Users, Questions
-and Matching; **2 × 250 = 500** simultaneous WebSockets for the Gateway and
-Collab. Past that, Cloud Run queues briefly and then returns **429 Too Many
-Requests**, because max-instances is a hard ceiling — rejecting traffic is the
-intended behaviour when the alternative is an unbounded bill.
+the capacity ceiling, **per service**: **2 × 80 = 160** simultaneous requests for
+each of Users, Questions and Matching, and **2 × 250 = 500** for the Gateway and
+again for Collab. Past that, Cloud Run queues briefly and then returns **429 Too
+Many Requests**, because max-instances is a hard ceiling — rejecting traffic is
+the intended behaviour when the alternative is an unbounded bill.
+
+The Gateway's 500 are not a second pool of sockets, though. Every WebSocket burns
+one slot there *and* one on Collab, and the Gateway's slots are the same ones
+every HTTP request needs — so 500 live sockets is also the point at which nobody
+can browse the question bank (§5).
 
 **Why 80 requests on one Node process is not a typo.** Node runs all application
 JavaScript on a single thread (one OS-scheduled flow of execution — two of your
@@ -619,11 +654,13 @@ it deliberately and on a deadline is safer than doing it casually.
 
 1. **Learn on GKE (during the trial):** raw manifests for the five services —
    Deployment, Service, Ingress, ConfigMap/Secret, liveness/readiness probes —
-   on GKE Autopilot. Run it for a few days: roll out with `kubectl apply`, kill a
-   pod and watch it self-heal, read logs via `kubectl`. No Helm, no k3d — raw
+   on GKE Autopilot, standing **alongside** the live Cloud Run deployment rather
+   than replacing it. Run it for a few days: roll out with `kubectl apply`, kill
+   a pod and watch it self-heal, read logs via `kubectl`. No Helm, no k3d — raw
    YAML so every line is understood.
-2. **Migrate to Cloud Run**, delete the cluster, keep the manifests in `k8s/`.
-   ADR-05 records it.
+2. **Delete the cluster**, keep the manifests in `k8s/`. Production never moves:
+   it is on Cloud Run from phase 6 onwards and stays there, which is the whole
+   point of running this as a detour on a deadline. ADR-05 records it.
 
 ---
 
@@ -641,13 +678,16 @@ it deliberately and on a deadline is safer than doing it casually.
   Matching→Questions, Collab→Matching), so a response-shape change breaks CI
   rather than production. This is the tax independent deployability charges.
 - **One end-to-end happy path:** sign in → match → collab edit syncs → end.
-- **k6 load test on Collab, run twice:** first locally against docker-compose
-  (find bugs cheaply), then against Cloud Run while watching Grafana — producing
-  the headline: *"holds N concurrent WebSocket connections per instance at p95
-  X ms edit-propagation latency"*. The Cloud Run run measures the system under
-  the §7 flags, so the configured ceiling (250/instance), not hardware, is the
-  first limit N hits — raise the flag deliberately before chasing a bigger
-  number.
+- **k6 load test on Collab, run twice.** Locally against docker-compose first —
+  that's where the *volume* goes, because nothing throttles and bugs are cheap to
+  find there (a socket leak, an unbounded map, a missing `await`). Then a
+  deliberately **smaller** run against Cloud Run with Grafana open, answering a
+  different question: does it behave the same under the §7 flags, real network
+  latency to `asia-southeast1`, and cold starts. Headline: *"holds N concurrent
+  WebSocket connections per instance at p95 X ms edit-propagation latency"* —
+  stated together with which of the two environments produced it. Either way the
+  configured ceiling (250/instance) is the first limit N hits, not hardware, so
+  raise the flag deliberately before chasing a bigger number.
 
 ### How the headline number is measured
 
@@ -692,6 +732,16 @@ export const options = {
 - **Measure from two directions** — k6's client-side latency *and* Collab's own
   `/metrics` socket count — so that "the server is saturated" stays
   distinguishable from "my load generator is saturated".
+
+**Why the cloud run is the smaller one.** Every cross-instance edit is one Redis
+`PUBLISH`, and Upstash's free tier allows 10,000 commands a day (§7). At roughly
+one update per second per session, a hundred live sessions spend the entire day's
+budget in under two minutes — and the rate limiter is drawing on the same
+allowance for every request. That ceiling lands on precisely the test that would
+otherwise produce the biggest number, so the scaling curve comes from local and
+production is where it's *validated*, not where it's maximised. Quoting a local
+number as though it were measured in production is the dishonest version of this
+test, and worth naming so it doesn't happen by accident.
 
 *Why these tests and not a coverage target?* A percentage pushes effort toward
 whatever is easiest to cover, which is rarely where this system breaks. The
@@ -764,9 +814,11 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
    Gateway verifies tokens itself against a JWKS rather than delegating to an
    SDK, so the property that mattered — the edge can verify but cannot mint —
    survives the switch.
-5. **Cloud Run over Kubernetes for production** — deployed to GKE during
-   development to learn it, migrated to Cloud Run for scale-to-zero and zero idle
-   cost; manifests retained in `k8s/`.
+5. **Cloud Run over Kubernetes for production** — production runs on Cloud Run
+   from the first deploy onwards, for scale-to-zero and zero idle cost. GKE is
+   stood up separately as a time-boxed learning detour (phase 9), run alongside
+   the live deployment, then deleted; the manifests are retained in `k8s/` as
+   evidence, not as an alternative production path.
 6. **Reference answers never enter the shared doc** — a Yjs doc replicates to all
    peers, so the answer key can't live there. Questions releases `reference_md`
    only to Matching over the internal network, and only after Matching verifies
@@ -783,10 +835,12 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
    verification, routing, CORS and distributed rate limiting — all four of which
    Kong DB-less provides, the rate limiter included, via its `policy: redis`
    plugin. Decision: build it anyway. The token bucket is the one component here
-   with a reproducible concurrency bug inside it — two stateless instances doing
-   read-then-write on a shared bucket double-count under load — and the fix (a
-   Lua script Redis executes atomically) is only meaningful if you've seen the
-   broken version fail. Rejected: **Kong DB-less**, the honest alternative, ~15
+   whose concurrency bug a product would otherwise fix on my behalf — two
+   stateless instances doing read-then-write on a shared bucket double-count
+   under load — and the fix (a Lua script Redis executes atomically) is only
+   meaningful if you've seen the broken version fail. Matching's pair claim
+   (ADR-03) is the same race, but there is no product to buy instead, so it was
+   never a build-vs-buy decision at all. Rejected: **Kong DB-less**, the honest alternative, ~15
    lines of config and what I'd deploy commercially; **Envoy**, frequently
    suggested but a worse fit — its local rate-limit filter is per-instance and
    its global one delegates to a separate Redis-backed service, so the problem is
@@ -817,8 +871,8 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
    entirely and makes the services non-independently-deployable in practice — a
    distributed monolith. Tradeoffs accepted: one instance is a shared failure
    domain and a shared connection budget (mitigated by Neon's pooled endpoint,
-   since six services × two instances × a pool would otherwise exhaust the free
-   tier's connection limit); and the "microservices" claim rests on services
+   since every service instance holding its own pool would otherwise exhaust the
+   free tier's connection limit); and the "microservices" claim rests on services
    owning their *tables*, not their *instances*. **The condition to split:** one
    service's data outgrowing the instance, or needing a different store — Collab
    snapshots moving to object storage is the likeliest first case — or separate
@@ -838,14 +892,16 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
 | 3 | **Matching**: reactive matching (Redis sorted set + Lua claim), session rows, pub/sub match event, validation calls to Users + Questions, contract tests | two users join → matched → session exists; a Users outage fails the match cleanly rather than corrupting state |
 | 4 | **Collab (hardest):** WebSockets + Yjs, authorize the socket via Matching, cross-instance pub/sub, presence/cursors, snapshot + reconnect, graceful shutdown | two tabs sync live; kill one instance, the other keeps working |
 | 5 | Minimal React: login, question list, match button, session page (Monaco wired to Yjs) with scaffolded editor, reveal flow, end | open two browsers, match, collaborate, reveal |
-| 6 | Deploy all six to Cloud Run + frontend to CDN; CI deploys per service on merge; logs + health + `/metrics` → Grafana; k6 load run; README + ADRs + demo GIF | live URL; headline load number in README; deploying Questions alone doesn't restart Collab |
+| 6 | Deploy the five services to Cloud Run + frontend to CDN; CI deploys per service on merge; logs + health + `/metrics` → Grafana; k6 load run; README + ADRs + demo GIF | live URL; headline load number in README; deploying Questions alone doesn't restart Collab |
 | 7 | Event pipeline: `emitEvent` → `events` stream (behind the `EventLog` interface); idempotent **Stats** consumer → summaries + aggregates; Cloud Scheduler → Cloud Run job | end a session on the live URL → summary renders; `/stats` shows real counts |
 | 8 | **[built · learning]** Terraform: import the manual setup (services + flags, service accounts, invoker bindings, registry, secrets, bucket, scheduler job, budget alerts) | `terraform apply` rebuilds the environment |
 | 9 | **[detour · learning]** k8s sprint on trial credits: raw manifests → GKE Autopilot → roll out / self-heal demo → migrate back, delete cluster, keep `k8s/` | app runs on Kubernetes; manifests in repo; cluster deleted |
 | 10 | **[detour · learning]** Kafka in dev: single-node Kafka (KRaft) in compose + a Kafka adapter for `EventLog` | same events flow through Kafka on `docker-compose up`; prod unchanged |
 
-**The project is complete and public at phase 6.** Everything after is additive
-and independently droppable, in this order: 10 first (pure adapter work behind an
+**The project is publicly demoable at phase 6 and feature-complete at phase 7** —
+phase 7 is where the event pipeline and `/stats` land, and both are stated scope
+(§1, §2), so it is not optional. Everything from phase 8 on *is* additive and
+independently droppable, in this order: 10 first (pure adapter work behind an
 existing interface), then 9, then 8. If time runs short, what gets cut is
 learning detours, never the running system.
 
