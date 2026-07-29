@@ -238,6 +238,24 @@ from wrapping it in a script Redis runs start-to-finish with nothing interleaved
 The bucket is worth it because it permits bursts, which a fixed window either
 forbids or lets through at the boundary.
 
+**The bug the script prevents** — the one this service exists to demonstrate
+(ADR-08). Two Gateway instances, one user's bucket, one token left in it:
+
+```
+instance A: read tokens = 1
+instance B: read tokens = 1     <- reads before A has written
+instance A: write tokens = 0    <- A lets its request through
+instance B: write tokens = 0    <- B lets its through too; A's decrement is lost
+```
+
+That's a **lost update**, and note what it does *not* require: no threads, no
+shared memory. Two ordinary processes on two different machines are enough. Which
+is also why an in-process mutex is not a fix — it would guard one instance's own
+memory, at an address the other instance cannot reach and has never heard of.
+**Atomicity has to live where the single copy of the state lives**, and that is
+Redis, which runs one command — or one Lua script — start to finish before
+beginning the next.
+
 *Why not Envoy, the usual suggestion?* Its `jwt_authn` filter would replace token
 verification cleanly, but its **local** rate-limit filter is per-instance —
 exactly the split-bucket bug — and its **global** one delegates to a separate
@@ -524,6 +542,59 @@ service.
 zero, so idle cost is unchanged; what grows is *ceiling* (12 possible instances
 instead of 8) and operational surface, not baseline spend.
 
+### What the concurrency flags actually mean
+
+`--max-instances` and `--concurrency` are independent axes and their product is
+the capacity ceiling: **2 × 80 = 160** simultaneous requests for Users, Questions
+and Matching; **2 × 250 = 500** simultaneous WebSockets for the Gateway and
+Collab. Past that, Cloud Run queues briefly and then returns **429 Too Many
+Requests**, because max-instances is a hard ceiling — rejecting traffic is the
+intended behaviour when the alternative is an unbounded bill.
+
+**Why 80 requests on one Node process is not a typo.** Node runs all application
+JavaScript on a single thread (one OS-scheduled flow of execution — two of your
+own functions never execute simultaneously), driven by an **event loop** (a C
+loop that asks the kernel which I/O has finished and calls the matching JS
+callback). A typical Users or Matching request spends roughly **2 ms of CPU**
+(parse, validate, serialise) and **30 ms waiting on Postgres**. During that wait
+the request holds nothing: `await` saves the function's locals and its resume
+point into a heap object and hands control back to the loop, which starts the
+next request immediately. Eighty in-flight requests are eighty small heap
+objects, not eighty parked threads — and the waiting itself is one `epoll_wait`
+syscall (Linux: *"tell me which of these sockets are ready"*), not one thread per
+socket. That is the whole reason the number is cheap.
+
+This is **concurrency without parallelism**: tasks interleaved over a period, not
+executing in the same instant. More cores do nothing for a single Node process,
+which is why scaling out means more instances — the axis `--max-instances`
+governs — and why the rate-limit bucket has to live in Redis rather than in
+memory (§5).
+
+**What it depends on, and the failure mode.** All of the above holds only while
+the work is I/O-bound. A CPU-bound stretch with no `await` inside it holds the
+thread until it finishes — the loop cannot interrupt it, because there is no
+other thread to interrupt it *with*. For that whole time, completed Postgres
+results for the other 79 requests sit unread in kernel buffers, p95 latency rises
+across every request on the instance, and `/health/ready` can't answer either;
+long enough and Cloud Run declares the instance unhealthy. Password hashing is
+the one place this design would have hit that — bcrypt is deliberately expensive,
+around 250 ms of pure CPU — and **ADR-04 moved it into Firebase, so no CPU-bound
+work sits on any request path here.** That's what makes 80 a safe number rather
+than an optimistic one.
+
+*Why not `--concurrency=1`?* Then 100 simultaneous users demand 100 instances.
+Under `--max-instances=2` the app would serve two requests at a time and 429 the
+rest, which reads as broken; without the cap it's 100 containers and a real bill.
+Concurrency is precisely what keeps a two-instance ceiling sufficient.
+
+*Why Collab's numbers are the opposite.* Its unit of work is an open socket that
+is idle almost all of the time — someone typing occasionally costs microseconds
+of CPU — so one instance holds far more of them. But the flag also changes
+meaning: for a request/response service concurrency is a throughput knob, while
+for Collab `250 × 2 = 500` is a **hard ceiling on concurrent users**, and the
+501st is rejected at connect. That is the number §8 has to be careful not to
+mistake for a measurement.
+
 ### Infrastructure as code (Terraform) — second pass, not first · **[built · learning]**
 
 *Why second?* Writing Terraform for infrastructure you don't yet understand means
@@ -577,6 +648,50 @@ it deliberately and on a deadline is safer than doing it casually.
   the §7 flags, so the configured ceiling (250/instance), not hardware, is the
   first limit N hits — raise the flag deliberately before chasing a bigger
   number.
+
+### How the headline number is measured
+
+k6 (a load-testing tool: you write a script describing what *one* user does, and
+it runs many copies of it and reports timing statistics) drives the Collab run.
+The parts that carry weight:
+
+```js
+export const options = {
+  stages: [                          // ramp, don't slam
+    { duration: '30s', target: 50 },
+    { duration: '2m',  target: 50 },
+    { duration: '30s', target: 200 },
+    { duration: '2m',  target: 200 },
+    { duration: '30s', target: 0 },
+  ],
+  thresholds: {
+    edit_latency:  ['p(95)<200'],    // custom metric — fails the run in CI
+    ws_connecting: ['p(95)<1000'],
+  },
+};
+```
+
+- **VU (virtual user)** = one concurrent execution of that script. k6's runtime
+  is Go, so a VU is a goroutine rather than an OS thread and one laptop drives
+  thousands. *Why not a Node load generator?* It would be bounded by its own
+  single event loop (§7), and the number it produced would describe the client
+  rather than the server.
+- **Ramping** is what exposes the *knee* — the load level where latency stops
+  being flat and starts climbing. A flat 200-VU run only answers pass/fail; a
+  ramp says where the limit is.
+- **Thresholds** turn the run into a pass/fail check, which is what lets it live
+  in CI instead of being something someone remembers to eyeball.
+- **`edit_latency` has to be hand-written**, because k6 has no concept of edit
+  propagation: the script stamps a timestamp into each Yjs update it sends and
+  records the delta when the echo arrives back over the socket. The headline
+  number does not exist unless this metric is built.
+- **Report p95/p99, never the average.** If 95 requests take 10 ms and 5 take
+  2 s, the average is 110 ms and not one request was anywhere near it. p95 means
+  95% of requests were faster than the stated figure — and the tail is both what
+  a user feels and where queueing, contention and cold starts appear first.
+- **Measure from two directions** — k6's client-side latency *and* Collab's own
+  `/metrics` socket count — so that "the server is saturated" stays
+  distinguishable from "my load generator is saturated".
 
 *Why these tests and not a coverage target?* A percentage pushes effort toward
 whatever is easiest to cover, which is rarely where this system breaks. The
@@ -641,9 +756,14 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
    CI depend on the Auth emulator (§7); and login no longer traverses the
    Gateway, so its rate limiter no longer protects that endpoint — Google's abuse
    controls do instead, which is an upgrade, but it moves part of the threat
-   surface off this diagram. **Deliberately kept:** the Gateway verifies tokens
-   itself against a JWKS rather than delegating to an SDK, so the property that
-   mattered — the edge can verify but cannot mint — survives the switch.
+   surface off this diagram. **An unplanned benefit worth naming:** bcrypt was
+   the only CPU-bound work anywhere on a request path here, and Node runs all
+   application JS on one thread, so ~250 ms of hashing would stall every other
+   request on that instance — buying auth deleted that hazard, and it's part of
+   why `--concurrency=80` is a safe number (§7). **Deliberately kept:** the
+   Gateway verifies tokens itself against a JWKS rather than delegating to an
+   SDK, so the property that mattered — the edge can verify but cannot mint —
+   survives the switch.
 5. **Cloud Run over Kubernetes for production** — deployed to GKE during
    development to learn it, migrated to Cloud Run for scale-to-zero and zero idle
    cost; manifests retained in `k8s/`.
