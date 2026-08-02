@@ -64,8 +64,15 @@ jobs:
             exit 0
           fi
 
+          # `|| true` is braced so it applies to grep ALONE. grep exits 1 when it
+          # matches nothing — which is exactly what a docs-only commit looks
+          # like — and under `set -o pipefail` that status survives to the
+          # assignment, where `set -e` kills the step before the count=0 guard
+          # below can ever be used. Appending `|| true` to the whole pipeline
+          # instead would also swallow a real cut/jq failure and hand the matrix
+          # a silently empty list.
           selected=$(echo "$changed" \
-            | grep -oE '^services/[^/]+' \
+            | { grep -oE '^services/[^/]+' || true; } \
             | cut -d/ -f2 \
             | sort -u \
             | jq -R . | jq -sc .)
