@@ -1,0 +1,22 @@
+packages:
+  - 'services/*'
+  - 'packages/*'
+
+# pnpm blocks dependency install scripts by default (a supply-chain control:
+# a compromised transitive package cannot run code on install). esbuild is an
+# explicit exception — its postinstall is what puts the platform-native binary
+# in place, and tsup and vitest are both dead without it.
+allowBuilds:
+  esbuild: true
+
+# One version of each dependency across seven package.json files. Without a
+# catalog, six services drift onto six Fastify versions and the shared types in
+# packages/shared stop matching some of them.
+catalog:
+  '@types/node': ^24.3.0
+  fastify: ^5.6.0
+  pino: ^9.9.0
+  tsup: ^8.5.0
+  tsx: ^4.20.5
+  typescript: ^5.9.2
+  vitest: ^3.2.4

@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Which services actually changed? ─────────────────────────────────────────
+  # DESIGN.md §7 wants CI path-filtered per service: a change under
+  # services/questions/ builds only Questions. Independent deployability is most
+  # of the point of the six-way split (ADR-01) and it does not exist unless the
+  # pipeline is wired for it.
+  #
+  # Done with plain git rather than a marketplace action so every step is
+  # visible — this is the job that decides what gets deployed in phase 6.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.detect.outputs.services }}
+      count: ${{ steps.detect.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+          ALL='["gateway","users","questions","matching","collab","stats"]'
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          elif [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            base="${{ github.event.before }}"
+          else
+            base=""   # first push on a branch: no diff base, build everything
+          fi
+
+          if [ -z "$base" ]; then
+            echo "no diff base — building all services"
+            echo "services=$ALL" >> "$GITHUB_OUTPUT"
+            echo "count=6" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed=$(git diff --name-only "$base" HEAD)
+          echo "changed files:"; echo "$changed"
+
+          # Anything shared rebuilds everything: packages/shared is compiled
+          # into all six images, and the root config, Dockerfile and lockfile
+          # define how every one of them is built. Skipping a service here
+          # because "only the Dockerfile changed" is how a broken image reaches
+          # production untested.
+          if echo "$changed" | grep -qE '^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|Dockerfile|\.dockerignore|packages/|\.github/workflows/)'; then
+            echo "shared file touched — building all services"
+            echo "services=$ALL" >> "$GITHUB_OUTPUT"
+            echo "count=6" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          selected=$(echo "$changed" \
+            | grep -oE '^services/[^/]+' \
+            | cut -d/ -f2 \
+            | sort -u \
+            | jq -R . | jq -sc .)
+          [ "$selected" = "" ] && selected='[]'
+
+          echo "services=$selected" >> "$GITHUB_OUTPUT"
+          echo "count=$(echo "$selected" | jq 'length')" >> "$GITHUB_OUTPUT"
+
+  # ── Repo-wide checks: run once, not six times ────────────────────────────────
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+
+  # ── Per-service: typecheck, test, build, and build the image ─────────────────
+  service:
+    needs: changes
+    if: needs.changes.outputs.count != '0'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.changes.outputs.services) }}
+    name: ${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: typecheck
+        run: pnpm --filter "@deepcs/${{ matrix.service }}" typecheck
+
+      - name: test
+        run: pnpm --filter "@deepcs/${{ matrix.service }}" test
+
+      - name: build
+        run: pnpm --filter "@deepcs/${{ matrix.service }}" build
+
+      # The image build is not redundant with the steps above: it is the only
+      # thing that exercises the pnpm-symlink / tsup-bundling path that makes
+      # the runtime image work at all. A service that compiles and still
+      # produces a dead image is exactly the failure this catches.
+      - name: build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runner
+          build-args: SERVICE=${{ matrix.service }}
+          push: false
+          load: true
+          tags: deepcs/${{ matrix.service }}:ci
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      # Proves the image actually starts, rather than only that it built.
+      # Stats is a job: it runs to completion and exits 0, so it is checked
+      # differently from the five servers.
+      - name: smoke test the image
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.service }}" = "stats" ]; then
+            docker run --rm deepcs/stats:ci
+          else
+            docker run -d --name smoke -p 8080:8080 -e PORT=8080 \
+              deepcs/${{ matrix.service }}:ci
+            for i in $(seq 1 30); do
+              if curl -fsS http://localhost:8080/health/ready; then ok=1; break; fi
+              sleep 1
+            done
+            docker logs smoke
+            docker rm -f smoke
+            [ "${ok:-0}" = "1" ]
+          fi
+
+    # Phase 6 adds the deploy step here: push to Artifact Registry and
+    # `gcloud run deploy` this one service. Deliberately absent until there is
+    # a GCP project with a tested billing guard in front of it.

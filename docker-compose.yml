@@ -1,0 +1,176 @@
+name: deepcs
+
+# Phase 0 target: `docker compose up` brings up the whole system locally —
+# five services, the Stats job, Postgres, Redis and the Firebase Auth emulator.
+# No cloud account is involved and nothing here costs money.
+
+# Shared by all six. `build` and `volumes` are NOT here: every service
+# overrides both with its own SERVICE build-arg and its own src/ mount, and
+# putting them in the anchor would only suggest they were inherited.
+#
+# Interpolation (${VAR:-default}) reads .env automatically if one exists, so
+# `docker compose up` works with no .env file at all.
+x-service: &service
+  environment:
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+    NODE_ENV: development
+    DATABASE_URL: postgresql://deepcs:deepcs@postgres:5432/deepcs
+    REDIS_URL: redis://redis:6379
+    FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-demo-deepcs}
+    FIREBASE_AUTH_EMULATOR_HOST: firebase-auth:9099
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  # ── Data ───────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: deepcs
+      POSTGRES_PASSWORD: deepcs
+      POSTGRES_DB: deepcs
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Without this, the services start before Postgres accepts connections
+      # and crash-loop on boot. `condition: service_healthy` above is what
+      # makes `depends_on` mean "ready", not merely "started".
+      test: ['CMD-SHELL', 'pg_isready -U deepcs -d deepcs']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  firebase-auth:
+    build:
+      context: ./docker/firebase-emulator
+    ports:
+      - '9099:9099' # Auth emulator API
+      - '4000:4000' # Emulator UI — browse and create test users here
+    healthcheck:
+      # 127.0.0.1, never `localhost`. Inside this container `localhost`
+      # resolves to ::1 first, and the emulator binds IPv4 0.0.0.0 only — so a
+      # `localhost` probe gets ECONNREFUSED from a perfectly healthy emulator,
+      # and every service that depends on it refuses to start.
+      #
+      # Grepping the body rather than just checking the port is open: the root
+      # endpoint returns {"authEmulator":{"ready":true}} only once it can
+      # actually mint tokens.
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:9099/ | grep -q ready']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ── Services (DESIGN.md §3) ────────────────────────────────────────────────
+  gateway:
+    <<: *service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+      args:
+        SERVICE: gateway
+    ports:
+      - '8080:8080'
+    volumes:
+      - ./packages/shared/src:/app/packages/shared/src:ro
+      - ./services/gateway/src:/app/services/gateway/src:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      firebase-auth:
+        condition: service_healthy
+
+  users:
+    <<: *service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+      args:
+        SERVICE: users
+    ports:
+      - '8081:8081'
+    volumes:
+      - ./packages/shared/src:/app/packages/shared/src:ro
+      - ./services/users/src:/app/services/users/src:ro
+
+  questions:
+    <<: *service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+      args:
+        SERVICE: questions
+    ports:
+      - '8082:8082'
+    volumes:
+      - ./packages/shared/src:/app/packages/shared/src:ro
+      - ./services/questions/src:/app/services/questions/src:ro
+
+  matching:
+    <<: *service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+      args:
+        SERVICE: matching
+    ports:
+      - '8083:8083'
+    volumes:
+      - ./packages/shared/src:/app/packages/shared/src:ro
+      - ./services/matching/src:/app/services/matching/src:ro
+
+  collab:
+    <<: *service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+      args:
+        SERVICE: collab
+    ports:
+      - '8084:8084'
+    volumes:
+      - ./packages/shared/src:/app/packages/shared/src:ro
+      - ./services/collab/src:/app/services/collab/src:ro
+
+  # ── The job ────────────────────────────────────────────────────────────────
+  # Stats is expected to show as `exited (0)` seconds after `up`. That is not a
+  # failure — it is the whole point (DESIGN.md §5). In production Cloud
+  # Scheduler invokes it every 5 minutes; locally, run it on demand with
+  #   docker compose run --rm stats
+  stats:
+    <<: *service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+      args:
+        SERVICE: stats
+    volumes:
+      - ./packages/shared/src:/app/packages/shared/src:ro
+      - ./services/stats/src:/app/services/stats/src:ro
+    restart: 'no'
+
+volumes:
+  pgdata:
