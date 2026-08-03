@@ -1,13 +1,33 @@
+# Size. node_modules alone is 116 MB, and the whole context is tarred and sent
+# to the daemon on every build.
 node_modules
 **/node_modules
 dist
 **/dist
 .git
-.github
-.env
-.env.local
 coverage
 *.log
+*.tsbuildinfo
+.turbo/
+
+# Secrets. The Dockerfile does `COPY . .`, so anything left here lands in the
+# image where whoever pulls it can read it.
+.env
+.env.local
+.firebase/
+
+# Cache. These are small, but `COPY . .` rebuilds its layer whenever any file
+# in the context changes — so an edit to a doc or to compose would otherwise
+# force a full rebuild of all six service images.
+.github
 docs
 DESIGN.md
 README.md
+docker-compose.yml
+docker/
+infra/
+eslint.config.js
+.prettierrc.json
+.prettierignore
+.env.example
+.DS_Store
