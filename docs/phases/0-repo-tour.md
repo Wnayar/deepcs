@@ -184,6 +184,11 @@ job for "this package correctly has no tests yet" trains you to ignore red.
 | [`docker/firebase-emulator/Dockerfile`](../../docker/firebase-emulator/Dockerfile) | Google publishes no official emulator image, so this builds one: Node + a JRE (the Auth emulator is a Java jar wrapped by the Node CLI) + `firebase-tools`. |
 | [`docker/firebase-emulator/firebase.json`](../../docker/firebase-emulator/firebase.json) | Emulator config: Auth on 9099, UI on 4000, both bound to `0.0.0.0`. |
 
+**If Docker itself is the unfamiliar part**, not just this repo's use of it,
+[`reading-docker.md`](../reading-docker.md) is the primer: image vs container, the
+nine instructions this repo uses, the layer cache, Compose, and a line-by-line
+walk of both files. The rest of this section assumes the vocabulary.
+
 **Look closer — [the seven stages](../../Dockerfile#L11).** A **multi-stage
 build** is several `FROM` blocks in one file; later stages copy selected files
 out of earlier ones, and anything not copied never reaches the final image.

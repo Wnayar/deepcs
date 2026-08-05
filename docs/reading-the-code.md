@@ -18,6 +18,10 @@ so nothing arrives cold.
 before any syntax. Skim Parts 1–4, work through Part 5 with the real files open,
 and come back to whatever stopped you.
 
+**Docker is a separate doc.** This one covers the code that runs inside the
+container. [`reading-docker.md`](reading-docker.md) covers the container itself —
+the `Dockerfile`, `docker-compose.yml`, and how both connect to Cloud Run.
+
 ---
 
 ## What is actually confusing you
