@@ -364,22 +364,38 @@ hostname must contain `-pooler`), `REDIS_URL` (Upstash, `rediss://`),
 
 ---
 
-## One thing I found while writing this
+## One thing I found while writing this — and fixed
 
-[`ci.yml` line 67](../../.github/workflows/ci.yml#L67) fails the whole CI run on
-a commit that touches no service — a docs-only change, or a tweak to
-`README.md` / `eslint.config.js` / `.prettierrc.json`.
+**Status: fixed in the same commit that added this file. Nothing to do; this is
+here because the bug is worth understanding.**
 
-`grep` exits 1 when it matches nothing. Under `set -euo pipefail` that
-propagates through the pipe and out of the command substitution, and the
-assignment failing kills the step — so the `count=0` guard on
-[line 94](../../.github/workflows/ci.yml#L94), which exists precisely for this
-case, is unreachable. I reproduced it locally: the step exits 1 with no output,
+The `changes` job used to fail the whole CI run on any commit that touched no
+service — a docs-only change, or a tweak to `README.md` / `eslint.config.js` /
+`.prettierrc.json`.
+
+`grep` exits 1 when it matches nothing, which is exactly what a docs-only commit
+looks like. Under `set -euo pipefail` that status propagates through the pipe and
+out of the command substitution, so the assignment itself fails and `set -e`
+kills the step — before the empty-list guard on
+[line 79](../../.github/workflows/ci.yml#L79) and the `count` output on
+[line 82](../../.github/workflows/ci.yml#L82), which exist precisely for this
+case, can ever be reached. Reproduced locally: the step exits 1 with no output,
 `changes` goes red, `service` is skipped, the run is red.
 
-Fix is a one-liner — `|| true` on the grep. Not urgent (nothing deploys off CI
-until phase 6) but you'll hit it the first time you push a docs-only commit,
-including this file. Say the word and I'll patch it.
+The fix is on [line 75](../../.github/workflows/ci.yml#L75) —
+`{ grep -oE '^services/[^/]+' || true; }`. Two details in it are deliberate:
+
+- **The braces scope `|| true` to `grep` alone.** Appending it to the whole
+  pipeline would also swallow a genuine `cut` or `jq` failure and hand the build
+  matrix a silently empty list — a worse bug, because it looks like success.
+- **`set -o pipefail` is what makes this necessary at all.** Without it, only the
+  last command's status would count and `grep`'s 1 would be invisible. The
+  option is correct to keep; the explicit `|| true` is how you say "this
+  particular non-match is expected".
+
+**The general lesson**, which will come up again in phase 6's deploy scripts: under
+`set -euo pipefail`, a command whose "nothing found" case is *normal* needs that
+case handled explicitly, or your error handling becomes unreachable code.
 
 ---
 
