@@ -106,8 +106,9 @@ compiles and copies gateway's code. The six images are fully independent
 afterwards — nothing links them.
 
 **Nine containers**, locally: the 5 servers + the Stats job + Postgres + Redis +
-the Firebase Auth emulator. Six come from images built here; three are downloaded
-ready-made.
+the Firebase Auth emulator. Seven come from images built here — the five servers,
+Stats, and the Firebase Auth emulator; two are downloaded ready-made — Postgres
+and Redis.
 
 ## Where Google Cloud fits — the sentence that matters
 
