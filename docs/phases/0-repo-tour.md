@@ -50,7 +50,7 @@ The three phase-0 docs, so you know which is which:
 
 | Doc | Step of the loop | What it is |
 |---|---|---|
-| [`0-prebrief.md`](0-prebrief.md) | 1 — decide | The five decisions (D1–D5) taken before any code existed, each with the reasoning |
+| [`0-prebuild-decisions.md`](0-prebuild-decisions.md) | 1 — decide | The five decisions (D1–D5) taken before any code existed, each with the reasoning |
 | [`0-review.md`](../reviews/0-review.md) | 3 — review | What got built, what was verified, two real bugs hit along the way, and 8 questions with answers |
 | [`0-cloud-setup.md`](0-cloud-setup.md) | 2 — build (your half) | The tutorial you're about to work through |
 
