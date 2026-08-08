@@ -555,17 +555,26 @@ The primary safety net is the GCP free trial ($300 / 90 days): during the trial
 GCP cannot charge the card — when credits run out, services stop instead of
 billing. Upgrading to a paid account is a separate decision.
 
-GCP has no native "stop at $X" cap — budgets are alerts, not limits — so the
-ceiling is built in layers. Build the kill-switch before deploying a single
-service.
+GCP has no *general* "stop at $X" cap — an ordinary budget is an alert, not a
+limit — so the ceiling is built in layers. Build the kill-switch before deploying
+a single service.
+
+**Revised 2026-08-08.** This section previously said GCP had no spend cap at all.
+That is no longer true: **spend cap enforcement** shipped in Preview and covers
+four services — Gemini API, Agent Platform, **Cloud Run** and **Cloud Run
+functions**. It is layer 6 below. It does not remove the need for the
+kill-switch, because it is scoped to *one project and one service per budget*
+and cannot cover storage, egress, Cloud Build or GKE. The kill-switch remains the
+only whole-project stop; it is no longer the only stop.
 
 | Layer | Mechanism | Purpose |
 |---|---|---|
-| 1. Kill-switch | Billing budget → Pub/Sub → Cloud Function **[bought]** that detaches the billing account (`projects.updateBillingInfo`) at $20. Google publishes the ~40-line sample. **Three caveats that make it a backstop rather than a cap:** budget data lags, so the delay is hours not minutes and a genuine runaway can overshoot; detaching is *destructive*, not a pause — resources can be deleted, not merely suspended; and it fails **silently** unless the function's service account has Billing Account Administrator **on the billing account**, not just the project. Test it once on a throwaway project with a $0.01 budget. | The only true stop — a backstop, not the primary control. |
+| 1. Kill-switch | Billing budget → Pub/Sub → Cloud Function **[bought]** that detaches the billing account (`projects.updateBillingInfo`) at $20. Google publishes the ~40-line sample. **Three caveats that make it a backstop rather than a cap:** budget data lags, so the delay is hours not minutes and a genuine runaway can overshoot; detaching is *destructive*, not a pause — resources can be deleted, not merely suspended; and it fails **silently** unless the function's service account is granted on **both ends of the billing link** — `roles/billing.admin` on the **billing account**, *and* `roles/browser` + `roles/billing.projectManager` on the **project**. Either alone is refused; verified 2026-08-08, where the billing-account grant alone failed on the function's first Cloud Billing call. (An org-level `billing.admin` grant would cover both, but a project with no organization above it needs the two project grants explicitly.) Test it once on a throwaway project with a $0.01 budget. | The only true whole-project stop — a backstop, not the primary control. |
 | 2. Cloud Run flags | On the **five services** (Stats is a job — it has no instances to cap; Cloud Scheduler starts it, it drains, it exits): `--max-instances=2` (excess requests queue or get 429 instead of spinning up 100 containers) and `--min-instances=0` (idle ~$0). Then split by unit of work, since Cloud Run counts an open WebSocket as one in-flight request for its entire life: **Users / Questions / Matching** get `--concurrency=80` and `--timeout=60s`; **Gateway and Collab** get `--concurrency=250` and `--timeout=3600s`, since a 60 s timeout would sever every collab session each minute. Concurrency is the hard cap on sockets: 250 × 2 = 500. | The real day-to-day cap: runaway bills come from autoscaling, and this caps it at the source. |
 | 3. API surface | Enable only what the system or the kill-switch needs. The system: Cloud Run, Artifact Registry, Secret Manager, Cloud Storage, Cloud Scheduler. Layer 1 additionally requires Cloud Functions, Cloud Build, Eventarc, Pub/Sub, Logging and the Cloud Billing API — **a gen2 function is not a standalone thing, it is a Cloud Run service with a build pipeline and an event trigger in front of it.** The narrower list is the goal; the kill-switch wins where they conflict, because it is the layer with no recovery path. | Every disabled API is a category of bill that can't happen. |
 | 4. Public URL | The Gateway's rate limit caps traffic that would drive Cloud Run scaling. Neon (0.5 GB) and Upstash (10K cmd/day) throttle rather than overage-bill. Worth reading that Upstash figure as what it also is: **a ceiling on total daily requests**, since every request through the Gateway spends one Lua call on the bucket. | The stateful layer isn't the risk — Cloud Run is, because its response to load is to provision more of itself. |
 | 5. Early warning | Budget alerts at 50 / 90 / 100% ($10 / $18 / $20). | Email before the kill-switch fires. |
+| 6. Spend cap enforcement **[bought · Preview]** | A second budget, type *spend cap*, scoped to project + service **Cloud Run**, at $20. At 100% Google blocks all *new* Cloud Run usage in that project; in-flight requests finish and bill, persistent resources keep running, nothing is deleted, and lifting it is manual (up to an hour to resume). Faster than layer 1 — it enforces on *gross estimated* cost rather than settled billing — but explicitly **not instant**, and Google states overage during its reporting lag is still yours. **Do not cap "Cloud Run functions" in the same project: the layer-1 kill-switch bills under that service, and capping it would block the backstop.** One project + one service per budget, monthly periods only. | The fast, non-destructive cap on the one service that autoscales. Preview, so additive only — never the sole control. |
 
 **Note that six deployables does not multiply the bill.** Everything scales to
 zero, so idle cost is unchanged; what grows is the *ceiling* — at most eleven

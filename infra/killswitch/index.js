@@ -9,8 +9,10 @@
  *      overshoot the number before this ever fires.
  *   2. Detaching billing is DESTRUCTIVE, not a pause. Resources can be deleted
  *      rather than suspended.
- *   3. It fails SILENTLY unless this function's service account holds
- *      roles/billing.admin on the BILLING ACCOUNT — not on the project.
+ *   3. It fails SILENTLY unless this function's service account holds grants on
+ *      BOTH ends of the billing link: roles/billing.admin on the BILLING
+ *      ACCOUNT, and roles/browser + roles/billing.projectManager on the
+ *      PROJECT. Either one alone is refused.
  *
  * The real day-to-day control is layer 2: --max-instances on Cloud Run.
  *
