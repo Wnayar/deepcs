@@ -1,8 +1,8 @@
 # Reading the Docker setup
 
-Everything you need to read [`Dockerfile`](../Dockerfile) and
-[`docker-compose.yml`](../docker-compose.yml) without guessing. The companion to
-[`reading-the-code.md`](reading-the-code.md), written after a session where the
+Everything you need to read [`Dockerfile`](../../Dockerfile) and
+[`docker-compose.yml`](../../docker-compose.yml) without guessing. The companion to
+[`the-code.md`](the-code.md), written after a session where the
 question wasn't "what does this line do" but "what *is* the thing being built".
 
 **The goal is bounded on purpose.** Not "learn Docker". The goal is that those
@@ -65,7 +65,7 @@ kernel; everything above that came in the box, identical everywhere.
 **The relationship that matters:** *one image, many containers.* Start the same
 image five times and you get five containers sharing zero memory and zero
 filesystem changes. That's the "disposable copies sharing no memory" property from
-[`reading-the-code.md`](reading-the-code.md) — this is where it comes from.
+[`the-code.md`](the-code.md) — this is where it comes from.
 
 **The confusion to kill early:** *building* and *running* are separate acts, on
 separate machines, often days apart.
@@ -82,13 +82,13 @@ doesn't build in your shell; it hands the work to the **Docker daemon**, a
 background service, so the CLI first bundles the context directory and ships it
 over. Two consequences: `COPY` can only reference files *inside* the context (it
 cannot reach `../elsewhere`), and everything in the context is shipped every
-build whether copied or not — which is what [`.dockerignore`](../.dockerignore)
+build whether copied or not — which is what [`.dockerignore`](../../.dockerignore)
 exists to prevent. Its own comment notes `node_modules` alone is 116 MB.
 
 ## So: one Dockerfile, six images, nine containers
 
 **One Dockerfile**, because the six services are near-identical Node processes
-([`Dockerfile:5-9`](../Dockerfile#L5) has the reasoning). Six copies would mean
+([`Dockerfile:5-9`](../../Dockerfile#L5) has the reasoning). Six copies would mean
 fixing the same bug six times.
 
 **Six images**, because `docker build` is run against that one file **six separate
@@ -285,8 +285,8 @@ ENV SERVICE=${SERVICE} # runtime. Visible to the process inside the container.
 while building. `ENV` sets a real environment variable that persists into the
 image and is visible to your Node process via `process.env`.
 
-**Why both appear at [`Dockerfile:52-53`](../Dockerfile#L52) and again at
-[`73`/`86`](../Dockerfile#L73):** the `CMD` above expands `${SERVICE}` at
+**Why both appear at [`Dockerfile:52-53`](../../Dockerfile#L52) and again at
+[`73`/`86`](../../Dockerfile#L73):** the `CMD` above expands `${SERVICE}` at
 *container start*, long after build-time `ARG`s have evaporated. Without the
 `ENV` line, `sh` would expand it to an empty string and the container would try
 to run `node services//dist/index.js`. The apparent duplication is the bridge
@@ -295,7 +295,7 @@ from build time to runtime.
 **`ARG` is scoped per stage.** That's why `ARG SERVICE` appears three separate
 times — lines 52, 59, and 73 — once in each stage that uses it. Declaring it once
 at the top would not carry over. `ARG NODE_VERSION` at
-[line 18](../Dockerfile#L18) sits before any `FROM`, which is the one special
+[line 18](../../Dockerfile#L18) sits before any `FROM`, which is the one special
 case: it's usable in `FROM` lines, and this repo only uses it there.
 
 ## `USER` — stop being root
@@ -320,7 +320,7 @@ code.
 EXPOSE 9099 4000
 ```
 
-In [`docker/firebase-emulator/Dockerfile:16`](../docker/firebase-emulator/Dockerfile#L16).
+In [`docker/firebase-emulator/Dockerfile:16`](../../docker/firebase-emulator/Dockerfile#L16).
 This is worth knowing precisely because it looks more powerful than it is:
 `EXPOSE` **does not open or publish anything**. It records "this image intends to
 serve on these ports" for humans and tooling. Actually making a port reachable
@@ -328,7 +328,7 @@ from your laptop is `ports:` in Compose, or `-p` on `docker run`.
 
 ## `# syntax=docker/dockerfile:1`
 
-[Line 1](../Dockerfile#L1), and it must be the first line to work. It selects
+[Line 1](../../Dockerfile#L1), and it must be the first line to work. It selects
 which version of the Dockerfile parser to use, letting Docker fetch a newer one
 than your local install ships. It's what makes `RUN --mount=type=cache` in Part 3
 legal.
@@ -379,7 +379,7 @@ invalidated too.** Nothing downstream can be reused, because its starting point
 changed.
 
 That single rule is the entire reason for
-[`Dockerfile:27-40`](../Dockerfile#L27):
+[`Dockerfile:27-40`](../../Dockerfile#L27):
 
 ```dockerfile
 FROM base AS manifests
@@ -434,7 +434,7 @@ filesystem — pnpm can't hardlink across it and copies the real files into
 contents of the image.
 
 The `PNPM_HOME=/pnpm` and `PATH` lines at
-[`Dockerfile:22-23`](../Dockerfile#L22) are what put the store at `/pnpm/store`
+[`Dockerfile:22-23`](../../Dockerfile#L22) are what put the store at `/pnpm/store`
 so the mount target matches. `RUN corepack enable` on line 24 turns on the `pnpm`
 command — Node ships corepack for this, so there's no `npm install -g pnpm`.
 
@@ -461,7 +461,7 @@ leave behind the tooling that produced them.
 
 **In this repo:** the `build` stage has the full toolchain — pnpm, tsup,
 TypeScript, dev dependencies, all your source. The `runner` stage
-([`Dockerfile:72`](../Dockerfile#L72)) starts from a *fresh* `node:24-alpine` —
+([`Dockerfile:72`](../../Dockerfile#L72)) starts from a *fresh* `node:24-alpine` —
 note it does **not** say `FROM base`, because it doesn't need pnpm at all — and
 copies in exactly three things: the production `node_modules`, the service's
 `node_modules`, and the compiled `dist/`. No source, no TypeScript, no bundler,
@@ -496,7 +496,7 @@ a shared network with the right dependencies and env vars" is not something you
 want to type by hand.
 
 Compose is for local development here. Nothing in
-[`docker-compose.yml`](../docker-compose.yml) runs in production — Cloud Run
+[`docker-compose.yml`](../../docker-compose.yml) runs in production — Cloud Run
 takes that role in phase 6.
 
 ## `services:` — each key is one container
@@ -537,7 +537,7 @@ Compose creates a private network for the project and puts every container on it
 Inside that network, **each container is reachable at its service name as a
 hostname**.
 
-That's the entire explanation for [line 17](../docker-compose.yml#L17):
+That's the entire explanation for [line 17](../../docker-compose.yml#L17):
 
 ```yaml
 DATABASE_URL: postgresql://deepcs:deepcs@postgres:5432/deepcs
@@ -566,7 +566,7 @@ network. `ports:` exists so *you* — a browser, `curl`, a database GUI running 
 your laptop — can get in. Which is why `stats` has no `ports:`: nothing outside
 ever calls it.
 
-This is also where [`0.0.0.0` from `reading-the-code.md` Part 4](reading-the-code.md)
+This is also where [`0.0.0.0` from `the-code.md` Part 4](the-code.md)
 pays off. Publishing port 8080 forwards to the container's port 8080, but if the
 process inside bound only to loopback, there's nothing listening on the interface
 the forward arrives on, and you get connection refused from a perfectly healthy
@@ -583,7 +583,7 @@ process.
 **Named volume** (`pgdata:...`) — storage Docker manages somewhere on its own. It
 **survives** the container being deleted, which is why your local database isn't
 wiped by `docker compose down`. It has to be declared at the bottom of the file
-too ([line 175](../docker-compose.yml#L175)) — that's what the trailing `volumes:`
+too ([line 175](../../docker-compose.yml#L175)) — that's what the trailing `volumes:`
 block is.
 
 **Bind mount** (`./path:...`) — a directory on *your machine* mapped into the
@@ -607,12 +607,12 @@ collab-1  | {"severity":"INFO",...,"message":"Server listening at http://172.18.
 
 Worth reading all three lines. `tsx` saw a host-side edit through the mount; the
 restart went through `SIGTERM`, so the graceful-shutdown handler from
-`reading-the-code.md` Part 3 ran; and it came back listening on `172.18.0.6` —
+`the-code.md` Part 3 ran; and it came back listening on `172.18.0.6` —
 the container's address on the Compose network, which it only has because the
 process binds `0.0.0.0` rather than loopback.
 
 **The failure mode the Dockerfile warns about**
-([`Dockerfile:48-50`](../Dockerfile#L48)): only `src/` directories are mounted,
+([`Dockerfile:48-50`](../../Dockerfile#L48)): only `src/` directories are mounted,
 never `/app`. Mounting `/app` would put your host directory over the *whole*
 working directory, and your host directory has no `node_modules` in it — that's
 excluded by `.dockerignore` and lives only inside the image. The container's
@@ -630,7 +630,7 @@ Sets environment variables inside the container, readable as `process.env.X`.
 `${LOG_LEVEL:-info}` is substituted **by Compose, before Docker sees it**: use
 the value from your shell or a `.env` file in this directory, and if it's unset or
 empty, use `info`. That's what makes `docker compose up` work with no `.env` file
-at all, as [`.env.example`](../.env.example) promises.
+at all, as [`.env.example`](../../.env.example) promises.
 
 ## `depends_on` and `healthcheck` — start order
 
@@ -661,14 +661,14 @@ healthy. After `retries` consecutive failures it's marked unhealthy.
 Two forms: `['CMD', 'redis-cli', 'ping']` runs a binary directly.
 `['CMD-SHELL', '...']` runs the string through a shell, which you need for pipes
 — `wget -qO- ... | grep -q ready` on
-[line 74](../docker-compose.yml#L74) only works because of `CMD-SHELL`.
+[line 74](../../docker-compose.yml#L74) only works because of `CMD-SHELL`.
 
 **Why it matters**, per the comment at
-[`docker-compose.yml:41-43`](../docker-compose.yml#L41): without the healthcheck,
+[`docker-compose.yml:41-43`](../../docker-compose.yml#L41): without the healthcheck,
 the services start before Postgres accepts connections and crash-loop on boot.
 `depends_on` alone would look correct and fail anyway.
 
-The Firebase healthcheck at [line 65](../docker-compose.yml#L65) is worth reading
+The Firebase healthcheck at [line 65](../../docker-compose.yml#L65) is worth reading
 in full — it documents two separate real bugs. It uses `127.0.0.1` rather than
 `localhost` because `localhost` can resolve to IPv6 `::1` first while the
 emulator binds IPv4 only, so a healthy emulator reports as refused. And it greps
@@ -686,7 +686,7 @@ before the emulator can actually mint tokens.
 startup, unless you explicitly stopped it.
 
 Stats overrides it to `no` because Stats is a **job**: it runs, does its work,
-exits 0, and that's success — per `reading-the-code.md` Part 3, the exit code is
+exits 0, and that's success — per `the-code.md` Part 3, the exit code is
 its entire contract. Restarting it forever would be wrong. So `docker compose ps`
 showing `stats  exited (0)` is the correct outcome, not a failure.
 
@@ -717,7 +717,7 @@ So the six services each inherit the same `environment`, `depends_on`, and
 `restart` without repeating them. Pure deduplication — you could expand it by
 hand and the behaviour would be identical.
 
-The comment at [line 7](../docker-compose.yml#L7) explains what's deliberately
+The comment at [line 7](../../docker-compose.yml#L7) explains what's deliberately
 *not* in the anchor: `build` and `volumes`, because every service overrides both
 anyway, and putting them in the anchor would falsely suggest they were shared.
 
@@ -805,7 +805,7 @@ selects one workspace package, and it works because that service's
 
 `build` is `tsup`, configured per service. The load-bearing line is
 `noExternal: [/^@deepcs\//]` in
-[`services/gateway/tsup.config.ts`](../services/gateway/tsup.config.ts): it
+[`services/gateway/tsup.config.ts`](../../services/gateway/tsup.config.ts): it
 inlines `@deepcs/shared` into the output instead of leaving it as an import. Its
 comment spells out the failure — the shared package resolves through a pnpm
 symlink into a store that won't exist in the runtime image, so leaving it
@@ -837,9 +837,9 @@ The production image, and the payoff for all the staging. `FROM node:...`, not
 `COPY --from` lines pull outputs from two different stages, and everything else
 those stages contained is discarded.
 
-The comment at [line 64](../Dockerfile#L64) covers the subtle part: pnpm's
+The comment at [line 64](../../Dockerfile#L64) covers the subtle part: pnpm's
 symlinks are relative and point inside `/app`, so copying both trees to the same
-paths keeps them resolvable. And [line 81](../Dockerfile#L81) notes that
+paths keeps them resolvable. And [line 81](../../Dockerfile#L81) notes that
 `@deepcs/shared` is deliberately absent — tsup inlined it, so the dangling
 workspace symlink left behind is never followed.
 
@@ -946,7 +946,7 @@ makes your data survive `docker compose down`.
 Note it does **not** merge `*service` — it isn't one of the six and has no use for
 `DATABASE_URL`. Its context is its own subdirectory, so its Dockerfile's `COPY
 firebase.json ./` picks up
-[`docker/firebase-emulator/firebase.json`](../docker/firebase-emulator/firebase.json)
+[`docker/firebase-emulator/firebase.json`](../../docker/firebase-emulator/firebase.json)
 — which binds both the emulator and its UI to `0.0.0.0`, for the reason in Part 4.
 
 ```yaml
@@ -1092,7 +1092,7 @@ docker build --target runner --build-arg SERVICE=gateway -t deepcs/gateway:ci .
 - `.` — **the build context** (Part 1). Easy to forget; it's required.
 
 Run six of those with different `SERVICE` values and you have the six images. CI
-does exactly this in a matrix — [`.github/workflows/ci.yml:129`](../.github/workflows/ci.yml#L129)
+does exactly this in a matrix — [`.github/workflows/ci.yml:129`](../../.github/workflows/ci.yml#L129)
 passes `build-args: SERVICE=${{ matrix.service }}`.
 
 ## Inspecting
@@ -1251,7 +1251,7 @@ on Google Cloud.** Google Cloud never reads your Dockerfile.
 
 ## The chain, end to end
 
-Currently [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) does the
+Currently [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) does the
 first half only. It builds each changed service's `runner` image with
 `push: false`, then `docker run`s it and checks `/health/ready` answers — or for
 Stats, that it exits 0. Then it stops. The comment at the bottom of that file is
@@ -1276,7 +1276,7 @@ layout, only "start this image".
 
 ## What Cloud Run does to your container
 
-Three things, and `reading-the-code.md` Part 3 already covered the code side of
+Three things, and `the-code.md` Part 3 already covered the code side of
 each:
 
 - **Injects `PORT`** and expects you to listen on it. Hence

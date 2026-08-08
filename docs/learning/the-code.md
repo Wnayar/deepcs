@@ -5,8 +5,8 @@ after a session where the syntax — not the architecture — was the thing in t
 way.
 
 **The goal is bounded on purpose.** Not "learn JavaScript". The goal is that
-[`packages/shared/src/service.ts`](../packages/shared/src/service.ts) and
-[`services/stats/src/index.ts`](../services/stats/src/index.ts) read as ordinary
+[`packages/shared/src/service.ts`](../../packages/shared/src/service.ts) and
+[`services/stats/src/index.ts`](../../services/stats/src/index.ts) read as ordinary
 English by the end. Those two files use nearly every construct the rest of the
 repo uses, so clearing them clears the repo.
 
@@ -19,7 +19,7 @@ before any syntax. Skim Parts 1–4, work through Part 5 with the real files ope
 and come back to whatever stopped you.
 
 **Docker is a separate doc.** This one covers the code that runs inside the
-container. [`reading-docker.md`](reading-docker.md) covers the container itself —
+container. [`docker.md`](docker.md) covers the container itself —
 the `Dockerfile`, `docker-compose.yml`, and how both connect to Cloud Run.
 
 ---
@@ -80,7 +80,7 @@ const double = (x) => x * 2;        // one expression: return is implicit
 ```
 
 The third form is why arrows are everywhere. From
-[`services.ts`](../packages/shared/src/services.ts):
+[`services.ts`](../../packages/shared/src/services.ts):
 
 ```ts
 level: (label) => ({ severity: label.toUpperCase() })
@@ -111,7 +111,7 @@ export function createService({ name, port }: ServiceOptions) {
 ```
 
 The caller passes one object; the function immediately splits it into two
-variables. From [`gateway/src/index.ts`](../services/gateway/src/index.ts):
+variables. From [`gateway/src/index.ts`](../../services/gateway/src/index.ts):
 
 ```ts
 createService({ name: 'gateway', port: SERVICES.gateway.port })
@@ -290,7 +290,7 @@ await app.listen({ port: 8080 });   // pauses here until the server is listening
 
 **The rule:** `await` is only legal inside a function marked `async`, or at the
 top level of an ES module (which is why
-[`gateway/src/index.ts:8`](../services/gateway/src/index.ts#L8) can just say
+[`gateway/src/index.ts:8`](../../services/gateway/src/index.ts#L8) can just say
 `await start();`).
 
 **An `async` function always returns a Promise**, even if the body returns a
@@ -315,7 +315,7 @@ app.close().then(onSuccess, onFailure);
 ```
 
 `.then()` takes up to two functions: the first runs if it succeeded, the second
-if it threw. [`stats/src/index.ts`](../services/stats/src/index.ts) uses exactly
+if it threw. [`stats/src/index.ts`](../../services/stats/src/index.ts) uses exactly
 this two-argument form:
 
 ```ts
@@ -387,7 +387,7 @@ const x = require('y');   // CommonJS — the old one. Fastify is built this way
 `package.json` in this repo has it.
 
 **Why it matters to you:** the comment at
-[`service.ts:5-12`](../packages/shared/src/service.ts#L5) turns on this. A
+[`service.ts:5-12`](../../packages/shared/src/service.ts#L5) turns on this. A
 bundler can strip unused code out of ESM (**tree-shaking**) because the imports
 are fixed and readable ahead of time. It can't safely do that with CommonJS,
 because `require()` can be called with a computed string at runtime. That's the
@@ -662,7 +662,7 @@ interface — Cloud Run Jobs decides whether to retry based on that number.
 ## `process.hrtime.bigint()`
 
 A high-resolution timer in nanoseconds, used in
-[`stats/src/index.ts`](../services/stats/src/index.ts):
+[`stats/src/index.ts`](../../services/stats/src/index.ts):
 
 ```ts
 const startedAt = process.hrtime.bigint();
@@ -964,7 +964,7 @@ The whole vocabulary is four functions and a couple of matchers.
 
 ## The shape
 
-From [`gateway/src/health.test.ts`](../services/gateway/src/health.test.ts):
+From [`gateway/src/health.test.ts`](../../services/gateway/src/health.test.ts):
 
 ```ts
 import { describe, expect, it } from 'vitest';

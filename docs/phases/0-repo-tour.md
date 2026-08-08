@@ -41,7 +41,7 @@ flowchart LR
 ```
 
 The local half was verified end-to-end — the evidence table is in
-[`0-review.md`](0-review.md#L29). The cloud half creates **zero repo changes**
+[`0-review.md`](../reviews/0-review.md#L29). The cloud half creates **zero repo changes**
 except filling in a gitignored `.env`. You are not going to be editing code
 during `0-cloud-setup.md`; the only file you'll even open is
 [`infra/killswitch/index.js`](../../infra/killswitch/index.js), and only to read it.
@@ -51,7 +51,7 @@ The three phase-0 docs, so you know which is which:
 | Doc | Step of the loop | What it is |
 |---|---|---|
 | [`0-prebrief.md`](0-prebrief.md) | 1 — decide | The five decisions (D1–D5) taken before any code existed, each with the reasoning |
-| [`0-review.md`](0-review.md) | 3 — review | What got built, what was verified, two real bugs hit along the way, and 8 questions with answers |
+| [`0-review.md`](../reviews/0-review.md) | 3 — review | What got built, what was verified, two real bugs hit along the way, and 8 questions with answers |
 | [`0-cloud-setup.md`](0-cloud-setup.md) | 2 — build (your half) | The tutorial you're about to work through |
 
 ---
@@ -96,7 +96,7 @@ runs arbitrary code on your machine and in CI, with your credentials, before any
 of your own code executes — the classic supply-chain attack. esbuild is the one
 exception here because its postinstall is what downloads the platform-native
 binary; without it `tsup` and `vitest` are both dead. The cost is real and named
-in [`0-review.md`](0-review.md#L206): an esbuild compromise now reaches you.
+in [`0-review.md`](../reviews/0-review.md#L206): an esbuild compromise now reaches you.
 
 ---
 
@@ -185,7 +185,7 @@ job for "this package correctly has no tests yet" trains you to ignore red.
 | [`docker/firebase-emulator/firebase.json`](../../docker/firebase-emulator/firebase.json) | Emulator config: Auth on 9099, UI on 4000, both bound to `0.0.0.0`. |
 
 **If Docker itself is the unfamiliar part**, not just this repo's use of it,
-[`reading-docker.md`](../reading-docker.md) is the primer: image vs container, the
+[`reading/docker.md`](../learning/docker.md) is the primer: image vs container, the
 nine instructions this repo uses, the layer cache, Compose, and a line-by-line
 walk of both files. The rest of this section assumes the vocabulary.
 
@@ -278,28 +278,33 @@ flowchart LR
   file list with plain `git diff` and emits a JSON array of service names.
   Touching anything shared (`packages/`, `Dockerfile`, the lockfile, root
   configs) rebuilds all six, because those are compiled into every image.
-- **[`lint`](../../.github/workflows/ci.yml#L78)** — repo-wide checks belong in
+- **[`lint`](../../.github/workflows/ci.yml#L85)** — repo-wide checks belong in
   one job, not repeated six times in the matrix.
-- **[`service`](../../.github/workflows/ci.yml#L92)** — a **matrix** job: one
+- **[`service`](../../.github/workflows/ci.yml#L99)** — a **matrix** job: one
   parallel copy per changed service, `fail-fast: false` so one failure doesn't
   cancel the others' results.
 
-**Look closer — [the smoke test](../../.github/workflows/ci.yml#L139), the step
+**If CI itself is the unfamiliar part**, not just this repo's use of it,
+[`reading/ci.md`](../learning/ci.md) is the primer: what "CI" actually does (and
+doesn't) control, the handful of GitHub Actions keywords this file uses, and a
+line-by-line walk of all three jobs.
+
+**Look closer — [the smoke test](../../.github/workflows/ci.yml#L146), the step
 that looks redundant.** It builds the real `runner` image and `docker run`s it,
 then curls `/health/ready`. Typecheck and test already passed at that point — so
 why?
 
 Because during phase 0 exactly that scenario happened, and it's written up in
-[`0-review.md`](0-review.md#L51): `pnpm build` exited 0 and produced a bundle
+[`0-review.md`](../reviews/0-review.md#L51): `pnpm build` exited 0 and produced a bundle
 that died at import with `Dynamic require of "os" is not supported`. `tsup`
 exits 0 on a broken bundle, and `pnpm test` runs from source and never touches
 `dist/`. **A green build is not a working artifact.** The only check that would
 have caught it is running the thing you actually ship — which is now this step.
 
-Stats is smoke-tested differently ([line 142](../../.github/workflows/ci.yml#L142)):
+Stats is smoke-tested differently ([line 150](../../.github/workflows/ci.yml#L150)):
 it's a job, so success is `docker run` exiting 0, not a port answering.
 
-The deploy step is [deliberately absent](../../.github/workflows/ci.yml#L156)
+The deploy step is [deliberately absent](../../.github/workflows/ci.yml#L163)
 until there's a GCP project with a tested billing guard in front of it. That's
 what you're about to build.
 
@@ -410,5 +415,5 @@ If you read three files before starting cloud setup, read these:
 3. [`infra/killswitch/index.js`](../../infra/killswitch/index.js) — the thing
    you're about to deploy.
 
-Then [`0-review.md`](0-review.md#L111)'s eight questions. Answer them before
+Then [`0-review.md`](../reviews/0-review.md#L111)'s eight questions. Answer them before
 reading the answers; the gap is the signal.
