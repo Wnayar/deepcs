@@ -5,11 +5,12 @@ without it. Work top to bottom — the order matters in one place.
 
 ## Before you start
 
-**On "the UI today":** my knowledge runs to May 2026 and it's now August, so
-console layouts may have shifted. This guide leans on `gcloud` (the command-line
-tool for Google Cloud), which barely changes, and uses the web console only
-where there's no CLI path or where the console wires up permissions for you.
-Where I give console steps I give the URL too, because URLs outlive buttons.
+**On "the UI today":** my knowledge runs to January 2026 and it's now August —
+seven months, so console layouts have had real time to shift. This guide leans
+on `gcloud` (the command-line tool for Google Cloud), which barely changes, and
+uses the web console only where there's no CLI path or where the console wires
+up permissions for you. Where I give console steps I give the URL too, because
+URLs outlive buttons.
 
 If a screen doesn't match what's described, **tell me what you see** rather than
 clicking the nearest-looking thing — especially anywhere near billing.
@@ -565,8 +566,12 @@ password. Phase 1 wires the Gateway to verify the tokens it issues.
 6. Gear icon → **Project settings** → **General** → scroll to **Your apps** →
    click the web icon **`</>`** → nickname `deepcs-web` → **do not** tick Firebase
    Hosting → **Register app**.
-7. Copy the `firebaseConfig` object. You need `apiKey`, `authDomain`,
-   `projectId`, `appId`.
+7. Copy the `firebaseConfig` object. You need `apiKey`, `authDomain`, `appId` —
+   `projectId` is just `$PROJECT_ID` again, nothing new to save. Add the three
+   to `.env` as `FIREBASE_API_KEY`, `FIREBASE_AUTH_DOMAIN`, `FIREBASE_APP_ID`
+   (new lines; `.env.example` now has them). Nothing in the repo reads them
+   yet — no frontend exists — you're saving them now because the console tab
+   is already open.
 
 **On that `apiKey`:** it is not a secret. It's a public identifier that tells
 Firebase which project a request is for — it ships inside your JavaScript bundle
