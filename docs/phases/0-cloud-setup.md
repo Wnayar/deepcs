@@ -5,11 +5,12 @@ without it. Work top to bottom — the order matters in one place.
 
 ## Before you start
 
-**On "the UI today":** my knowledge runs to May 2026 and it's now August, so
-console layouts may have shifted. This guide leans on `gcloud` (the command-line
-tool for Google Cloud), which barely changes, and uses the web console only
-where there's no CLI path or where the console wires up permissions for you.
-Where I give console steps I give the URL too, because URLs outlive buttons.
+**On "the UI today":** my knowledge runs to January 2026 and it's now August —
+seven months, so console layouts have had real time to shift. This guide leans
+on `gcloud` (the command-line tool for Google Cloud), which barely changes, and
+uses the web console only where there's no CLI path or where the console wires
+up permissions for you. Where I give console steps I give the URL too, because
+URLs outlive buttons.
 
 If a screen doesn't match what's described, **tell me what you see** rather than
 clicking the nearest-looking thing — especially anywhere near billing.
@@ -279,9 +280,18 @@ sequenceDiagram
     Note over API: billing link severed —<br/>resources may now be DELETED
 ```
 
-**Why this exists at all: Google Cloud has no "stop at $X" setting.** Budgets are
-alerts, not limits. There is no checkbox anywhere that caps spend. So the cap has
-to be assembled from an alert, a message bus, and code that reacts to it.
+**Why this exists at all: Google Cloud has no *general* "stop at $X" setting.** An
+ordinary budget is an alert, not a limit — it can notify and nothing else. So a
+whole-project cap has to be assembled from an alert, a message bus, and code that
+reacts to it.
+
+**Updated 2026-08-08.** There is now a partial exception: **spend cap
+enforcement**, in Preview, which does hard-stop usage. It covers four services —
+Gemini API, Agent Platform, Cloud Run and Cloud Run functions — one project and
+one service per budget, and it cannot see storage, egress, Cloud Build or GKE.
+You'll create one for Cloud Run in Part 6 alongside this. It doesn't replace what
+you're building here: this function is still the only thing that can stop an
+entire project.
 
 **Budget** — a spending threshold with notification rules. Watching it costs
 nothing and it enforces nothing; all it can do is notify.
@@ -322,7 +332,8 @@ DESIGN.md §7 calls this a backstop rather than a cap. Here's why, concretely:
    $20 substantially before this ever fires.
 2. **Detaching is destructive.** It is not a pause button. Resources can be
    deleted rather than suspended.
-3. **It fails silently** if the IAM binding in Part 5.2 is wrong.
+3. **It fails silently** if the IAM bindings in 5.2 *or* 5.3 are wrong — the
+   billing link has two ends and both must be granted.
 
 The actual day-to-day cost control is layer 2 in DESIGN.md §7: `--max-instances`
 on Cloud Run, which caps the thing that actually generates runaway bills —
@@ -362,16 +373,22 @@ gcloud billing accounts add-iam-policy-binding "$BILLING_ACCOUNT" \
 Read that as the IAM sentence from Part 1: principal `killswitch@…` has role
 `billing.admin` on resource **the billing account**.
 
-**This is the step that fails silently, and here is the exact mechanism.** Look
-back at the map: the thing being changed is the *link between the project and
-the billing account*, and that link is owned by the billing-account side. A role
-granted on the project therefore governs nothing relevant to it. Since the
-function's code is fine and the trigger fires normally, what you get is a
-function that runs, logs "detached", and leaves billing fully enabled — a
-kill-switch that reports success while doing nothing. You would discover this
-during the incident it was built for.
+**This is the step people miss, and here is the exact mechanism.** Look back at
+the map: the thing being changed is the *link between the project and the
+billing account*. Grant only on the project and the billing-account half is
+missing, so the call is refused. Since the function's code is fine and the
+trigger fires normally, what you get is a function that runs and leaves billing
+fully enabled — a kill-switch that reports success while doing nothing. You
+would discover this during the incident it was built for.
 
-Section 5.5 is designed specifically to catch this.
+**This grant is necessary but not sufficient.** The link has two ends, and IAM
+checks both. `billing.admin` here covers the billing-account end; the project
+end is granted separately in 5.3. Verified empirically on 2026-08-08 — with only
+this binding in place, the function failed on its *first* Cloud Billing call
+(`index.js:65`, the read) with `The caller does not have permission`, before
+reaching anything destructive.
+
+Section 5.5 is designed specifically to catch both halves.
 
 ## 5.3 Supporting IAM
 
@@ -387,17 +404,43 @@ gcloud projects add-iam-policy-binding "$TEST_PROJECT" \
 gcloud projects add-iam-policy-binding "$TEST_PROJECT" \
   --member="serviceAccount:service-${TEST_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountTokenCreator"
+
+# The project end of the billing link — see 5.2.
+gcloud projects add-iam-policy-binding "$TEST_PROJECT" \
+  --member="serviceAccount:${KS_SA}" --role="roles/browser"
+
+gcloud projects add-iam-policy-binding "$TEST_PROJECT" \
+  --member="serviceAccount:${KS_SA}" --role="roles/billing.projectManager"
 ```
 
 Every project has both an **id** (the string you chose) and a **number** (assigned
 by Google). Some Google-internal service accounts are addressed by number, which
 is why the first line looks it up.
 
-The three grants, in order: the function may receive Eventarc events; the
-function may be invoked as a Cloud Run service; and Pub/Sub's own service
-account may mint tokens on behalf of yours, which is how the delivered request
-arrives authenticated. These are pre-granted here to save you a round of deploy
-failures — the deploy will otherwise stop and tell you about them one at a time.
+The first three: the function may receive Eventarc events; the function may be
+invoked as a Cloud Run service; and Pub/Sub's own service account may mint tokens
+on behalf of yours, which is how the delivered request arrives authenticated.
+These are pre-granted to save you a round of deploy failures — the deploy would
+otherwise stop and tell you about them one at a time.
+
+**The last two are the project end of the billing link**, and they are the
+reason 5.2 alone isn't enough. `index.js` makes two Cloud Billing calls, and
+each is authorised against a different resource:
+
+- `GET …/billingInfo` (line 65) needs `resourcemanager.projects.get` **on the
+  project** — `roles/browser` is the smallest role containing it.
+- `PUT …/billingInfo` (line 74) needs
+  `resourcemanager.projects.deleteBillingAssignment` **on the project**, plus the
+  `billing.resourceAssociations` permissions **on the billing account** from 5.2.
+  `roles/billing.projectManager` holds exactly the two project-side billing
+  permissions and nothing else.
+
+Deliberately not `roles/viewer` or `roles/editor`: this identity can disable
+billing, so it gets the narrowest roles that work.
+
+If the project sat inside an **organization**, `roles/billing.admin` granted at
+the org level would cover both ends and these two lines would be redundant. Ours
+sits under "No organization", so they are required.
 
 ## 5.4 Topic and deploy
 
@@ -474,7 +517,9 @@ gcloud functions logs read stop-billing --gen2 \
 |---|---|
 | Nothing at all | The trigger didn't fire — check the topic name and that the Eventarc trigger exists |
 | `budget notification received` then `under budget` | The payload parsed but took the no-op branch — check your JSON |
-| 403 or `PERMISSION_DENIED` on `cloudbilling` | **Step 5.2 didn't take.** The binding is on the wrong resource, or the account email is wrong |
+| `The caller does not have permission` at `index.js:65` (the read) | The **project** end is missing — the two `roles/browser` / `roles/billing.projectManager` grants at the end of 5.3 |
+| `The caller does not have permission` at `index.js:74` (the write) | The **billing account** end is missing — step 5.2 didn't take, or the account email is wrong |
+| `SyntaxError: Bad control character in string literal` | Your terminal wrapped the `--message` JSON across lines. Re-publish it on a single line |
 | `TARGET_PROJECT_ID is not set` | The `--set-env-vars` flag didn't land |
 
 **What this test proves, and what it doesn't.** It proves the function code, the
@@ -537,11 +582,62 @@ console-wired step is cheaper than that risk.
 ## 6.3 Confirm
 
 ```bash
-gcloud billing budgets list --billing-account="$BILLING_ACCOUNT"
+gcloud billing budgets list --billing-account="$BILLING_ACCOUNT" \
+  --billing-project="$PROJECT_ID"
 ```
 
 You should see the budget with three threshold rules and the Pub/Sub topic
 attached.
+
+**`--billing-project` is not optional here**, unlike everywhere else in this
+guide. This command runs through a client library that requires a **quota
+project** — the project an API call is attributed to for quota accounting.
+Without the flag, gcloud attributes the call to its own shared client project
+(`32555940559`), where `billingbudgets` is not enabled, and returns
+`SERVICE_DISABLED` phrased as a permission error on *your* billing account.
+Misleading enough to waste ten minutes. Running
+`gcloud auth application-default login` does **not** fix it.
+
+Two things this listing will not show you:
+
+- The **currency is your billing account's**, not USD. A Singapore account
+  denominates the budget in SGD, so "20" is roughly USD 15 — stricter than
+  intended, which is the safe direction.
+- **Spend cap budgets do not appear at all.** Verified 2026-08-08 against both
+  `v1` and `v1beta1` of the Cloud Billing Budgets API: a spend cap budget that
+  the console lists as "Configured" is absent from both. The console is the only
+  place to see or manage them. Don't read the absence as a failed creation.
+
+## 6.4 The spend cap budget — a second, separate budget
+
+This is layer 6 of DESIGN.md §7, and it did not exist when this guide was first
+written. Console only; there is no CLI path.
+
+Billing → **Budgets & alerts** → **Create budget**:
+
+1. **Define** → **Spend cap enforcement** (marked Preview) → name
+   `deepcs-cloudrun-cap`
+2. **Scope** → Project `deepcs-<suffix>` → Service **Cloud Run**
+3. **Amount** → `20`
+4. Finish
+
+**Pick "Cloud Run", never "Cloud Run functions".** Your kill-switch bills under
+*Cloud Run functions*. Capping that service would block new invocations of the
+backstop itself — a cost control that disables your other cost control.
+
+Two behaviours that differ from the budget in 6.2, and both matter:
+
+- **It enforces on gross cost, ignoring credits.** The 6.2 budget tracks spend
+  *net* of trial credits, so it stays near $0 and never fires during the trial —
+  correct, since Google can't charge you then anyway. The spend cap counts gross,
+  so it *can* fire while credits are still paying. If Cloud Run goes quiet
+  unexpectedly during phase 6, check here first.
+- **Its thresholds are fixed at 50 / 80 / 100%** and its notifications aren't
+  configurable. You can't attach a Pub/Sub topic, which is why this cannot
+  replace 6.2.
+
+Recovery is trivial compared to the kill-switch: lift the cap in the console and
+the service resumes within about an hour. Nothing is deleted.
 
 ---
 
@@ -565,8 +661,12 @@ password. Phase 1 wires the Gateway to verify the tokens it issues.
 6. Gear icon → **Project settings** → **General** → scroll to **Your apps** →
    click the web icon **`</>`** → nickname `deepcs-web` → **do not** tick Firebase
    Hosting → **Register app**.
-7. Copy the `firebaseConfig` object. You need `apiKey`, `authDomain`,
-   `projectId`, `appId`.
+7. Copy the `firebaseConfig` object. You need `apiKey`, `authDomain`, `appId` —
+   `projectId` is just `$PROJECT_ID` again, nothing new to save. Add the three
+   to `.env` as `FIREBASE_API_KEY`, `FIREBASE_AUTH_DOMAIN`, `FIREBASE_APP_ID`
+   (new lines; `.env.example` now has them). Nothing in the repo reads them
+   yet — no frontend exists — you're saving them now because the console tab
+   is already open.
 
 **On that `apiKey`:** it is not a secret. It's a public identifier that tells
 Firebase which project a request is for — it ships inside your JavaScript bundle
@@ -637,7 +737,12 @@ Free tier is 0.5 GB. Tell me if signup states otherwise.
 1. **https://console.upstash.com** → sign up.
 2. **Create Database** → Redis.
    - Name: `deepcs`
-   - Primary region: **Singapore (ap-southeast-1)**
+   - Primary region: **AWS · Singapore (ap-southeast-1)**. Upstash also offers
+     Google Cloud regions, which would put Redis in the same cloud as Cloud Run
+     — but as of 2026-08-09 its only Asian GCP region is `asia-northeast1`
+     (Tokyo), ~5,300 km away and ~70–80 ms round trip. Redis is on the hot path
+     of every request via the rate limiter, so physical distance beats
+     same-cloud. Take AWS Singapore.
    - Type: **Regional**, not Global. Global replicates writes across regions,
      which costs extra commands out of your daily budget and buys nothing when
      all your compute is in one region.
@@ -665,10 +770,18 @@ What that costs: the question-bank cache (job five, and the only one that's a
 pure optimisation) now has to bound its own size with explicit TTLs, because
 nothing will clean up after it. That's a phase-2 task, and I'll handle it there.
 
-**Check the stated free-tier command limit.** DESIGN.md §8 builds a real argument
-on 10,000 commands/day — it's why the cloud load test is deliberately the smaller
-of the two, and why the k6 scaling curve comes from local runs. **If the number
-you see differs, tell me, because that argument changes.**
+**The free-tier limit is 500,000 commands per month**, not the 10,000/day this
+guide and DESIGN.md §8 originally claimed — confirmed from the console on
+2026-08-09, which reads `COMMANDS 0 / 500k per month`. The 10,000 figure is
+Upstash's commands-per-*second* rate ceiling, a different limit that appears in
+the same pricing table. Both docs are now corrected.
+
+Also on that page: **256 MB** storage and **50 GB** bandwidth per month.
+
+The monthly period is the part that matters. A daily allowance refills each
+morning, so overspending it costs a day; a monthly one doesn't, so one heavy load
+test can leave the rest of the month short — and the Gateway's rate limiter draws
+on the same pool for every ordinary request. DESIGN.md §8 has the arithmetic.
 
 ---
 
@@ -682,6 +795,7 @@ you see differs, tell me, because that argument changes.**
 - [ ] Throwaway deleted
 - [ ] Kill-switch deployed to the real project with the right `TARGET_PROJECT_ID`
 - [ ] $20 budget with 50/90/100% thresholds and the Pub/Sub topic connected
+- [ ] Spend cap budget on **Cloud Run** (not Cloud Run functions) created
 - [ ] Firebase added to the **same** project; Email/Password enabled; web app config saved
 - [ ] Neon project in Singapore; **pooled** connection string saved
 - [ ] Upstash regional database in Singapore; eviction off; `rediss://` string saved

@@ -1,4 +1,4 @@
-# Phase 0 — pre-brief
+# Phase 0 — prebuild decisions
 
 Step 1 of the loop: the decisions this phase forces, before any code exists.
 My call is stated on each. Push back on anything you disagree with — that is the
