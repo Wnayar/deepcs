@@ -13,6 +13,91 @@ and how the pieces connect.
 
 ---
 
+# The four things — read this page, then stop if you're short on time
+
+Phase 1 is ~270 lines of actual code and **four ideas**. Everything else is
+plumbing that follows from them. Each one below is a failure that would be
+invisible until it mattered, the line that prevents it, and the version you'd say
+out loud.
+
+## 1. The audience check · ~5 min
+
+📄 [`auth.ts:96`](../../services/gateway/src/auth.ts#L96)
+
+**The failure:** you verify a Firebase token's signature, its expiry, and its
+issuer. All three pass. It was issued for someone else's Firebase project, and
+you have just authenticated their user as one of yours.
+
+**Why it happens:** Google signs *every* Firebase project's ID tokens with the
+same key set. Signature alone therefore proves the token came from Google — not
+that it was meant for you.
+
+**Say it as:** *"Signature proves who signed it. `aud` proves who it was for.
+With a shared key set you need both, and `aud` is the one people forget."*
+
+## 2. The lost update · ~15 min — the one worth the most in an interview
+
+📄 [`rate-limit.ts:31-95`](../../services/gateway/src/rate-limit.ts#L31) ·
+test at [`rate-limit.test.ts:90`](../../services/gateway/src/rate-limit.test.ts#L90)
+
+**The failure:** a user's rate-limit bucket has one token left. Two Gateway
+instances each read `1`, each decide they may proceed, each write `0`. Two
+requests allowed, one token spent. The limit is now a suggestion.
+
+**Why an in-process lock doesn't fix it:** it would guard one instance's own
+memory, at an address the other instance cannot reach and has never heard of.
+This needs no threads and no shared memory — two ordinary processes on two
+machines are enough.
+
+**The fix:** atomicity has to live where the single copy of the state lives. A
+Redis Lua script runs start-to-finish with nothing interleaved.
+
+**Why a script and not `INCR`:** a fixed window is one atomic operation. A token
+bucket reads two values, computes a refill from elapsed time, and writes both
+back — three steps, so atomicity has to wrap them.
+
+**Say it as:** *"Read-modify-write across two processes is a lost update. You
+can't lock it locally because the state isn't local. Put the operation where the
+state is."*
+
+## 3. `ON CONFLICT DO NOTHING RETURNING` · ~5 min
+
+📄 [`repository.ts:36`](../../services/users/src/repository.ts#L36)
+
+**The failure:** you emit `user.signed_up` every time the client calls
+`/users/me`, which is on every sign-in. Your sign-up metric is a request counter.
+
+**The mechanism:** `ON CONFLICT … DO NOTHING` returns **no row** when the row
+already existed. An empty result is therefore proof this was the first sight of
+that UID — and since there is no signup endpoint, it is the only such proof
+available.
+
+**Say it as:** *"The empty result is the signal. `DO UPDATE` would return a row
+every time and destroy it."*
+
+## 4. `GRANT USAGE` is the service boundary · ~5 min
+
+📄 [`002_service_roles.sql:44`](../../packages/db/migrations/002_service_roles.sql#L44)
+
+**The failure:** six services share one database. Someone writes a query joining
+across two services' tables because it is easier. The services are no longer
+independently deployable and nobody notices for a year.
+
+**The mechanism:** each service connects as its own Postgres role with `USAGE` on
+its own schema only. Without `USAGE`, every reference to a table in another
+schema fails at name resolution — *before* table-level permissions are even
+considered. One missing grant is the whole boundary.
+
+**Say it as:** *"The boundary is enforced by the database, not by convention. A
+cross-service query doesn't get reviewed — it gets refused."*
+
+---
+
+**If you have 20 minutes total:** read the four above, then run Part 6's demo.
+Everything between is reference for when something breaks.
+
+---
+
 ## Read the code in this order
 
 Roughly 700 lines total, and the first three files are 80% of the ideas.
