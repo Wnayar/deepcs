@@ -737,7 +737,12 @@ Free tier is 0.5 GB. Tell me if signup states otherwise.
 1. **https://console.upstash.com** → sign up.
 2. **Create Database** → Redis.
    - Name: `deepcs`
-   - Primary region: **Singapore (ap-southeast-1)**
+   - Primary region: **AWS · Singapore (ap-southeast-1)**. Upstash also offers
+     Google Cloud regions, which would put Redis in the same cloud as Cloud Run
+     — but as of 2026-08-09 its only Asian GCP region is `asia-northeast1`
+     (Tokyo), ~5,300 km away and ~70–80 ms round trip. Redis is on the hot path
+     of every request via the rate limiter, so physical distance beats
+     same-cloud. Take AWS Singapore.
    - Type: **Regional**, not Global. Global replicates writes across regions,
      which costs extra commands out of your daily budget and buys nothing when
      all your compute is in one region.
@@ -765,10 +770,18 @@ What that costs: the question-bank cache (job five, and the only one that's a
 pure optimisation) now has to bound its own size with explicit TTLs, because
 nothing will clean up after it. That's a phase-2 task, and I'll handle it there.
 
-**Check the stated free-tier command limit.** DESIGN.md §8 builds a real argument
-on 10,000 commands/day — it's why the cloud load test is deliberately the smaller
-of the two, and why the k6 scaling curve comes from local runs. **If the number
-you see differs, tell me, because that argument changes.**
+**The free-tier limit is 500,000 commands per month**, not the 10,000/day this
+guide and DESIGN.md §8 originally claimed — confirmed from the console on
+2026-08-09, which reads `COMMANDS 0 / 500k per month`. The 10,000 figure is
+Upstash's commands-per-*second* rate ceiling, a different limit that appears in
+the same pricing table. Both docs are now corrected.
+
+Also on that page: **256 MB** storage and **50 GB** bandwidth per month.
+
+The monthly period is the part that matters. A daily allowance refills each
+morning, so overspending it costs a day; a monthly one doesn't, so one heavy load
+test can leave the rest of the month short — and the Gateway's rate limiter draws
+on the same pool for every ordinary request. DESIGN.md §8 has the arithmetic.
 
 ---
 
