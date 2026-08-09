@@ -32,6 +32,7 @@ WORKDIR /app
 FROM base AS manifests
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY packages/shared/package.json      packages/shared/
+COPY packages/db/package.json          packages/db/
 COPY services/gateway/package.json     services/gateway/
 COPY services/users/package.json       services/users/
 COPY services/questions/package.json   services/questions/

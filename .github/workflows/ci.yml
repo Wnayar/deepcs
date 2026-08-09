@@ -105,6 +105,34 @@ jobs:
       matrix:
         service: ${{ fromJSON(needs.changes.outputs.services) }}
     name: ${{ matrix.service }}
+
+    # Real Postgres and Redis, not mocks (§8). The two things phase 1 must
+    # prove — a Lua script's atomicity, and a role being refused another
+    # schema — are properties of those systems. A mock would only prove the
+    # mock agrees with itself.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: deepcs
+          POSTGRES_PASSWORD: deepcs
+          POSTGRES_DB: deepcs
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U deepcs -d deepcs"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://deepcs:deepcs@127.0.0.1:5432/deepcs
+      USERS_DATABASE_URL: postgresql://users_svc:users_svc@127.0.0.1:5432/deepcs
+      REDIS_URL: redis://127.0.0.1:6379
+
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -114,6 +142,12 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+
+      # Schema and roles before the tests that assert on them. Idempotent, so
+      # running it in all six jobs costs a few seconds and keeps each job
+      # self-contained rather than ordered behind a shared setup job.
+      - name: migrate
+        run: pnpm --filter @deepcs/db migrate
 
       - name: typecheck
         run: pnpm --filter "@deepcs/${{ matrix.service }}" typecheck

@@ -6,9 +6,11 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    // infra/ is plain Node JS deployed straight to Cloud Functions — it never
-    // goes through TypeScript, so the Node globals have to be declared.
-    files: ['infra/**/*.js'],
+    // Plain Node JS that never goes through TypeScript, so the Node globals
+    // have to be declared: infra/ is deployed straight to Cloud Functions, and
+    // packages/db is the migration runner (ADR-10 — .sql files and a .mjs
+    // script, deliberately no build step).
+    files: ['infra/**/*.js', 'packages/db/**/*.mjs'],
     languageOptions: {
       globals: { process: 'readonly', console: 'readonly', Buffer: 'readonly' },
     },

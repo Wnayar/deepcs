@@ -71,3 +71,20 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - [DESIGN.md](./DESIGN.md) — the architecture and reasoning; every other doc cites it by section
 - [docs/phases/0-repo-tour.md](./docs/phases/0-repo-tour.md) — what every file in the repo is for
 - [docs/phases/0-prebuild-decisions.md](./docs/phases/0-prebuild-decisions.md) — decisions already made, with the reasoning, before re-litigating one
+- [docs/phases/1-auth-and-gateway.md](./docs/phases/1-auth-and-gateway.md) — how auth, the rate limiter and the schema boundary work, and how to demonstrate each
+
+### Working conventions established in phase 1
+
+- **Postgres access is `pg` + hand-written parameterized SQL** (ADR-10). No ORM.
+  Migrations are numbered `.sql` files in `packages/db/migrations`, applied by
+  `pnpm --filter @deepcs/db migrate`. Drizzle is deferred, not rejected — it is
+  item 1 in DESIGN.md §10's additive backlog. Don't introduce it ad hoc.
+- **Every service connects as its own Postgres role** and queries are fully
+  schema-qualified (`users.profiles`). A query that crosses a schema is a bug the
+  database will reject, not a shortcut.
+- **`X-User-Id` is set only by the Gateway**, which strips any inbound copy.
+  Downstream, absent means *anonymous*, never "skip the check".
+- **Shared code uses subpath exports, no barrel** (`@deepcs/shared/db`, not
+  `@deepcs/shared`). The reason is in `packages/shared/src/service.ts`.
+- **Tests use real Postgres and Redis, not mocks** (§8). CI provides both as
+  service containers.

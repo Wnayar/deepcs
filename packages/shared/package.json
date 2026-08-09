@@ -7,7 +7,10 @@
   "exports": {
     "./service": "./src/service.ts",
     "./logger": "./src/logger.ts",
-    "./services": "./src/services.ts"
+    "./services": "./src/services.ts",
+    "./db": "./src/db.ts",
+    "./redis": "./src/redis.ts",
+    "./headers": "./src/headers.ts"
   },
   "scripts": {
     "build": "echo 'consumed from source; bundled into each service by tsup' && exit 0",
@@ -16,10 +19,13 @@
   },
   "dependencies": {
     "fastify": "catalog:",
+    "ioredis": "catalog:",
+    "pg": "catalog:",
     "pino": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/pg": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
