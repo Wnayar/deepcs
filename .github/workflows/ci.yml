@@ -189,7 +189,25 @@ jobs:
           if [ "${{ matrix.service }}" = "stats" ]; then
             docker run --rm deepcs/stats:ci
           else
-            docker run -d --name smoke -p 8080:8080 -e PORT=8080 \
+            # --network host, not -p: the image has to reach the Postgres and
+            # Redis *service containers*, and inside a bridged container
+            # 127.0.0.1 is that container itself, not the runner. Sharing the
+            # runner's network stack makes 127.0.0.1:5432 mean what the env
+            # vars above say it means.
+            #
+            # The env vars are not decoration. From phase 1 the services refuse
+            # to start without their config — createPool throws on a missing
+            # DATABASE_URL, createVerifier on a missing FIREBASE_PROJECT_ID —
+            # which is deliberate, and which this step has to satisfy for the
+            # same reason a real deployment does. NODE_ENV=production is baked
+            # into the runner stage, so the emulator guard is also live here:
+            # setting FIREBASE_AUTH_EMULATOR_HOST would make the Gateway refuse
+            # to boot, exactly as intended.
+            docker run -d --name smoke --network host \
+              -e PORT=8080 \
+              -e DATABASE_URL="$DATABASE_URL" \
+              -e REDIS_URL="$REDIS_URL" \
+              -e FIREBASE_PROJECT_ID=demo-deepcs \
               deepcs/${{ matrix.service }}:ci
             for i in $(seq 1 30); do
               if curl -fsS http://localhost:8080/health/ready; then ok=1; break; fi
