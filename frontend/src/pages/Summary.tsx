@@ -21,15 +21,12 @@ export function SummaryPage({ summary, onDone }: { summary: SessionSummary; onDo
       <h2>Session ended</h2>
 
       <div className="card">
-        <h3>{summary.question.title}</h3>
-        <div>
-          <span className="tag">{summary.question.difficulty}</span>
-          {summary.question.tags.map((tag) => (
-            <span className="tag" key={tag}>
-              {tag}
-            </span>
-          ))}
+        {/* Same header as a question card: topic and difficulty, then the
+            title. The remaining tags are for filtering, not for reading. */}
+        <div className="muted" style={{ fontSize: '0.8rem' }}>
+          {summary.question.tags[0]} · {summary.question.difficulty}
         </div>
+        <h3 style={{ margin: '0.15rem 0' }}>{summary.question.title}</h3>
         <dl className="muted" style={{ margin: '0.75rem 0 0' }}>
           <div className="row">
             <dt>Lasted:</dt>
