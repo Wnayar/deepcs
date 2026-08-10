@@ -1,0 +1,19 @@
+{
+  "name": "@deepcs/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "//": "Schema, roles and the migration runner. Not imported by any service — services talk to Postgres through their own pool (@deepcs/shared/db) and never read this package at runtime.",
+  "scripts": {
+    "migrate": "node migrate.mjs",
+    "build": "echo 'no build: migrations are .sql, the runner is plain .mjs' && exit 0",
+    "typecheck": "echo 'no typescript in this package' && exit 0",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "pg": "catalog:"
+  },
+  "devDependencies": {
+    "vitest": "catalog:"
+  }
+}

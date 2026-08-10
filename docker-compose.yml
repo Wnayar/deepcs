@@ -10,11 +10,15 @@ name: deepcs
 #
 # Interpolation (${VAR:-default}) reads .env automatically if one exists, so
 # `docker compose up` works with no .env file at all.
+#
+# DATABASE_URL is deliberately NOT here. Each service connects as its own
+# Postgres role (ADR-09), so a shared default would be the one line that
+# silently undoes the boundary every other part of phase 1 enforces. The
+# services that need Postgres set their own; the Gateway needs none.
 x-service: &service
   environment:
     LOG_LEVEL: ${LOG_LEVEL:-info}
     NODE_ENV: development
-    DATABASE_URL: postgresql://deepcs:deepcs@postgres:5432/deepcs
     REDIS_URL: redis://redis:6379
     FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-demo-deepcs}
     FIREBASE_AUTH_EMULATOR_HOST: firebase-auth:9099
@@ -23,6 +27,8 @@ x-service: &service
       condition: service_healthy
     redis:
       condition: service_healthy
+    migrate:
+      condition: service_completed_successfully
   restart: unless-stopped
 
 services:
@@ -76,6 +82,28 @@ services:
       timeout: 3s
       retries: 20
 
+  # ── Schema and roles ───────────────────────────────────────────────────────
+  # Runs to completion before any service starts, so no service can race a
+  # half-migrated database. Connects as the owner (`deepcs`), which is the one
+  # role permitted to create schemas and hand out grants — exactly what the
+  # service roles below are forbidden from doing.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+      args:
+        SERVICE: users # any: the dev stage copies the whole repo
+    command: ['pnpm', '--filter', '@deepcs/db', 'migrate']
+    environment:
+      DATABASE_URL: postgresql://deepcs:deepcs@postgres:5432/deepcs
+    volumes:
+      - ./packages/db:/app/packages/db:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
   # ── Services (DESIGN.md §3) ────────────────────────────────────────────────
   gateway:
     <<: *service
@@ -85,14 +113,21 @@ services:
       target: dev
       args:
         SERVICE: gateway
+    # No DATABASE_URL: the Gateway has no domain data (§6), which is also why
+    # authorization cannot live here.
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NODE_ENV: development
+      REDIS_URL: redis://redis:6379
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-demo-deepcs}
+      FIREBASE_AUTH_EMULATOR_HOST: firebase-auth:9099
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
     ports:
       - '8080:8080'
     volumes:
       - ./packages/shared/src:/app/packages/shared/src:ro
       - ./services/gateway/src:/app/services/gateway/src:ro
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       firebase-auth:
@@ -106,6 +141,15 @@ services:
       target: dev
       args:
         SERVICE: users
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NODE_ENV: development
+      REDIS_URL: redis://redis:6379
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-demo-deepcs}
+      FIREBASE_AUTH_EMULATOR_HOST: firebase-auth:9099
+      # Its own role, with USAGE on the `users` schema and nothing else.
+      # Querying matching.* from here is refused by Postgres (ADR-09).
+      DATABASE_URL: postgresql://users_svc:users_svc@postgres:5432/deepcs
     ports:
       - '8081:8081'
     volumes:
@@ -120,6 +164,13 @@ services:
       target: dev
       args:
         SERVICE: questions
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NODE_ENV: development
+      REDIS_URL: redis://redis:6379
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-demo-deepcs}
+      FIREBASE_AUTH_EMULATOR_HOST: firebase-auth:9099
+      DATABASE_URL: postgresql://questions_svc:questions_svc@postgres:5432/deepcs
     ports:
       - '8082:8082'
     volumes:
@@ -134,6 +185,13 @@ services:
       target: dev
       args:
         SERVICE: matching
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NODE_ENV: development
+      REDIS_URL: redis://redis:6379
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-demo-deepcs}
+      FIREBASE_AUTH_EMULATOR_HOST: firebase-auth:9099
+      DATABASE_URL: postgresql://matching_svc:matching_svc@postgres:5432/deepcs
     ports:
       - '8083:8083'
     volumes:
@@ -148,6 +206,13 @@ services:
       target: dev
       args:
         SERVICE: collab
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NODE_ENV: development
+      REDIS_URL: redis://redis:6379
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-demo-deepcs}
+      FIREBASE_AUTH_EMULATOR_HOST: firebase-auth:9099
+      DATABASE_URL: postgresql://collab_svc:collab_svc@postgres:5432/deepcs
     ports:
       - '8084:8084'
     volumes:
@@ -167,6 +232,13 @@ services:
       target: dev
       args:
         SERVICE: stats
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NODE_ENV: development
+      REDIS_URL: redis://redis:6379
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-demo-deepcs}
+      FIREBASE_AUTH_EMULATOR_HOST: firebase-auth:9099
+      DATABASE_URL: postgresql://stats_svc:stats_svc@postgres:5432/deepcs
     volumes:
       - ./packages/shared/src:/app/packages/shared/src:ro
       - ./services/stats/src:/app/services/stats/src:ro

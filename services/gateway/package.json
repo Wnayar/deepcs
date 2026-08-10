@@ -12,7 +12,12 @@
   },
   "dependencies": {
     "@deepcs/shared": "workspace:*",
-    "fastify": "catalog:"
+    "@fastify/cors": "catalog:",
+    "@fastify/helmet": "catalog:",
+    "@fastify/http-proxy": "catalog:",
+    "fastify": "catalog:",
+    "ioredis": "catalog:",
+    "jose": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

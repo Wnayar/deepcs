@@ -192,6 +192,7 @@ see §5.
 | All services | TypeScript + Fastify (Node web framework) | One language across six deployables + the frontend = fast solo iteration, and shared types across service boundaries, which matters much more now that boundaries exist. *Not Express:* Fastify has JSON-schema validation and a real plugin/encapsulation model built in, and is meaningfully faster. *Not NestJS:* heavy structure earns its keep on a team. |
 | Frontend | React + Vite (build tool) + TS | Minimal, just enough to demo; Yjs bindings for React editors are mature. *Not Next.js:* SSR buys nothing for an authenticated single-page editor and adds a server to deploy where a static bundle on a CDN costs nothing. |
 | Auth | Firebase Auth (email/password) **[bought]** | Identity is a solved, security-critical problem with no design insight left in it; Google's abuse detection and key rotation beat anything hand-rolled. *Not self-hosted:* ADR-04. Free at this scale. |
+| DB access | `pg` driver + hand-written parameterized SQL; migrations as numbered `.sql` files (ADR-10) | No schema DSL on the critical path, and ADR-09's per-schema grants stay literal SQL. *Not Drizzle:* deferred, not rejected — it is item 1 in the additive backlog (§10). |
 | Database | PostgreSQL (Neon, free) **[bought]** — one instance, schema per service | Relational data, plus built-in tag filtering (`text[]` + GIN index) and full-text search (`tsvector`), so no separate search engine. *Not database-per-service:* ADR-09 — it would cost cross-service atomicity and force a saga. *Not Mongo:* the data is relational. *Not Cloud SQL:* no free tier, bills hourly. |
 | Cache/queue/pubsub | Redis (Upstash, free) **[bought]** | One dependency covering five jobs: match queue, rate-limit state, cross-instance pub/sub, event stream, question-bank cache. Split from Postgres by **access pattern** (ephemeral shared state vs durable relational), not by service. *Not Memorystore:* no free tier. |
 | Real-time | WebSockets + Yjs (CRDT) | Concurrent edits merge without a central server ordering them (ADR-02). *Not SSE or polling:* one-directional, or too slow for ~100 ms keystroke echo. *Not Liveblocks/PartyKit:* they'd host the hard part, and the hard part is the project. |
@@ -901,6 +902,23 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
    teams needing independent migrations. At that point cross-service atomicity is
    lost and session creation needs a saga; the ordering here is chosen so that
    split stays cheap, because no query crosses a boundary today.
+10. **`pg` and hand-written SQL now, an ORM deferred — not rejected.** Context:
+    §4 named every other technology but left the Postgres access layer open, and
+    the choice shapes every service from Users onward. Decision: the `pg` driver
+    with parameterized SQL, and migrations as numbered `.sql` files run by a
+    small script. Rationale: it is what §6 already implies ("parameterized
+    queries always"), it keeps ADR-09's per-schema `GRANT`/`REVOKE` as literal
+    SQL rather than something generated, and it adds no schema-definition
+    language to learn on the critical path to a demoable product. Rejected *for
+    now*, not on merit: **Drizzle**, which would derive types from a schema
+    definition and remove the hand-written result types that are this decision's
+    real cost. Tradeoffs accepted: query result types are written by hand and can
+    drift from the schema, and there is no generated migration diffing. **This is
+    the highest-priority item in the additive backlog** — ahead of phases 8, 9
+    and 10 — because it is the only deferred item that pays down a cost incurred
+    on every subsequent phase rather than adding a new capability. It is also
+    cheap to adopt: Drizzle wraps a `pg` pool, so it can be introduced one
+    service at a time with no rewrite and no data migration.
 
 ---
 
@@ -926,6 +944,22 @@ phase 7 is where the event pipeline and `/stats` land, and both are stated scope
 independently droppable, in this order: 10 first (pure adapter work behind an
 existing interface), then 9, then 8. If time runs short, what gets cut is
 learning detours, never the running system.
+
+**The additive backlog, highest priority first:**
+
+| | Item | Why it sits here |
+|---|---|---|
+| 1 | **Adopt Drizzle** over the `pg` layer (ADR-10) | The only deferred item that pays down a cost already being paid — hand-written result types, drifting from the schema, on every service from phase 1 onward. Adoptable one service at a time. Ahead of the phases below because it makes existing code better rather than adding new capability. |
+| 2 | Phase 10 — Kafka adapter | Pure adapter work behind the existing `EventLog` interface; prod unchanged. |
+| 3 | Phase 9 — Kubernetes sprint | Time-boxed to trial credits, and the cluster is deleted afterwards. |
+| 4 | Phase 8 — Terraform import | Highest effort, and it documents infrastructure that already works. |
+
+**Why this ordering and not the doc's original.** Phases 8–10 each add something
+new. ADR-10's deferral is different in kind: it is a debt taken deliberately to
+reach a demoable product sooner, and it accrues interest with every service
+written against the raw driver. Adding capability to a codebase carrying a known
+deferred decision is the wrong order if there is ever time for exactly one of
+them.
 
 *Why is phase 0 non-negotiable?* The billing guard is the one item with no
 recovery path if skipped.
