@@ -1,112 +1,141 @@
--- Lessons: the teaching half of each topic, for the Learn section.
+-- The roadmap, and one lesson per question set.
 --
--- One row per topic, not per question. The source notes are written as a body
--- of material per topic with drill questions at the end; those questions are
--- already seeded into questions.bank by 005, so everything from the
--- "Interview Questions" heading onward is deliberately absent here. A lesson
--- and the three questions that drill it are joined by `topic`, which is the
--- same string the bank carries in tags[1].
+-- Replaces the per-topic lessons table added by the first version of this
+-- migration. A lesson belonged to a whole topic there, which meant Operating
+-- Systems was a single 33KB page covering all three of its question sets and
+-- headed "Day 1", "Day 2", "Day 3". Splitting it means each question set has
+-- exactly the material that prepares you for it, and the day numbering
+-- disappears on its own: the reading order is now the step column below.
 --
--- Re-runnable: the insert upserts on the topic.
+-- The topics table also carries what the roadmap draws. `depends_on` is the
+-- edges and `grid_x`/`grid_y` the positions, both seeded rather than computed
+-- in the browser, because they are content decisions about what to read first
+-- and not layout the frontend should be inventing.
 
-CREATE TABLE IF NOT EXISTS questions.lessons (
+DROP TABLE IF EXISTS questions.lessons;
+
+CREATE TABLE IF NOT EXISTS questions.topics (
   topic      text PRIMARY KEY,
   title      text NOT NULL,
-  body_md    text NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
+  summary    text NOT NULL,
+  -- Topics that make this one easier to read, drawn as an arrow pointing down
+  -- into it. Not enforced: nothing stops anyone reading in any order.
+  depends_on text[] NOT NULL DEFAULT '{}',
+  grid_x     int NOT NULL,
+  grid_y     int NOT NULL
 );
 
-INSERT INTO questions.lessons (topic, title, body_md) VALUES (
-  'os',
-  'Operating Systems',
-  $body$**OS & Concurrency**
+ALTER TABLE questions.bank
+  ADD COLUMN IF NOT EXISTS lesson_md text,
+  -- 1, 2 or 3: where this set sits in its topic's reading order. The bank also
+  -- has `difficulty`, which matching pairs people on, and the two agree by
+  -- construction (easy is step 1). They are separate columns because they
+  -- answer different questions: one is "what do I read next", the other is
+  -- "who can I be matched with".
+  ADD COLUMN IF NOT EXISTS step int;
 
-Backend Interview Prep — 3-Day Crash Guide
+INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
+  ('os', 'Operating Systems', 'How a computer runs more than one program at once, and what it costs. Start here: almost everything else on this map assumes you know what a process, a thread and memory actually are.', ARRAY[]::text[], 1, 0)
+ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
+  depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
-*Focus: Processes · Threads · Sync · Memory · I/O*
+INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
+  ('oop', 'Object-Oriented Programming', 'How to organise code so it stays possible to change. This is the one topic here that is about the code you write rather than the machine underneath it.', ARRAY[]::text[], 3, 0)
+ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
+  depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
-## Resources
+INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
+  ('ai-tooling', 'AI Tooling', 'What the tools you already use are actually doing, and how to talk about using them well. Needs nothing else first, so it is a good one to pick up on a tired evening.', ARRAY[]::text[], 6, 0)
+ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
+  depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
-- **OSTEP (Operating Systems: Three Easy Pieces)** — free online textbook. Read only the chapters listed per day.
-- **Jenny's Lectures (YouTube)** — short, visual. Use when a concept doesn't click.
+INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
+  ('networking', 'Networking', 'What happens between typing a web address and seeing a page. Reads much more easily once you know what a process and a socket are, which is why it sits under Operating Systems.', ARRAY['os']::text[], 0, 1)
+ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
+  depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
-Two sources. Don't spread across 10 links.
+INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
+  ('databases', 'Databases', 'How data is stored so it can be found again quickly and survives a crash. Indexes and transactions make far more sense after the memory and disk material in Operating Systems.', ARRAY['os']::text[], 2, 1)
+ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
+  depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
-## 3-Day Study Plan
+INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
+  ('debugging', 'Debugging', 'A method for finding out why something is broken, instead of guessing. Short, practical, and the one topic that pays off the same day you read it.', ARRAY['os', 'oop']::text[], 4, 1)
+ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
+  depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
-**DAY 1 — Processes & Threads**
-Process (PCB, states), process API (`fork`/`exec`/`wait`), limited direct execution (user vs kernel mode, traps, syscalls), threads (vs processes, why cheaper, pthreads).
-*Exit goal: explain what happens when a server spawns a thread vs a process, and why.*
+INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
+  ('behavioural', 'Behavioural', 'How to tell a story about your own work so an interviewer can follow it. No technical prerequisites at all, and it is worth starting early because good answers come from remembering, not from cramming.', ARRAY[]::text[], 6, 1)
+ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
+  depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
-**DAY 2 — Synchronization & Concurrency**
-Locks/mutexes (spinlocks, test-and-set), condition variables (producer-consumer), semaphores (binary vs counting), deadlock (4 Coffman conditions, prevention), race conditions.
-*Exit goal: whiteboard a deadlock and its prevention; implement producer-consumer from memory.*
+INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
+  ('security', 'Security', 'How accounts, passwords and connections are kept safe, and the handful of attacks worth being able to explain. Most of it is networking and databases seen from the attacker’s side.', ARRAY['networking', 'databases']::text[], 1, 2)
+ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
+  depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
-**DAY 3 — Memory & I/O**
-Virtual memory (address spaces, isolation), allocation (stack vs heap, malloc, fragmentation), paging (page tables, TLB, page faults), I/O models (blocking/non-blocking/async), event loops (epoll/kqueue), context switching.
-*Exit goal: explain why Node is single-threaded yet handles 10k connections, and what happens at the OS level.*
+INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
+  ('system-design', 'System Design', 'Putting the pieces together into something that serves a lot of people at once. Last on purpose: it is mostly the earlier topics applied at scale, and it is hard to reason about without them.', ARRAY['networking', 'databases', 'oop']::text[], 3, 2)
+ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
+  depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
-## Day 1 — Processes & Threads
+UPDATE questions.bank SET lesson_md = $body$## What Is a Process?
 
----
-
-### Part 1 — What Is a Process?
-
-#### The core problem
+### The core problem
 One CPU, many programs (Chrome, Spotify, Slack...). The OS creates the **illusion** of multiple CPUs via **time sharing**: run one process briefly, pause it, run another, switch fast enough to feel simultaneous. This is **CPU virtualization**.
 
-#### What a process is
-A **process is a program in execution** — the OS's abstraction for a running program. The program on disk is just bytes; loading it into memory and running it on the CPU makes it a process.
+### What a process is
+A **process is a program in execution**. The OS's abstraction for a running program. The program on disk is just bytes; loading it into memory and running it on the CPU makes it a process.
 
-#### What a process is made of (machine state)
+### What a process is made of (machine state)
 **1. Address space (memory)**
-- **Code** — compiled instructions
-- **Stack** — locals, params, return addresses. Grows down. Auto-managed per call/return.
-- **Heap** — dynamic memory (`malloc`/`new`). Grows up. Managed manually.
-- **Static/global data** — globals and initialized statics
+- **Code**: compiled instructions
+- **Stack**: locals, params, return addresses. Grows down. Auto-managed per call/return.
+- **Heap**: dynamic memory (`malloc`/`new`). Grows up. Managed manually.
+- **Static/global data**: globals and initialized statics
 
 **2. CPU registers**
-- **Program Counter (PC)** — address of the next instruction
-- **Stack pointer** — top of the stack
-- **General-purpose registers** — intermediate values
+- **Program Counter (PC)**: address of the next instruction
+- **Stack pointer**: top of the stack
+- **General-purpose registers**: intermediate values
 
-**3. Open file descriptors** — files/sockets/pipes the process has open. Every UNIX process starts with stdin (0), stdout (1), stderr (2).
+**3. Open file descriptors**: files/sockets/pipes the process has open. Every UNIX process starts with stdin (0), stdout (1), stderr (2).
 
 This list is exactly what the OS saves on a **context switch** so it can resume the process where it left off.
 
-#### How the OS creates a process
-1. Load code and static data from disk (lazily — only what's needed).
+### How the OS creates a process
+1. Load code and static data from disk (lazily, only what's needed).
 2. Allocate a stack, set up `argc`/`argv`.
 3. Allocate an initial heap (grows on demand via `malloc`).
 4. Open stdin/stdout/stderr.
 5. Jump to `main()`.
 
-#### Process states
+### Process states
 A process is always in exactly one state:
 ```
 RUNNING <-> READY     scheduled / descheduled
 RUNNING  -> BLOCKED   issues I/O
 BLOCKED  -> READY     I/O completes
 ```
-- **Running** — on the CPU now
-- **Ready** — could run; scheduler picked someone else
-- **Blocked** — waiting on hardware (disk, network, timer); *cannot* run even if the CPU is free. On completion → Ready (not Running).
-- **Zombie** — exited, but parent hasn't called `wait()`. The process-table entry lingers so the parent can read the exit code; `wait()` cleans it up.
+- **Running**: on the CPU now
+- **Ready**: could run; scheduler picked someone else
+- **Blocked**: waiting on hardware (disk, network, timer); *cannot* run even if the CPU is free. On completion → Ready (not Running).
+- **Zombie**: exited, but parent hasn't called `wait()`. The process-table entry lingers so the parent can read the exit code; `wait()` cleans it up.
 
 **Key distinction:** blocked *cannot* run (waiting on hardware); ready *could* run (just not picked yet).
 
-#### Process Control Block (PCB)
+### Process Control Block (PCB)
 The OS's per-process record (a.k.a. process descriptor): state, PID, saved register context, open files, memory limits, parent. All PCBs live in the **process list**. On pause, registers are saved into the PCB; on resume, restored from it.
 
 > **Interview phrasing:** *"A context switch serializes CPU state into the outgoing process's PCB and deserializes the incoming one's."*
 
 ---
 
-### Part 2 — Process API: fork, exec, wait
+## Process API: fork, exec, wait
 
-#### fork()
+### fork()
 Creates a near-exact copy of the calling process.
-- Caller = **parent**, new process = **child**. Both continue from the line after `fork()` — it returns **twice**.
+- Caller = **parent**, new process = **child**. Both continue from the line after `fork()`, it returns **twice**.
 - Parent gets the child's **PID**; child gets **0**.
 - The child gets its own address space via **copy-on-write**: pages are shared read-only and copied only when one side writes. Makes fork cheap.
 
@@ -117,9 +146,9 @@ else if (pid == 0) { /* child */ }
 else               { /* parent, pid = child PID */ }
 ```
 
-**Ordering is non-deterministic** — parent or child may run first. Never assume order without `wait()`.
+**Ordering is non-deterministic**: parent or child may run first. Never assume order without `wait()`.
 
-#### wait()
+### wait()
 Blocks the parent until a child finishes.
 ```c
 if (fork() == 0) { /* child work */ exit(0); }
@@ -127,15 +156,15 @@ else             { wait(NULL); /* child done */ }
 ```
 Without `wait()`, an exited child is a **zombie** until the parent collects its status. If the parent exits first, the child is an **orphan**, re-parented to `init` (PID 1), which reaps it.
 
-#### exec()
-**Replaces** the current process's program — it does not create a new process.
+### exec()
+**Replaces** the current process's program. It does not create a new process.
 ```c
 execvp("ls", args);
 printf("never runs if exec succeeds\n");
 ```
 On success `exec()` never returns: code/stack/heap are replaced, but the **PID stays** and **open FDs are kept** (key for I/O redirection).
 
-#### Why fork + exec (two calls)?
+### Why fork + exec (two calls)?
 The gap lets the shell set things up before the new program runs:
 
 **I/O redirection** (`ls > out.txt`):
@@ -152,12 +181,12 @@ if (fork() == 0) {
 
 ---
 
-### Part 3 — Limited Direct Execution: Syscalls & Context Switching
+## Limited Direct Execution: Syscalls & Context Switching
 
-#### The tension
-Programs should run directly on the CPU (fast), but can't be trusted to do anything (read others' memory, hog the CPU). Solution: **Limited Direct Execution (LDE)** — run directly, but with hardware-enforced limits.
+### The tension
+Programs should run directly on the CPU (fast), but can't be trusted to do anything (read others' memory, hog the CPU). Solution: **Limited Direct Execution (LDE)**. Run directly, but with hardware-enforced limits.
 
-#### User mode vs. kernel mode
+### User mode vs. kernel mode
 | | User mode | Kernel mode |
 |---|---|---|
 | Runs | User processes | OS kernel |
@@ -165,7 +194,7 @@ Programs should run directly on the CPU (fast), but can't be trusted to do anyth
 
 A privileged op in user mode traps to the OS. To do anything privileged, a process must make a **system call**.
 
-#### How a syscall works (trap)
+### How a syscall works (trap)
 1. Process puts the **syscall number** in a register and executes the `trap`/`syscall` instruction.
 2. Hardware saves registers to the **kernel stack**, switches to kernel mode, jumps to the **trap handler**.
 3. OS looks up the number in the **trap table** (set at boot) and runs the handler.
@@ -173,10 +202,10 @@ A privileged op in user mode traps to the OS. To do anything privileged, a proce
 
 **Why a number, not an address?** Security. If a process could name a kernel address to jump to, it could skip permission checks. The kernel owns the trap table; the process can only request a service by number.
 
-#### How the OS regains the CPU
-**Timer interrupt.** At boot the OS programs a hardware timer to fire every few ms. On fire, hardware saves state, switches to kernel mode, and runs the OS handler — now the OS decides whether to keep running this process or switch. Without it, an infinite loop would own the CPU forever.
+### How the OS regains the CPU
+**Timer interrupt.** At boot the OS programs a hardware timer to fire every few ms. On fire, hardware saves state, switches to kernel mode, and runs the OS handler. Now the OS decides whether to keep running this process or switch. Without it, an infinite loop would own the CPU forever.
 
-#### Context switch
+### Context switch
 1. Save A's registers into A's PCB.
 2. Restore B's registers from B's PCB.
 3. Switch to B's kernel stack.
@@ -186,22 +215,22 @@ Two save/restore events occur: **hardware** saves user registers to the kernel s
 
 **Why expensive?**
 - Saving/restoring registers takes time.
-- **Cache thrash** — L1/L2/L3 were warm for A; B starts cold and misses.
-- **TLB flush** — the virtual→physical mapping cache is invalidated, so B pays page-table lookups until it warms up.
+- **Cache thrash**: L1/L2/L3 were warm for A; B starts cold and misses.
+- **TLB flush**: the virtual→physical mapping cache is invalidated, so B pays page-table lookups until it warms up.
 
 This is why too many threads hurts: with 10,000 threads the OS spends more time switching than working.
 
 ---
 
-### Part 4 — Threads
+## Threads
 
-#### What is a thread?
+### What is a thread?
 An independent execution path inside a process. Each thread has its **own registers and stack**, but all threads **share the address space** (code, heap, globals).
 
 **Private per thread:** PC, registers, stack.
 **Shared across threads:** code, heap, globals, open FDs.
 
-#### Thread vs. process
+### Thread vs. process
 | | Process | Thread |
 |---|---|---|
 | Address space | Separate (isolated) | Shared within process |
@@ -210,15 +239,15 @@ An independent execution path inside a process. Each thread has its **own regist
 | Crash isolation | One crash doesn't affect others | One thread can kill the whole process |
 | Context switch | Costlier (TLB flush, new page tables) | Cheaper (same address space) |
 
-> **"Why are threads cheaper?"** They share the address space — no copying page tables/heap, no TLB flush on switch. Creating one is just a new stack + Thread Control Block. Communication is a plain memory read/write instead of IPC.
+> **"Why are threads cheaper?"** They share the address space. No copying page tables/heap, no TLB flush on switch. Creating one is just a new stack + Thread Control Block. Communication is a plain memory read/write instead of IPC.
 
-#### Why use threads
-1. **Parallelism** — different threads run on different cores at once.
-2. **Overlap I/O with compute** — while one thread waits on a DB query, another keeps working. The web-server model: a thread per request (or a pool) so one slow query doesn't block all.
+### Why use threads
+1. **Parallelism**. Different threads run on different cores at once.
+2. **Overlap I/O with compute**. While one thread waits on a DB query, another keeps working. The web-server model: a thread per request (or a pool) so one slow query doesn't block all.
 
-*(Node skips threads for concurrency and uses async I/O instead — Day 3.)*
+*(Node skips threads for concurrency and uses async I/O instead, Day 3.)*
 
-#### The race condition problem
+### The race condition problem
 Two threads run `counter = counter + 1`, which is three machine instructions:
 ```
 LOAD  counter → reg
@@ -233,16 +262,16 @@ T2: LOAD counter(50)→R2; ADD→R2(51); STORE→counter(51)
   -- switch --
 T1: STORE R1→counter(51)   // T2's update lost; should be 52
 ```
-The result depends on scheduling timing — a **race condition**: non-deterministic, hard to debug. The shared-data region that must not run concurrently is the **critical section**; the guarantee you want is **mutual exclusion** (locks — Day 2).
+The result depends on scheduling timing. A **race condition**: non-deterministic, hard to debug. The shared-data region that must not run concurrently is the **critical section**; the guarantee you want is **mutual exclusion** (locks, Day 2).
 
-#### Thread Control Block (TCB)
+### Thread Control Block (TCB)
 Per-thread analog of the PCB: saved register state when the thread isn't running. Switching between threads in one process saves/restores TCBs and skips the address-space change, so it's faster.
 
 ---
 
-### Part 5 — pthreads API
+## pthreads API
 
-#### Create and join
+### Create and join
 ```c
 void *worker(void *arg) {
     int *n = (int *)arg;
@@ -254,9 +283,9 @@ int main() {
     pthread_join(t, NULL);                // block until it exits
 }
 ```
-`pthread_join` is `wait()` for threads. **Gotcha:** never return a pointer to a stack variable from a thread — its stack is gone on exit (dangling pointer).
+`pthread_join` is `wait()` for threads. **Gotcha:** never return a pointer to a stack variable from a thread. Its stack is gone on exit (dangling pointer).
 
-#### Mutex
+### Mutex
 ```c
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_lock(&lock);
@@ -265,7 +294,7 @@ pthread_mutex_unlock(&lock);
 ```
 A thread calling `lock()` while it's held **blocks** until `unlock()`.
 
-#### Condition variable
+### Condition variable
 Use when a thread must wait for a condition (not just a free lock).
 ```c
 // waiter
@@ -281,23 +310,20 @@ enqueue(item);
 pthread_cond_signal(&cond);          // wake one waiter
 pthread_mutex_unlock(&lock);
 ```
-`cond_wait` atomically releases the lock and sleeps; on wake it re-acquires the lock. Always re-check with `while` (not `if`) — the item may be gone, plus **spurious wakeups**.
+`cond_wait` atomically releases the lock and sleeps; on wake it re-acquires the lock. Always re-check with `while` (not `if`). The item may be gone, plus **spurious wakeups**.
+
+---$body$, step = 1
+  WHERE title = 'Processes & Threads';
+
+UPDATE questions.bank SET lesson_md = $body$## The Problem We're Solving
+
+Threads share the heap and globals, and `counter++` is three machine instructions. So a mid-sequence switch loses updates (a **race condition**). **Synchronization** is the set of tools that coordinate access to shared state. Day 2 covers those tools and the bugs from misusing them.
 
 ---
 
-## Day 2 — Synchronization & Concurrency
+## Locks / Mutexes
 
----
-
-### The Problem We're Solving
-
-Threads share the heap and globals, and `counter++` is three machine instructions — so a mid-sequence switch loses updates (a **race condition**). **Synchronization** is the set of tools that coordinate access to shared state. Day 2 covers those tools and the bugs from misusing them.
-
----
-
-### Part 1 — Locks / Mutexes
-
-#### What a lock is
+### What a lock is
 A lock (**mutex** = mutual exclusion) has two states: **free** and **held**. Only one thread holds it at a time; others that try to acquire it **block** until release. The protected region is the **critical section**; the guarantee is **mutual exclusion**.
 
 ```c
@@ -307,7 +333,7 @@ counter++;                 // critical section
 pthread_mutex_unlock(&lock);
 ```
 
-#### Why a naive flag doesn't work
+### Why a naive flag doesn't work
 ```c
 // BROKEN
 while (flag == 1) ;  // test
@@ -315,7 +341,7 @@ flag = 1;            // set
 ```
 Test and set are separate instructions, so two threads can both see `0` and both enter. The check-and-set must be **atomic**.
 
-#### Test-and-set
+### Test-and-set
 CPUs provide an atomic instruction (`xchg` on x86) that reads and writes a location in one uninterruptible step:
 ```c
 int TestAndSet(int *ptr, int new) {  // ONE atomic instruction
@@ -331,37 +357,37 @@ Free (flag=0): TestAndSet sets flag=1 and returns 0 in one atomic step → exit 
 
 **Compare-and-swap (CAS)** is the more powerful cousin: write only if the current value equals an expected value. It's the basis of lock-free data structures.
 
-#### Spin locks: correctness vs. performance
+### Spin locks: correctness vs. performance
 A spin lock is correct but **burns CPU while waiting**. Worst on a single CPU: if the holder is preempted (paused by the scheduler), the spinner wastes a full timeslice before the holder can run to release.
 
-**Better — yield:** give up the CPU on failure.
+**Better. Yield:** give up the CPU on failure.
 ```c
 while (TestAndSet(&l->flag, 1) == 1) yield();
 ```
-Still pays a context switch per failed attempt. **Real locks** (`pthread_mutex`) go further: they **sleep** the waiter (off the run queue) and wake it on release — no wasted CPU.
+Still pays a context switch per failed attempt. **Real locks** (`pthread_mutex`) go further: they **sleep** the waiter (off the run queue) and wake it on release, no wasted CPU.
 
-#### Coarse vs. fine-grained locking
+### Coarse vs. fine-grained locking
 - **Coarse:** one lock for everything. Simple/safe but serializes all threads.
 - **Fine:** separate locks per structure (e.g., per hash bucket). More parallelism, more deadlock risk.
 
-> **Interview tip:** for "make this thread-safe," discuss the trade-off — one global lock is easy but a bottleneck; fine-grained is faster but needs care.
+> **Interview tip:** for "make this thread-safe," discuss the trade-off. One global lock is easy but a bottleneck; fine-grained is faster but needs care.
 
-#### Reader-writer locks
-Reads don't conflict with each other — only writes need exclusion. A **rwlock** (`pthread_rwlock_t`) admits many concurrent readers *or* one exclusive writer. Classic for read-heavy data (caches, config). Gotcha: **writer starvation** — a steady stream of readers can keep a writer waiting indefinitely.
+### Reader-writer locks
+Reads don't conflict with each other, only writes need exclusion. A **rwlock** (`pthread_rwlock_t`) admits many concurrent readers *or* one exclusive writer. Classic for read-heavy data (caches, config). Gotcha: **writer starvation**. A steady stream of readers can keep a writer waiting indefinitely.
 
 ---
 
-### Part 2 — Condition Variables
+## Condition Variables
 
-#### The problem
-A lock answers "can I have exclusive access?" A **condition variable (CV)** answers "should I proceed, or wait for an event?" Example: worker threads sleep when there's no work; a dispatcher wakes them when work arrives. Spin-checking a queue wastes CPU — you need threads to sleep until woken.
+### The problem
+A lock answers "can I have exclusive access?" A **condition variable (CV)** answers "should I proceed, or wait for an event?" Example: worker threads sleep when there's no work; a dispatcher wakes them when work arrives. Spin-checking a queue wastes CPU. You need threads to sleep until woken.
 
 A CV is a queue of sleeping threads with three ops:
-- `wait()` — atomically release the lock and sleep
-- `signal()` — wake one waiter
-- `broadcast()` — wake all waiters
+- `wait()`: atomically release the lock and sleep
+- `signal()`: wake one waiter
+- `broadcast()`: wake all waiters
 
-#### The three-part rule
+### The three-part rule
 Always use a CV with: (1) a **mutex**, (2) the **CV**, (3) a **state variable** (the actual condition).
 ```c
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
@@ -381,12 +407,12 @@ pthread_cond_signal(&cond);          // then wake
 pthread_mutex_unlock(&lock);
 ```
 
-#### Why each piece
-- **Mutex:** without it, the signaler can set `ready` and signal in the gap between the waiter's check and its `wait()` — the signal is lost and the waiter sleeps forever. `cond_wait` releases the lock and sleeps atomically, closing that gap.
+### Why each piece
+- **Mutex:** without it, the signaler can set `ready` and signal in the gap between the waiter's check and its `wait()`. The signal is lost and the waiter sleeps forever. `cond_wait` releases the lock and sleeps atomically, closing that gap.
 - **State variable:** records that the event happened, so a late waiter checks it and skips sleeping.
 - **`while` not `if`:** after waking, the condition may no longer hold (another thread consumed the resource, or a spurious wakeup). Re-check.
 
-#### Producer-Consumer (bounded buffer)
+### Producer-Consumer (bounded buffer)
 The key concurrency pattern. Producers add items, consumers remove them; producers wait when full, consumers wait when empty. **Use two CVs:**
 ```c
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -413,9 +439,9 @@ void consumer() {
 
 ---
 
-### Part 3 — Semaphores
+## Semaphores
 
-#### What it is
+### What it is
 An integer counter with two atomic ops:
 ```
 sem_wait:  s--; if s < 0: sleep
@@ -423,7 +449,7 @@ sem_post:  s++; if any waiting: wake one
 ```
 Set the **initial value** to the number of resources you'll hand out immediately.
 
-#### Binary semaphore = mutex (init 1)
+### Binary semaphore = mutex (init 1)
 ```c
 sem_init(&m, 0, 1);
 sem_wait(&m);   // s:1→0, proceed
@@ -432,7 +458,7 @@ sem_post(&m);   // s:0→1, wake a waiter
 ```
 A: wait 1→0, proceeds. B: wait 0→-1, sleeps. A: post -1→0, wakes B.
 
-#### Ordering (init 0)
+### Ordering (init 0)
 Make one thread wait for another:
 ```c
 sem_init(&done, 0, 0);
@@ -441,14 +467,14 @@ sem_init(&done, 0, 0);
 ```
 Works regardless of order: if the child finishes first, post leaves s=1 and the parent doesn't block.
 
-#### Counting (init N)
-Allow up to N through at once — thread pools, connection limits:
+### Counting (init N)
+Allow up to N through at once. Thread pools, connection limits:
 ```c
 sem_init(&slots, 0, 5);   // max 5 concurrent
 sem_wait(&slots); handle(); sem_post(&slots);
 ```
 
-#### Producer-consumer with semaphores
+### Producer-consumer with semaphores
 ```c
 sem_init(&empty, 0, MAX);  // empty slots
 sem_init(&full,  0, 0);    // full slots
@@ -464,38 +490,38 @@ sem_wait(&full); sem_wait(&mutex);
 item = get();
 sem_post(&mutex); sem_post(&empty);
 ```
-**Critical ordering:** wait on `empty`/`full` **before** `mutex`. Reverse it and you deadlock — a producer holding `mutex` sleeps waiting for space while the consumer can't get `mutex` to free any.
+**Critical ordering:** wait on `empty`/`full` **before** `mutex`. Reverse it and you deadlock. A producer holding `mutex` sleeps waiting for space while the consumer can't get `mutex` to free any.
 
-#### Mutex vs. semaphore
+### Mutex vs. semaphore
 | | Mutex | Semaphore |
 |---|---|---|
-| Owner | Yes — only the locker unlocks | No — any thread can post |
+| Owner | Yes, only the locker unlocks | No, any thread can post |
 | Count | Binary (0/1) | Integer (0..N) |
 | Use | Mutual exclusion | Exclusion + ordering + counting |
 
-> **Interview phrasing:** *"A mutex has ownership — the locker must unlock. A semaphore is an ownerless counter; any thread can post. A binary semaphore acts like a mutex, but semaphores also do signaling and resource counting."*
+> **Interview phrasing:** *"A mutex has ownership, the locker must unlock. A semaphore is an ownerless counter; any thread can post. A binary semaphore acts like a mutex, but semaphores also do signaling and resource counting."*
 
 ---
 
-### Part 4 — Deadlock
+## Deadlock
 
-#### What it is
-Two+ threads each wait on a resource the other holds — stuck forever.
+### What it is
+Two+ threads each wait on a resource the other holds, stuck forever.
 ```
 T1: lock(L1); lock(L2);   // holds L1, wants L2
 T2: lock(L2); lock(L1);   // holds L2, wants L1
 ```
 
-#### Four conditions (Coffman) — all must hold
-1. **Mutual exclusion** — resources held exclusively. (Hard to remove — it's the point of locks.)
-2. **Hold and wait** — hold one resource while waiting for another.
-3. **No preemption** — can't forcibly take a lock away.
-4. **Circular wait** — a cycle of waiting threads. (Most commonly attacked.)
+### Four conditions (Coffman), all must hold
+1. **Mutual exclusion**, resources held exclusively. (Hard to remove, it's the point of locks.)
+2. **Hold and wait**. Hold one resource while waiting for another.
+3. **No preemption**. Can't forcibly take a lock away.
+4. **Circular wait**, a cycle of waiting threads. (Most commonly attacked.)
 
 Remove any one and deadlock is impossible.
 
-#### Prevention (attack one condition)
-**Break circular wait — lock ordering (most practical).** Always acquire locks in a global order; the cycle can't form.
+### Prevention (attack one condition)
+**Break circular wait. Lock ordering (most practical).** Always acquire locks in a global order; the cycle can't form.
 ```c
 pthread_mutex_lock(&L1); pthread_mutex_lock(&L2);  // always L1 before L2
 ```
@@ -503,9 +529,9 @@ When you don't control order (locks passed in), order by address:
 ```c
 if (m1 < m2) { lock(m1); lock(m2); } else { lock(m2); lock(m1); }
 ```
-**Break hold-and-wait — acquire all at once** under a global allocation lock (downside: serializes acquisition, less concurrency).
+**Break hold-and-wait. Acquire all at once** under a global allocation lock (downside: serializes acquisition, less concurrency).
 
-**Break no-preemption — trylock + backoff.** `trylock` fails instead of blocking; if you can't get both, release and retry:
+**Break no-preemption. Trylock + backoff.** `trylock` fails instead of blocking; if you can't get both, release and retry:
 ```c
 retry:
   lock(L1);
@@ -513,18 +539,18 @@ retry:
 ```
 Risk: **livelock** (both retry in lockstep). Add a random delay to break symmetry.
 
-#### Deadlock vs. livelock vs. starvation
+### Deadlock vs. livelock vs. starvation
 | | |
 |---|---|
 | **Deadlock** | Blocked forever, waiting on each other |
 | **Livelock** | Running but no progress (retry and re-conflict) |
-| **Starvation** | Never scheduled — others always win the resource |
+| **Starvation** | Never scheduled. Others always win the resource |
 
 ---
 
-### Part 5 — Race Conditions in Real Code
+## Race Conditions in Real Code
 
-#### Atomicity violation
+### Atomicity violation
 A sequence you assumed was atomic wasn't.
 ```c
 // T1
@@ -535,7 +561,7 @@ thd->proc_info = NULL;
 ```
 Fix: lock the check **and** the use together.
 
-#### Order violation
+### Order violation
 You assumed A runs before B, but it's not guaranteed.
 ```c
 // T1: mThread = create_thread(...);
@@ -543,31 +569,28 @@ You assumed A runs before B, but it's not guaranteed.
 ```
 Fix: use a condition variable so T2 waits until T1 signals init is done.
 
----
+---$body$, step = 2
+  WHERE title = 'Synchronization & Concurrency';
 
-## Day 3 — Memory & I/O
+UPDATE questions.bank SET lesson_md = $body$## The Big Picture
 
----
-
-### The Big Picture
-
-Day 3 links memory internals (virtual memory, paging, allocation) to I/O models (blocking, non-blocking, async) and the **event loop** — how Node.js serves 10,000 connections on one thread. Heavy in backend system-design interviews.
+Day 3 links memory internals (virtual memory, paging, allocation) to I/O models (blocking, non-blocking, async) and the **event loop**. How Node.js serves 10,000 connections on one thread. Heavy in backend system-design interviews.
 
 ---
 
-### Part 1 — Virtual Memory & Address Spaces
+## Virtual Memory & Address Spaces
 
-#### Why it exists
-Many processes need memory at once. If they shared physical addresses, Process A writing `0x5000` would clobber Process B — and a bug could corrupt the OS. **Virtual memory** gives each process the illusion of its own private, contiguous space starting at 0. The OS + hardware map virtual addresses to physical RAM; processes can't see each other's memory.
+### Why it exists
+Many processes need memory at once. If they shared physical addresses, Process A writing `0x5000` would clobber Process B. And a bug could corrupt the OS. **Virtual memory** gives each process the illusion of its own private, contiguous space starting at 0. The OS + hardware map virtual addresses to physical RAM; processes can't see each other's memory.
 
 Three goals:
-- **Isolation** — a rogue process can't corrupt others or the OS.
-- **Transparency** — a process just sees its own space.
-- **Efficiency** — physical memory can be shared, overcommitted, and swapped.
+- **Isolation**: a rogue process can't corrupt others or the OS.
+- **Transparency**: a process just sees its own space.
+- **Efficiency**: physical memory can be shared, overcommitted, and swapped.
 
 > **Interview fact:** every pointer you print in C is a *virtual* address; the CPU/OS translate it to physical before touching RAM.
 
-#### Address space layout
+### Address space layout
 ```
 high │ Stack   ↓ grows down  (locals, args, return addrs)
      │ (free)
@@ -580,46 +603,46 @@ low  │ Code    (read-only instructions)
 - **Code:** read-only instructions, fixed size.
 - **Static/global:** globals, string literals, initialized statics.
 
-> **"Stack vs heap?"** Stack: locals, params, return addresses; auto allocated/freed per call; fast but small (~8MB). Heap: dynamic memory you (or the GC) manage; large but slower, and you must free it — leaks if you don't, corruption on double-free.
+> **"Stack vs heap?"** Stack: locals, params, return addresses; auto allocated/freed per call; fast but small (~8MB). Heap: dynamic memory you (or the GC) manage; large but slower, and you must free it. Leaks if you don't, corruption on double-free.
 
 ---
 
-### Part 2 — Paging
+## Paging
 
-#### Why
+### Why
 Giving each process one contiguous physical chunk causes:
-1. **External fragmentation** — many small gaps that can't satisfy a request.
-2. **Inflexibility** — stack and heap grow toward each other; you can't size them up front.
+1. **External fragmentation**. Many small gaps that can't satisfy a request.
+2. **Inflexibility**. Stack and heap grow toward each other; you can't size them up front.
 
-#### Paging
+### Paging
 Divide both virtual and physical memory into fixed-size chunks:
 - **Virtual pages** (typically 4KB) and **page frames** (same size in physical RAM).
-- Any page maps to any frame — they need not be contiguous. The OS keeps a **page table** per process recording the mappings.
+- Any page maps to any frame, they need not be contiguous. The OS keeps a **page table** per process recording the mappings.
 
-#### Address translation
+### Address translation
 Split a virtual address into a **VPN** (virtual page number, top bits) and **offset** (bottom bits). With 4KB pages, offset = bottom 12 bits (2^12 = 4096).
 1. Split the virtual address into VPN + offset.
 2. Look up VPN in the **page table** → **PFN** (physical frame number).
 3. Physical address = PFN with the same offset appended (frame base + offset).
 
 Each **page table entry (PTE)** holds the PFN plus bits:
-- **Valid** — is this page mapped? Access an invalid page → segfault.
-- **Present** — in RAM or on disk? On disk → page fault.
-- **Dirty** — written since loaded?
-- **Protection** — read/write/execute.
+- **Valid**: is this page mapped? Access an invalid page → segfault.
+- **Present**: in RAM or on disk? On disk → page fault.
+- **Dirty**: written since loaded?
+- **Protection**: read/write/execute.
 
-#### TLB
+### TLB
 Without caching, every memory access needs two: read the PTE, then the data. The **TLB (Translation Lookaside Buffer)** is a small, fast on-CPU cache of recent translations.
 ```
 VPN in TLB?  hit  → get PFN directly (fast)
              miss → walk page table in RAM, fill TLB, retry (slow)
 ```
-TLBs hold ~64–1024 entries with ~99% hit rates. **Context-switch cost (TLB angle):** switching to Process B invalidates A's TLB entries, so the TLB is flushed and B starts cold with many misses.
+TLBs hold ~64-1024 entries with ~99% hit rates. **Context-switch cost (TLB angle):** switching to Process B invalidates A's TLB entries, so the TLB is flushed and B starts cold with many misses.
 
-#### Page fault
+### Page fault
 Raised when a process accesses a page whose PTE **present bit = 0** (not in RAM). Causes:
-1. **Swapped to disk** — OS evicted it; load it back.
-2. **Never mapped** — invalid access → segfault, process killed.
+1. **Swapped to disk**, OS evicted it; load it back.
+2. **Never mapped**. Invalid access → segfault, process killed.
 
 On a swapped-page fault:
 1. Hardware traps to the OS page-fault handler.
@@ -627,19 +650,19 @@ On a swapped-page fault:
 3. OS reads the page in (slow disk I/O), sets present=1 and the PFN.
 4. OS resumes the process; the faulting instruction retries and succeeds.
 
-This is **demand paging** — load pages only when accessed — and why programs can exceed physical RAM. Push it too far and you get **thrashing**: working sets (the pages processes actively use) don't fit in RAM, so the machine constantly page-faults and spends more time swapping than working.
+This is **demand paging**, load pages only when accessed, and why programs can exceed physical RAM. Push it too far and you get **thrashing**: working sets (the pages processes actively use) don't fit in RAM, so the machine constantly page-faults and spends more time swapping than working.
 
-> **Interview phrasing:** *"A page fault is accessing a virtual address not currently in RAM. The hardware traps to the OS, which loads the page from disk, updates the page table, and resumes. It's expensive because of disk I/O — millions of times slower than RAM."*
+> **Interview phrasing:** *"A page fault is accessing a virtual address not currently in RAM. The hardware traps to the OS, which loads the page from disk, updates the page table, and resumes. It's expensive because of disk I/O. Millions of times slower than RAM."*
 
-#### Fragmentation
-- **External:** free memory split into non-contiguous pieces; a large request fails despite enough total free. **Paging eliminates this** — any page fits any frame.
+### Fragmentation
+- **External:** free memory split into non-contiguous pieces; a large request fails despite enough total free. **Paging eliminates this**, any page fits any frame.
 - **Internal:** you allocate a whole 4KB page but use 100 bytes; the rest is wasted inside. Paging introduces this (page granularity).
 
 ---
 
-### Part 3 — Heap Memory: malloc Internals
+## Heap Memory: malloc Internals
 
-#### What malloc does
+### What malloc does
 `malloc` doesn't syscall every time (too slow). Instead:
 1. At startup, grab a big chunk from the OS (`sbrk()`/`mmap()`).
 2. Manage it with a **free list** tracking available regions.
@@ -648,23 +671,23 @@ This is **demand paging** — load pages only when accessed — and why programs
 
 **Header trick:** `free(ptr)` knows the size because the allocator stores a **header** (size, etc.) just before the returned pointer; `free` reads `ptr - sizeof(header)`.
 
-#### Allocation strategies
+### Allocation strategies
 - **First fit:** first chunk that fits. Fast; fragments the list head over time.
 - **Best fit:** smallest chunk that fits. Less waste; must scan the whole list (slow).
 - **Next fit:** first fit but resume from the last position; spreads allocations.
 
 Best fit often leaves many tiny unusable fragments; first fit is frequently faster. Real allocators (glibc `ptmalloc`, jemalloc, tcmalloc) use **size-class segregation** (separate free lists per size) to be both fast and low-fragmentation.
 
-#### Coalescing
+### Coalescing
 On `free`, merge adjacent free chunks into one. Without it the heap fills with tiny disconnected free chunks and large allocations start failing even when most of the heap is free.
 
 ---
 
-### Part 4 — I/O Models
+## I/O Models
 
-This explains Node.js, Nginx, and async — very common in backend design interviews.
+This explains Node.js, Nginx, and async. Very common in backend design interviews.
 
-#### What I/O is
+### What I/O is
 Any communication outside CPU/RAM (disk, network, DB, file). It's **orders of magnitude slower** than compute:
 | Operation | ~Latency |
 |---|---|
@@ -678,32 +701,32 @@ Any communication outside CPU/RAM (disk, network, DB, file). It's **orders of ma
 
 While waiting on I/O, a thread sits idle. Every I/O model addresses this.
 
-#### Blocking I/O
+### Blocking I/O
 The call blocks (thread sleeps, uses no CPU) until the result arrives.
 ```c
 int n = read(fd, buf, 1024);  // thread sleeps until data arrives
 ```
-**Pro:** simple, sequential. **Con:** one thread per concurrent op. 10,000 concurrent requests = 10,000 threads, each ~1–8MB stack plus switch overhead — doesn't scale. (Apache's thread-per-request model.)
+**Pro:** simple, sequential. **Con:** one thread per concurrent op. 10,000 concurrent requests = 10,000 threads, each ~1-8MB stack plus switch overhead, doesn't scale. (Apache's thread-per-request model.)
 
-#### Non-blocking I/O
+### Non-blocking I/O
 The call returns immediately, with data or `EAGAIN` ("not ready").
 ```c
 fcntl(fd, F_SETFL, O_NONBLOCK);
 int n = read(fd, buf, 1024);
 if (n == -1 && errno == EAGAIN) { /* try later */ }
 ```
-**Pro:** thread doesn't block. **Con:** spin-checking wastes CPU — you need a smarter readiness mechanism.
+**Pro:** thread doesn't block. **Con:** spin-checking wastes CPU. You need a smarter readiness mechanism.
 
-#### Async I/O / multiplexing
-Tell the OS "watch these **fds** (file descriptors — here, sockets); wake me when any is ready." The thread sleeps until notified.
-- **`select()` / `poll()`** — older, simpler; pass the whole fd list each call and the kernel scans every fd (O(n)); `select` also caps at 1024 fds.
-- **`epoll()`** (Linux) / **`kqueue()`** (BSD/macOS) — modern; register fds once in the kernel, then `epoll_wait()` blocks and returns **only the ready fds** (O(ready)). Scales to hundreds of thousands of fds.
+### Async I/O / multiplexing
+Tell the OS "watch these **fds** (file descriptors. Here, sockets); wake me when any is ready." The thread sleeps until notified.
+- **`select()` / `poll()`**: older, simpler; pass the whole fd list each call and the kernel scans every fd (O(n)); `select` also caps at 1024 fds.
+- **`epoll()`** (Linux) / **`kqueue()`** (BSD/macOS). Modern; register fds once in the kernel, then `epoll_wait()` blocks and returns **only the ready fds** (O(ready)). Scales to hundreds of thousands of fds.
 
-Strictly, epoll reports **readiness** — your thread still does the (non-blocking) `read()`. True **async I/O** (Linux `io_uring`, Windows IOCP) goes further: the kernel performs the operation itself and notifies on **completion**.
+Strictly, epoll reports **readiness**. Your thread still does the (non-blocking) `read()`. True **async I/O** (Linux `io_uring`, Windows IOCP) goes further: the kernel performs the operation itself and notifies on **completion**.
 
 Pattern: register fds → `epoll_wait()` blocks → returns ready fds → process each → repeat. This is the **event loop**.
 
-#### The event loop (Node.js / Nginx)
+### The event loop (Node.js / Nginx)
 One thread repeatedly asks "what's ready?" and handles it, never blocking on any single op.
 ```
 while (true) {
@@ -713,13 +736,13 @@ while (true) {
 ```
 **How Node serves 10k connections on one thread:** a request registers a callback and returns; the thread handles others; when the I/O completes (epoll event), Node runs the callback. The thread is always working or waiting in `epoll_wait`.
 
-**Critical requirement:** callbacks must be short and non-blocking. Heavy synchronous work (e.g., encrypting a big file) blocks the loop and stalls **all** requests — the classic "blocking the event loop" bug.
+**Critical requirement:** callbacks must be short and non-blocking. Heavy synchronous work (e.g., encrypting a big file) blocks the loop and stalls **all** requests. The classic "blocking the event loop" bug.
 
-**Good for I/O-bound** (web servers): most time is waiting on DB/network; the OS does the waiting via epoll while the thread stays busy. **Bad for CPU-bound** (image/video/ML): no parallelism — you need multiple cores (Node uses worker threads; Go/Java suit CPU-bound backends).
+**Good for I/O-bound** (web servers): most time is waiting on DB/network; the OS does the waiting via epoll while the thread stays busy. **Bad for CPU-bound** (image/video/ML): no parallelism. You need multiple cores (Node uses worker threads; Go/Java suit CPU-bound backends).
 
-#### Thread pools — the middle ground
+### Thread pools, the middle ground
 A fixed number of threads (often ~CPU cores) pull tasks off a queue.
-**Pros:** bounded memory, thread reuse, can do blocking I/O per task. **Cons:** if all threads block (e.g., a slow DB), the pool starves — size it carefully.
+**Pros:** bounded memory, thread reuse, can do blocking I/O per task. **Cons:** if all threads block (e.g., a slow DB), the pool starves, size it carefully.
 
 | Workload | Best model |
 |---|---|
@@ -730,89 +753,32 @@ A fixed number of threads (often ~CPU cores) pull tasks off a queue.
 
 ---
 
-### Part 5 — Context Switching Cost (Full Picture)
+## Context Switching Cost (Full Picture)
 
-#### What happens (process A → B)
+### What happens (process A → B)
 1. Timer interrupt → hardware saves A's registers to A's kernel stack.
 2. OS saves A's kernel registers to A's PCB.
 3. OS restores B's kernel registers from B's PCB.
 4. OS switches to B's page table (loads CR3 on x86).
-5. **TLB flush** — A's cached translations are invalid (some CPUs tag entries with an **ASID** — an address-space ID — to skip the flush).
+5. **TLB flush**. A's cached translations are invalid (some CPUs tag entries with an **ASID**, an address-space ID, to skip the flush).
 6. OS restores B's CPU registers; B resumes.
 
-#### Why expensive
+### Why expensive
 - **Register save/restore:** cheap (nanoseconds).
-- **TLB flush:** B's first accesses miss and walk the page table; a warm TLB is 10–100× faster on memory-heavy code.
+- **TLB flush:** B's first accesses miss and walk the page table; a warm TLB is 10-100× faster on memory-heavy code.
 - **Cache invalidation:** caches were hot for A; B starts cold → many RAM fetches (~100× slower than L1).
-- **Scheduler overhead:** ~1–10 µs direct per switch.
+- **Scheduler overhead:** ~1-10 µs direct per switch.
 
 **Why too many threads kills throughput:** 10,000 threads → the OS mostly context-switches, thrashing TLB and caches; throughput collapses though the CPU looks "busy." Hence event loops and goroutines (Go's lightweight scheduler over a few OS threads).
 
----$body$
-) ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, body_md = EXCLUDED.body_md;
+---$body$, step = 3
+  WHERE title = 'Memory & I/O';
 
-INSERT INTO questions.lessons (topic, title, body_md) VALUES (
-  'databases',
-  'Databases',
-  $body$**Databases**
-
-Backend Interview Prep — 3-Day Crash Guide
-
-*Focus: SQL · Indexing · Transactions · NoSQL · CAP*
-
-## Resources
-
-- **CMU 15-445 slides (free)** — storage, indexing, query execution, transactions, concurrency. Read only the per-day topics, not the full course.
-- **Use the Index, Luke (free)** — best free resource on indexing, the most-tested DB topic. Short and visual.
-- **ByteByteGo blog** — short articles on NoSQL, CAP, and DB trade-offs for system design.
-
-## 3-Day Study Plan
-
-**DAY 1 — SQL Foundations & Indexing**
-
-**Topics**
-- **Relational model** — tables, keys, constraints, normalisation (1NF/2NF/3NF), when to denormalise
-- **Joins** — INNER, LEFT, RIGHT, FULL OUTER, self-join
-- **Aggregations + window functions** — GROUP BY, HAVING, ROW_NUMBER, RANK, LAG/LEAD
-- **Indexes** — B-tree, clustered vs non-clustered, composite column order
-- **Query planning** — when an index is used vs a full scan, EXPLAIN
-- **Pitfalls** — leading-column rule, functions on indexed columns, over-indexing
-
-*Exit goal: Write complex SQL (joins, window functions, subqueries) and explain why an index helps or doesn't.*
-
-**DAY 2 — Transactions, Concurrency & Internals**
-
-**Topics**
-- **ACID** — what each property means concretely
-- **Isolation levels** — the 4 levels and the anomalies (dirty / non-repeatable / phantom) each prevents
-- **Locking** — shared vs exclusive, two-phase locking, deadlocks
-- **MVCC** — snapshot isolation, version chains, why readers don't block writers
-- **Storage** — heap files, pages, buffer pool, sequential vs random reads
-- **Query execution** — parse → plan → optimise → execute
-
-*Exit goal: Explain ACID, all 4 isolation levels with their anomalies, and how MVCC runs reads and writes concurrently.*
-
-**DAY 3 — NoSQL, CAP & When to Use What**
-
-**Topics**
-- **CAP** — CP vs AP trade-off
-- **Key-value** — Redis use cases and data structures
-- **Document** — MongoDB, embedding vs referencing
-- **Column-family** — Cassandra, wide rows, write-optimised, time-series
-- **SQL vs NoSQL** — decision framework
-- **Replication + sharding** — replica lag, horizontal sharding, consistent hashing
-
-*Exit goal: Justify a SQL vs NoSQL choice for any system, explain CAP in practice, and contrast Cassandra vs Redis.*
-
-## Databases — Day 1: SQL Foundations & Indexing
-
----
-
-### Part 1 — The Relational Model
+UPDATE questions.bank SET lesson_md = $body$## The Relational Model
 
 A relational database stores data in **tables** (relations) of rows and columns. Tables link through keys, and each fact is stored once.
 
-#### Keys
+### Keys
 
 - **Primary key (PK):** uniquely identifies a row, never NULL. Usually an auto-increment int or UUID.
 - **Foreign key (FK):** references a PK in another table, enforcing referential integrity (no order for a non-existent user).
@@ -826,7 +792,7 @@ CREATE TABLE orders (
 );
 ```
 
-#### Normalisation
+### Normalisation
 
 Goal: store each fact exactly once, removing redundancy.
 
@@ -840,34 +806,34 @@ Goal: store each fact exactly once, removing redundancy.
 
 ---
 
-### Part 2 — SQL Joins
+## SQL Joins
 
 A join combines rows from two tables on a related column.
 
-- **INNER** — only rows matching in both tables.
+- **INNER**: only rows matching in both tables.
   ```sql
   SELECT o.order_id, u.name FROM orders o JOIN users u ON o.user_id = u.user_id;
   ```
-- **LEFT** — all left rows, matched right rows; unmatched right → NULL.
+- **LEFT**: all left rows, matched right rows; unmatched right → NULL.
   ```sql
   SELECT u.name, o.order_id FROM users u LEFT JOIN orders o ON u.user_id = o.user_id;
   ```
-- **Anti-join** (classic pattern) — users with no orders:
+- **Anti-join** (classic pattern), users with no orders:
   ```sql
   SELECT u.name FROM users u LEFT JOIN orders o ON u.user_id = o.user_id WHERE o.order_id IS NULL;
   ```
-- **RIGHT** — mirror of LEFT; rarely used (swap tables and use LEFT).
-- **FULL OUTER** — all rows from both sides, NULLs where no match.
-- **Self-join** — a table joined to itself, e.g. employees and managers:
+- **RIGHT**: mirror of LEFT; rarely used (swap tables and use LEFT).
+- **FULL OUTER**: all rows from both sides, NULLs where no match.
+- **Self-join**: a table joined to itself, e.g. employees and managers:
   ```sql
   SELECT e.name AS employee, m.name AS manager FROM employees e LEFT JOIN employees m ON e.manager_id = m.employee_id;
   ```
 
 ---
 
-### Part 3 — Aggregations & Window Functions
+## Aggregations & Window Functions
 
-#### GROUP BY / HAVING
+### GROUP BY / HAVING
 
 ```sql
 SELECT user_id, SUM(total) AS revenue FROM orders GROUP BY user_id HAVING SUM(total) > 1000;
@@ -875,7 +841,7 @@ SELECT user_id, SUM(total) AS revenue FROM orders GROUP BY user_id HAVING SUM(to
 
 **WHERE vs HAVING:** WHERE filters rows before grouping; HAVING filters groups after aggregation.
 
-#### Window functions
+### Window functions
 
 Compute a value across related rows **without collapsing them** (unlike GROUP BY).
 
@@ -887,12 +853,12 @@ SELECT name, department, salary,
 FROM employees;
 ```
 
-- `PARTITION BY` — the group (like GROUP BY, but rows stay)
-- `ORDER BY` inside `OVER` — ordering within the window
-- `ROW_NUMBER()` — unique 1,2,3…
-- `RANK()` — ties share a rank, then skips (1,2,2,4)
-- `DENSE_RANK()` — ties share a rank, no skip (1,2,2,3)
-- `LAG(col,n)` / `LEAD(col,n)` — value n rows before / after the current row
+- `PARTITION BY`: the group (like GROUP BY, but rows stay)
+- `ORDER BY` inside `OVER`, ordering within the window
+- `ROW_NUMBER()`: unique 1,2,3…
+- `RANK()`: ties share a rank, then skips (1,2,2,4)
+- `DENSE_RANK()`: ties share a rank, no skip (1,2,2,3)
+- `LAG(col,n)` / `LEAD(col,n)`. Value n rows before / after the current row
 
 **Second highest salary** (window vs subquery):
 ```sql
@@ -905,11 +871,11 @@ SELECT MAX(salary) FROM employees WHERE salary < (SELECT MAX(salary) FROM employ
 
 ---
 
-### Part 4 — How Indexes Work
+## How Indexes Work
 
 An index is a separate sorted structure that trades write/storage cost for much faster reads. Without one, every query is a **full table scan** (O(n)).
 
-#### B-tree indexes (the default)
+### B-tree indexes (the default)
 
 A balanced tree storing indexed values in sorted order; leaves point to the rows.
 
@@ -922,10 +888,10 @@ B-tree on users.age:
     [15,18] [25,27] [35,37] [45,50]
 ```
 
-- **Point lookup** (`age = 25`) — O(log n), follow the tree down.
-- **Range** (`age BETWEEN 20 AND 40`) — find the start, then scan leaves in order.
+- **Point lookup** (`age = 25`). O(log n), follow the tree down.
+- **Range** (`age BETWEEN 20 AND 40`). Find the start, then scan leaves in order.
 
-#### Clustered vs non-clustered
+### Clustered vs non-clustered
 
 - **Clustered:** table rows are physically stored in index order. One per table (data has one physical order). Usually the PK (InnoDB, SQL Server).
 - **Non-clustered:** a separate structure holding indexed values + a pointer to the row. Many per table. Lookup = find in index → follow pointer (two hops).
@@ -937,7 +903,7 @@ B-tree on users.age:
 | Range scans | Faster (sequential) | Slower (pointer chasing) |
 | Typical use | Primary key | FKs, filtered columns |
 
-#### Composite indexes & the leading-column rule
+### Composite indexes & the leading-column rule
 
 An index on `(last_name, first_name)` is sorted by `last_name`, then `first_name`. It's only usable if the query uses the **leftmost** column(s).
 
@@ -951,79 +917,76 @@ WHERE last_name = 'Smith' AND age = 30            -- ✅ uses last_name prefix, 
 
 **Column order:** equality columns first, range columns last, high-selectivity (few rows match) columns first.
 
-#### Covering index
+### Covering index
 
 Contains every column a query needs, so the DB never touches the table row.
 ```sql
 -- SELECT name, email FROM users WHERE age = 25  →  index on (age, name, email) covers it, no table lookup
 ```
 
-#### When the DB WON'T use an index
+### When the DB WON'T use an index
 
 1. **Function on the column:** `WHERE UPPER(email) = …` hides the value. Fix: function-based index or store normalised.
-2. **Low selectivity:** `WHERE is_active = true` when 95% match — a scan is cheaper.
+2. **Low selectivity:** `WHERE is_active = true` when 95% match, a scan is cheaper.
 3. **Leading column skipped** in a composite index.
 4. **OR conditions** (sometimes).
-5. **Very small tables** — the planner prefers a scan.
+5. **Very small tables**, the planner prefers a scan.
 6. **Leading wildcard:** `LIKE '%smith'` can't use the index; `LIKE 'smith%'` can.
 
-#### EXPLAIN
+### EXPLAIN
 
 Run `EXPLAIN` / `EXPLAIN ANALYZE` (Postgres) to see the plan:
-- `Seq Scan` — full scan (bad on large tables)
-- `Index Scan` — using an index ✅
-- `Index Only Scan` — covering index, no table lookup ✅✅
+- `Seq Scan`: full scan (bad on large tables)
+- `Index Scan`: using an index ✅
+- `Index Only Scan`: covering index, no table lookup ✅✅
 - `rows` way off → stale stats, run `ANALYZE`
 
-#### Cost of over-indexing
+### Cost of over-indexing
 
 Every insert/update/delete must update every index on the table, plus disk space. Add only indexes that are actually used.
 
----
+---$body$, step = 1
+  WHERE title = 'SQL Foundations & Indexing';
 
-## Databases — Day 2: Transactions, Concurrency & Internals
+UPDATE questions.bank SET lesson_md = $body$## ACID Properties
 
----
+A **transaction** is a sequence of operations that runs as one logical unit. All of it commits or all of it rolls back. ACID is the set of guarantees.
 
-### Part 1 — ACID Properties
-
-A **transaction** is a sequence of operations that runs as one logical unit — all of it commits or all of it rolls back. ACID is the set of guarantees.
-
-- **Atomicity** — all-or-nothing. If step 3 of 5 fails, steps 1–2 roll back. *Bank transfer: debit A, credit B; if the credit fails, the debit is undone.* Implemented via the **WAL (write-ahead log)**: changes are logged before data is modified, so a crash can replay or undo them.
-- **Consistency** — every transaction moves the DB from one valid state to another, never violating constraints (FK, NOT NULL, unique, CHECK). *A `CHECK (balance >= 0)` blocks an overdraft.* Partly the application's responsibility — often the *goal*, with the other three the *mechanisms*.
-- **Isolation** — concurrent transactions behave as if serial; none sees another's intermediate state. *Two users booking the last seat: isolation stops both succeeding (-1 seats).* The hardest to achieve at scale — tuned via **isolation levels** (below).
-- **Durability** — once committed, data survives crashes. The WAL is flushed (fsync) to physical disk before the commit is acknowledged, so committed state is recoverable.
+- **Atomicity**: all-or-nothing. If step 3 of 5 fails, steps 1-2 roll back. *Bank transfer: debit A, credit B; if the credit fails, the debit is undone.* Implemented via the **WAL (write-ahead log)**: changes are logged before data is modified, so a crash can replay or undo them.
+- **Consistency**: every transaction moves the DB from one valid state to another, never violating constraints (FK, NOT NULL, unique, CHECK). *A `CHECK (balance >= 0)` blocks an overdraft.* Partly the application's responsibility. Often the *goal*, with the other three the *mechanisms*.
+- **Isolation**: concurrent transactions behave as if serial; none sees another's intermediate state. *Two users booking the last seat: isolation stops both succeeding (-1 seats).* The hardest to achieve at scale. Tuned via **isolation levels** (below).
+- **Durability**: once committed, data survives crashes. The WAL is flushed (fsync) to physical disk before the commit is acknowledged, so committed state is recoverable.
 
 **Interview phrasing:** *"ACID = atomic (all-or-nothing), consistent (constraints never violated), isolated (concurrent txns don't interfere), durable (committed data survives crashes). The WAL is the key mechanism behind atomicity and durability."*
 
 ---
 
-### Part 2 — Isolation Levels & Anomalies
+## Isolation Levels & Anomalies
 
 Full isolation is expensive (transactions queue up), so DBs let you trade isolation for concurrency.
 
-**Dirty read** — read another transaction's uncommitted write; if it rolls back, you read data that never existed.
+**Dirty read**: read another transaction's uncommitted write; if it rolls back, you read data that never existed.
 ```
 T1: UPDATE users SET balance = 0 WHERE id = 1;  -- uncommitted
 T2: SELECT balance ... id = 1;                   -- reads 0 (dirty)
 T1: ROLLBACK;                                    -- the 0 never happened
 ```
 
-**Non-repeatable read** — re-reading the same row in one transaction returns a different value because another committed an update in between.
+**Non-repeatable read**: re-reading the same row in one transaction returns a different value because another committed an update in between.
 ```
 T1: SELECT balance ... id = 1;                   -- 100
 T2: UPDATE ... SET balance = 50 WHERE id = 1; COMMIT;
 T1: SELECT balance ... id = 1;                   -- 50, changed
 ```
 
-**Phantom read** — re-running a range query returns new rows because another transaction committed an INSERT in that range.
+**Phantom read**: re-running a range query returns new rows because another transaction committed an INSERT in that range.
 ```
 T1: SELECT * FROM orders WHERE amount > 1000;    -- 5 rows
 T2: INSERT INTO orders (amount) VALUES (2000); COMMIT;
 T1: SELECT * FROM orders WHERE amount > 1000;    -- 6 rows
 ```
 
-**Lost update** (not in the standard table, but interviewers love it) — two transactions read the same value, each writes back a modified value, and the second write silently overwrites the first.
+**Lost update** (not in the standard table, but interviewers love it). Two transactions read the same value, each writes back a modified value, and the second write silently overwrites the first.
 ```
 T1: SELECT balance ... id = 1;                   -- 100
 T2: SELECT balance ... id = 1;                   -- 100
@@ -1044,14 +1007,14 @@ Fix: atomic updates (`SET balance = balance + 50`), `SELECT … FOR UPDATE`, or 
 - **Read Uncommitted:** sees uncommitted writes. Almost never used.
 - **Read Committed:** sees only committed data; each statement gets a fresh snapshot. **Postgres/Oracle default.** Stops dirty reads only.
 - **Repeatable Read:** one snapshot for the whole transaction. **MySQL InnoDB default.** Stops dirty + non-repeatable reads; InnoDB also stops phantoms via gap locks (locks on the gaps *between* index rows, blocking inserts into the range).
-- **Serializable:** transactions appear to run one at a time; stops all anomalies via predicate locks (lock the query's *condition*, not just its rows) or SSI (serializable snapshot isolation — detect conflicts at commit, abort one txn). Heaviest — use for ledgers, inventory.
+- **Serializable:** transactions appear to run one at a time; stops all anomalies via predicate locks (lock the query's *condition*, not just its rows) or SSI (serializable snapshot isolation. Detect conflicts at commit, abort one txn). Heaviest, use for ledgers, inventory.
 
 ---
 
-### Part 3 — Locking
+## Locking
 
-- **Shared (S):** many transactions can hold it on the same row — for reads.
-- **Exclusive (X):** only one holder; blocks all other readers and writers — for writes.
+- **Shared (S):** many transactions can hold it on the same row, for reads.
+- **Exclusive (X):** only one holder; blocks all other readers and writers, for writes.
 
 | | Shared | Exclusive |
 |---|---|---|
@@ -1060,7 +1023,7 @@ Fix: atomic updates (`SET balance = balance + 50`), `SELECT … FOR UPDATE`, or 
 
 **Two-phase locking (2PL):** a *growing* phase acquires locks (never releases), then a *shrinking* phase releases them (never acquires). Guarantees serialisability.
 
-**Pessimistic locking** — lock on read (`SELECT … FOR UPDATE`), hold until commit. Good for high contention.
+**Pessimistic locking**: lock on read (`SELECT … FOR UPDATE`), hold until commit. Good for high contention.
 ```sql
 BEGIN;
 SELECT * FROM accounts WHERE id = 1 FOR UPDATE;  -- locked
@@ -1068,7 +1031,7 @@ UPDATE accounts SET balance = balance - 100 WHERE id = 1;
 COMMIT;
 ```
 
-**Optimistic locking** — no lock on read; carry a version, check it on update; if it changed, retry. Good for low contention / long transactions.
+**Optimistic locking**: no lock on read; carry a version, check it on update; if it changed, retry. Good for low contention / long transactions.
 ```sql
 SELECT balance, version FROM accounts WHERE id = 1;  -- version=5
 UPDATE accounts SET balance = 0, version = 6
@@ -1077,15 +1040,15 @@ WHERE id = 1 AND version = 5;  -- 0 rows affected → conflict, retry
 
 ---
 
-### Part 4 — MVCC (Multi-Version Concurrency Control)
+## MVCC (Multi-Version Concurrency Control)
 
 How Postgres and most modern DBs let reads and writes run concurrently without blocking.
 
 **Core idea:** keep **multiple versions** of each row. Readers see a consistent snapshot as of a point in time; writers create new versions instead of overwriting.
 
 **In Postgres**, each row has hidden columns:
-- `xmin` — transaction ID that created this version
-- `xmax` — transaction ID that deleted/updated it (0 if still live)
+- `xmin`: transaction ID that created this version
+- `xmax`: transaction ID that deleted/updated it (0 if still live)
 
 A transaction sees a version when `xmin` committed before it started and `xmax` is 0 or committed after it started.
 ```
@@ -1101,37 +1064,34 @@ T200 (started after T150) sees 80; T120 (started before T150) still sees 100.
 
 ---
 
-### Part 5 — Storage Internals & Query Execution
+## Storage Internals & Query Execution
 
-**Storage:** data lives in fixed-size **pages** (8KB Postgres, 16KB MySQL InnoDB). The **heap file** is an unordered set of pages. The **buffer pool** caches hot pages in RAM — a cached read is orders of magnitude faster than disk, so buffer-pool size is a top performance lever.
+**Storage:** data lives in fixed-size **pages** (8KB Postgres, 16KB MySQL InnoDB). The **heap file** is an unordered set of pages. The **buffer pool** caches hot pages in RAM. A cached read is orders of magnitude faster than disk, so buffer-pool size is a top performance lever.
 
 **Sequential vs random:** sequential reads (a table scan) let the OS prefetch; random access (chasing index pointers to scattered rows) means many seeks. This is why a full scan can beat an index scan for low-selectivity queries.
 
 **Query pipeline:**
-1. **Parse** — SQL → parse tree (AST), syntax check.
-2. **Analyse/bind** — resolve table/column names against the schema.
-3. **Plan/optimise** — generate candidate plans (join order, index use), estimate cost, pick the cheapest.
-4. **Execute** — run the plan, return rows.
+1. **Parse**. SQL → parse tree (AST), syntax check.
+2. **Analyse/bind**. Resolve table/column names against the schema.
+3. **Plan/optimise**. Generate candidate plans (join order, index use), estimate cost, pick the cheapest.
+4. **Execute**, run the plan, return rows.
 
-The planner uses **statistics** (row counts, value distributions, stored in `pg_statistic`) to estimate cost; stale stats cause bad plans — fix with `ANALYZE`.
+The planner uses **statistics** (row counts, value distributions, stored in `pg_statistic`) to estimate cost; stale stats cause bad plans, fix with `ANALYZE`.
 
 **Join algorithms:**
-- **Nested loop** — for each row in A, scan B. O(n×m). Good for small or indexed inputs.
-- **Hash join** — build a hash table on the smaller side, probe with the larger. O(n+m). Good for large unsorted inputs.
-- **Merge join** — sort both on the join key, then merge. Good when inputs are already sorted (indexed).
+- **Nested loop**: for each row in A, scan B. O(n×m). Good for small or indexed inputs.
+- **Hash join**: build a hash table on the smaller side, probe with the larger. O(n+m). Good for large unsorted inputs.
+- **Merge join**: sort both on the join key, then merge. Good when inputs are already sorted (indexed).
 
----
+---$body$, step = 2
+  WHERE title = 'Transactions, Concurrency & Internals';
 
-## Databases — Day 3: NoSQL, CAP Theorem & When to Use What
-
----
-
-### Part 1 — CAP Theorem
+UPDATE questions.bank SET lesson_md = $body$## CAP Theorem
 
 In a distributed system you can guarantee only **two** of:
-- **C — Consistency:** every read sees the most recent write (or an error).
-- **A — Availability:** every request gets a non-error response (maybe stale).
-- **P — Partition tolerance:** the system keeps working when the network drops or delays messages between nodes.
+- **C. Consistency:** every read sees the most recent write (or an error).
+- **A. Availability:** every request gets a non-error response (maybe stale).
+- **P. Partition tolerance:** the system keeps working when the network drops or delays messages between nodes.
 
 **The catch:** partitions *will* happen, so P is mandatory. The real choice is what to sacrifice during a partition:
 - **CP:** reject requests to avoid serving stale data. For financial systems, inventory.
@@ -1143,23 +1103,23 @@ In a distributed system you can guarantee only **two** of:
 | MongoDB (default) | CP | One primary takes writes; the minority side of a partition has none, rejects writes |
 | Cassandra | AP | Serves during partition, eventual consistency |
 | DynamoDB | AP (configurable) | Eventually consistent by default, strong optional |
-| Postgres/MySQL | CA* | Single node — no partition concern |
+| Postgres/MySQL | CA* | Single node, no partition concern |
 | Zookeeper | CP | Leader election needs consistency |
 
 *CA only makes sense single-node; any real distributed system must handle partitions.
 
-#### Eventual consistency
+### Eventual consistency
 
 AP systems converge after a partition heals; during it, nodes may differ.
-- **Replication lag:** replicas trail the primary by ~10–500ms; a read right after a write may be stale.
+- **Replication lag:** replicas trail the primary by ~10-500ms; a read right after a write may be stale.
 - **Read-your-own-writes:** you post, then read from a stale replica and don't see it. Fix: route reads-after-writes to the primary.
 - **Last-write-wins (LWW):** Cassandra resolves conflicts by timestamp; clock skew can let an older write overwrite a newer one.
 
 ---
 
-### Part 2 — Key-Value: Redis
+## Key-Value: Redis
 
-In-memory key-value store — reads/writes in microseconds. Optional disk persistence (RDB point-in-time snapshots or an AOF append-only write log).
+In-memory key-value store, reads/writes in microseconds. Optional disk persistence (RDB point-in-time snapshots or an AOF append-only write log).
 
 | Structure | Commands | Use case |
 |---|---|---|
@@ -1171,7 +1131,7 @@ In-memory key-value store — reads/writes in microseconds. Optional disk persis
 | Bitmap | SETBIT, BITCOUNT | Feature flags, daily-active-user tracking |
 | HyperLogLog | PFADD, PFCOUNT | Approximate unique counts at scale |
 
-**TTL:** any key can expire — `SET session:abc data EX 3600`. Core to sessions and cache invalidation.
+**TTL:** any key can expire. `SET session:abc data EX 3600`. Core to sessions and cache invalidation.
 
 **Use for:** caching (most common), sessions, rate limiting (INCR + TTL), pub/sub, distributed locks (`SET key val NX EX 30`), leaderboards (sorted sets).
 
@@ -1179,18 +1139,18 @@ In-memory key-value store — reads/writes in microseconds. Optional disk persis
 
 ---
 
-### Part 3 — Document: MongoDB
+## Document: MongoDB
 
 Stores **documents** (JSON-like BSON); documents in a collection need not share a schema. Nest data (embed) instead of joining across tables.
 
-**Embedding** — related data in one document.
+**Embedding**: related data in one document.
 ```json
 { "_id": "user123", "name": "Will",
   "addresses": [ {"type": "home", "city": "Singapore"} ] }
 ```
 ✅ one read, atomic single-doc updates. ❌ document grows unboundedly if the array is large.
 
-**Referencing** — separate collections linked by ID (like an FK).
+**Referencing**: separate collections linked by ID (like an FK).
 ```json
 { "_id": "user123", "name": "Will" }                       // users
 { "_id": "order456", "user_id": "user123", "total": 99 }   // orders
@@ -1199,11 +1159,11 @@ Stores **documents** (JSON-like BSON); documents in a collection need not share 
 
 **Rule:** embed when data is accessed together and bounded; reference when it's large, accessed independently, or shared.
 
-**Use MongoDB for:** varying fields per record (e.g. a mixed product catalogue), document-centric data (posts with comments), rapid schema iteration. **Not for:** complex cross-collection joins or highly relational data. Multi-document transactions exist (4.0+) but are costly — needing them everywhere points to SQL.
+**Use MongoDB for:** varying fields per record (e.g. a mixed product catalogue), document-centric data (posts with comments), rapid schema iteration. **Not for:** complex cross-collection joins or highly relational data. Multi-document transactions exist (4.0+) but are costly. Needing them everywhere points to SQL.
 
 ---
 
-### Part 4 — Column-Family: Cassandra
+## Column-Family: Cassandra
 
 Distributed, masterless wide-column store built for huge write throughput and high availability. Every node is equal; data is auto-replicated. AP.
 
@@ -1216,7 +1176,7 @@ CREATE TABLE sensor_data (
     PRIMARY KEY (sensor_id, timestamp)  -- partition: sensor_id, clustering: timestamp
 );
 ```
-All rows for a `sensor_id` sit together, sorted by `timestamp` — single-partition queries are very fast.
+All rows for a `sensor_id` sit together, sorted by `timestamp`. Single-partition queries are very fast.
 
 **Strengths:**
 - **Write-optimised:** writes hit an in-memory memtable + append-only commit log (sequential, no locks).
@@ -1224,8 +1184,8 @@ All rows for a `sensor_id` sit together, sorted by `timestamp` — single-partit
 - **High availability:** configurable replication factor; tunable consistency per query (e.g. `QUORUM` = majority of replicas respond).
 
 **Limitations:**
-- No joins — one table per query pattern.
-- Aggregations (SUM, GROUP BY) work only within one partition — do analytics in app code or Spark.
+- No joins, one table per query pattern.
+- Aggregations (SUM, GROUP BY) work only within one partition. Do analytics in app code or Spark.
 - Updates are new timestamped writes; deletes are tombstones (deletion markers; too many degrade reads).
 - Schema is query-driven: pick the queries first, then design the tables.
 
@@ -1233,14 +1193,14 @@ All rows for a `sensor_id` sit together, sorted by `timestamp` — single-partit
 
 ---
 
-### Part 5 — SQL vs NoSQL Decision Framework
+## SQL vs NoSQL Decision Framework
 
 **Use SQL (Postgres, MySQL) when:**
 - **ACID** matters: banking, payments, inventory, bookings.
 - **Complex queries / joins** across entities.
 - **Stable, well-defined schema.**
 - **Relational integrity** via FKs and constraints.
-- Scale is moderate — SQL handles millions of rows with indexing + read replicas.
+- Scale is moderate. SQL handles millions of rows with indexing + read replicas.
 
 **Use NoSQL when:**
 
@@ -1259,84 +1219,25 @@ All rows for a `sensor_id` sit together, sorted by `timestamp` — single-partit
 
 ---
 
-### Part 6 — Replication & Sharding
+## Replication & Sharding
 
 Two orthogonal scaling tools: **replication** copies the *same* data to multiple nodes; **sharding** splits *different* data across nodes.
 
 **Replication (leader–follower):** writes go to one leader; followers copy its log and serve reads.
-- **Async** (common): leader acks immediately, ships to followers later — fast, but causes the **replica lag** from Part 1, and a leader crash can lose the newest writes.
-- **Sync:** leader waits for a follower ack — no loss, slower writes, stalls if the follower is down.
-- Buys read scale + failover (promote a follower) — **not** write scale.
+- **Async** (common): leader acks immediately, ships to followers later. Fast, but causes the **replica lag** from Part 1, and a leader crash can lose the newest writes.
+- **Sync:** leader waits for a follower ack. No loss, slower writes, stalls if the follower is down.
+- Buys read scale + failover (promote a follower), **not** write scale.
 
-**Sharding (horizontal partitioning):** split rows across nodes by a **shard key**, e.g. `hash(user_id) % N` or key ranges. Scales writes and storage. Costs: cross-shard queries/joins and transactions are hard, and a bad key creates hotspots (see Q&A). Naive `hash % N` breaks when N changes — nearly every key remaps.
+**Sharding (horizontal partitioning):** split rows across nodes by a **shard key**, e.g. `hash(user_id) % N` or key ranges. Scales writes and storage. Costs: cross-shard queries/joins and transactions are hard, and a bad key creates hotspots (see Q&A). Naive `hash % N` breaks when N changes, nearly every key remaps.
 
 **Consistent hashing:** place nodes and keys on a hash ring; each key belongs to the next node clockwise. Adding/removing a node remaps only ~1/N of the keys (its neighbours'), not everything. Used by Cassandra and Dynamo-style stores; **virtual nodes** (many ring positions per server) even out the load.
 
----$body$
-) ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, body_md = EXCLUDED.body_md;
+---$body$, step = 3
+  WHERE title = 'NoSQL, CAP Theorem & When to Use What';
 
-INSERT INTO questions.lessons (topic, title, body_md) VALUES (
-  'networking',
-  'Networking',
-  $body$**Networking Fundamentals**
+UPDATE questions.bank SET lesson_md = $body$## The Network Stack
 
-Backend Interview Prep — 3-Day Crash Guide
-
-*Focus: HTTP · TCP/UDP · DNS · Load Balancing · REST vs gRPC*
-
-## Resources
-
-- **Kurose & Ross, "Computer Networks: A Top-Down Approach"** — the standard textbook. Read only the chapters mapped per day.
-- **Beej's Guide to Network Programming** — best free alternative for sockets and TCP/IP.
-- **MDN Web Docs — HTTP** — best free HTTP reference (methods, status codes, caching, cookies, CORS).
-- **ByteByteGo Blog** — short visual articles on DNS, load balancing, REST vs gRPC, WebSocket. Good for Day 3.
-
-*Strategy: Kurose & Ross (or Beej) for TCP/IP, MDN for HTTP, ByteByteGo for app-layer trade-offs.*
-
-## 3-Day Study Plan
-
-**DAY 1 — The Network Stack & TCP/IP**
-
-- OSI (7 layers) vs TCP/IP (4 layers): what lives at each layer.
-- IP addressing: IPv4/IPv6, subnets, CIDR, public vs private.
-- TCP vs UDP: reliability, ordering, flow/congestion control, when to use each.
-- TCP handshake (SYN/SYN-ACK/ACK), teardown (FIN), TIME_WAIT, congestion control (slow start, cwnd).
-- Ports and sockets: listening, ephemeral ports.
-
-*Exit goal: explain what happens at the network level when a client connects — IP routing → TCP handshake → data transfer.*
-
-**DAY 2 — HTTP Deep Dive**
-
-- HTTP/1.1 vs HTTP/2 vs HTTP/3: head-of-line blocking, multiplexing, QUIC.
-- Request/response: methods, status codes, headers.
-- Caching: Cache-Control, ETag, Last-Modified, stale-while-revalidate.
-- HTTPS + TLS: handshake, certificates, symmetric vs asymmetric.
-- Cookies + sessions: Set-Cookie flags, stateless HTTP + stateful sessions.
-- CORS: same-origin policy, preflight, Access-Control headers.
-- WebSockets: upgrade handshake, full-duplex, vs polling.
-
-*Exit goal: trace an HTTPS request end to end (DNS → TCP → TLS → HTTP) and explain caching, CORS, cookies.*
-
-**DAY 3 — DNS, Load Balancing & API Design**
-
-- DNS: recursive vs iterative, resolver → root → TLD → authoritative, TTL.
-- Load balancing algorithms: round robin, least connections, IP hash, consistent hashing.
-- L4 vs L7 load balancing.
-- CDNs: edge caching near users, origin on miss.
-- REST principles: stateless, resources, verbs, idempotency, status codes.
-- REST vs gRPC vs GraphQL trade-offs.
-- API design: versioning, pagination, rate limiting.
-- Review: answer the questions below out loud, no notes.
-
-*Exit goal: trace a full request from browser to server, explain L4/L7 load balancing, justify a choice between REST/gRPC/GraphQL.*
-
-## Networking — Day 1: The Network Stack & TCP/IP
-
----
-
-### Part 1 — The Network Stack
-
-#### OSI Model vs TCP/IP Model
+### OSI Model vs TCP/IP Model
 
 OSI is a conceptual 7-layer model. TCP/IP is the 4-layer model the internet actually uses. Know both and how they map.
 
@@ -1355,23 +1256,23 @@ OSI (7 layers)              TCP/IP (4 layers)
 - **Data Link:** node-to-node delivery on the same network. MAC addresses, Ethernet frames.
 - **Network:** routing packets across networks. IP addresses, routers.
 - **Transport:** process-to-process delivery. Ports. TCP and UDP.
-- **Application:** app protocols — HTTP, DNS, SMTP, WebSocket.
+- **Application:** app protocols, HTTP, DNS, SMTP, WebSocket.
 
 Each layer wraps the one below: a TCP segment goes inside an IP packet, inside an Ethernet frame. When debugging, narrow by layer (DNS? routing? cable?).
 
-#### IP Addressing
+### IP Addressing
 
-- **IPv4:** 32-bit, four decimal octets (`192.168.1.1`). ~4 billion addresses — exhausted, hence IPv6.
+- **IPv4:** 32-bit, four decimal octets (`192.168.1.1`). ~4 billion addresses, exhausted, hence IPv6.
 - **IPv6:** 128-bit, eight hex groups (`2001:db8:85a3::8a2e:370:7334`). Effectively unlimited.
-- **CIDR:** `192.168.1.0/24` — first 24 bits are the network prefix; the remaining 8 bits give 256 addresses (254 usable hosts).
+- **CIDR:** `192.168.1.0/24`. First 24 bits are the network prefix; the remaining 8 bits give 256 addresses (254 usable hosts).
 - **Private (not internet-routable):** `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`. **Public:** everything else.
 - **NAT:** the router has one public IP; inside devices use private IPs. It rewrites addresses so outbound traffic appears to come from that one public IP, tracking which device gets each response.
 
 ---
 
-### Part 2 — TCP vs UDP
+## TCP vs UDP
 
-**TCP** — reliable, ordered, connection-oriented.
+**TCP**: reliable, ordered, connection-oriented.
 - **Reliable:** every segment is ACKed; lost ones are retransmitted.
 - **Ordered:** segments are numbered and reassembled in order.
 - **Flow control:** receiver advertises window size so the sender won't overwhelm it.
@@ -1379,7 +1280,7 @@ Each layer wraps the one below: a TCP segment goes inside an IP packet, inside a
 - **Cost:** handshake, ACKs, retransmissions add overhead.
 - **Use when** data must arrive complete and in order: HTTP(S), SSH, FTP, SMTP, DB connections.
 
-**UDP** — fast, connectionless, best-effort. No handshake, ACKs, ordering, or retransmission.
+**UDP**: fast, connectionless, best-effort. No handshake, ACKs, ordering, or retransmission.
 - Very low latency, low per-packet overhead, no head-of-line blocking.
 - **Use when** speed beats reliability (app handles reliability if needed): DNS (tiny, easy to retry), video/VoIP (skip a late frame; stale audio is useless), gaming (latest state matters, not old order), QUIC/HTTP/3 (adds its own reliability + multiplexing).
 
@@ -1393,7 +1294,7 @@ Each layer wraps the one below: a TCP segment goes inside an IP packet, inside a
 
 ---
 
-### Part 3 — The TCP Three-Way Handshake
+## The TCP Three-Way Handshake
 
 A connection is established before data flows:
 
@@ -1407,7 +1308,7 @@ Client                                  Server
 
 **Why three steps?** Both sides must agree on initial sequence numbers (ISNs) and prove each can send *and* receive: SYN (client can send), SYN-ACK (server can send + receive), ACK (client confirms). ISNs are randomized so stale packets from an old connection aren't mistaken for current ones.
 
-#### Teardown (FIN)
+### Teardown (FIN)
 
 Termination is four-way; either side can start:
 
@@ -1418,53 +1319,50 @@ Termination is four-way; either side can start:
   |--- ACK ---►|
 ```
 
-After sending the final ACK, the initiator enters **TIME_WAIT** (2×MSL — maximum segment lifetime; ~60s on Linux) so it can resend that ACK if lost, and so stray packets die off instead of leaking into a new connection on the same port. Restarting a server fast can hit "address already in use" from TIME_WAIT — fix with the `SO_REUSEADDR` socket option.
+After sending the final ACK, the initiator enters **TIME_WAIT** (2×MSL. Maximum segment lifetime; ~60s on Linux) so it can resend that ACK if lost, and so stray packets die off instead of leaking into a new connection on the same port. Restarting a server fast can hit "address already in use" from TIME_WAIT. Fix with the `SO_REUSEADDR` socket option.
 
-#### Congestion Control
+### Congestion Control
 
 TCP probes for bandwidth and backs off on loss.
 - **Slow start:** start with a small congestion window (cwnd); double it each round-trip (RTT) until a threshold or loss.
-- **Congestion avoidance:** past the threshold, grow linearly (+1 MSS — one max-size segment — per RTT).
+- **Congestion avoidance:** past the threshold, grow linearly (+1 MSS, one max-size segment, per RTT).
 - **On loss:** assume congestion, halve cwnd. A lossy link (cellular) repeatedly slows TCP.
 
 This is why latency-sensitive apps prefer UDP, and why HTTP/3 uses QUIC with its own congestion control.
 
 ---
 
-### Part 4 — Ports and Sockets
+## Ports and Sockets
 
-A **port** is a 16-bit number (0–65535) identifying a process on a host.
-- **0–1023:** well-known (HTTP 80, HTTPS 443, SSH 22, DNS 53, SMTP 25).
-- **1024–49151:** registered (app-specific).
-- **49152–65535:** ephemeral (OS-assigned for client connections).
+A **port** is a 16-bit number (0-65535) identifying a process on a host.
+- **0-1023:** well-known (HTTP 80, HTTPS 443, SSH 22, DNS 53, SMTP 25).
+- **1024-49151:** registered (app-specific).
+- **49152-65535:** ephemeral (OS-assigned for client connections).
 
 Connecting to `api.example.com:443` uses destination port 443 and an OS-assigned source port. The 4-tuple `(client IP, client port, server IP, server port)` uniquely identifies the connection.
 
-A **socket** is a software endpoint for network I/O — a file descriptor you read/write.
+A **socket** is a software endpoint for network I/O. A file descriptor you read/write.
 
 ```
 Server: socket() → bind(IP:port) → listen() → accept() → read/write() → close()
 Client: socket() → connect(IP:port) → read/write() → close()
 ```
 
-`accept()` returns a **new** socket per client while the original keeps listening — this is how one server serves many clients.
+`accept()` returns a **new** socket per client while the original keeps listening. This is how one server serves many clients.
 
----
+---$body$, step = 1
+  WHERE title = 'The Network Stack & TCP/IP';
 
-## Networking — Day 2: HTTP Deep Dive
+UPDATE questions.bank SET lesson_md = $body$## HTTP Evolution
 
----
-
-### Part 1 — HTTP Evolution
-
-- **HTTP/1.0:** one TCP connection per request, closed after each response. A full handshake per resource — very inefficient.
-- **HTTP/1.1:** persistent connections (`keep-alive`) reuse one connection, but requests are still **sequential** — you wait for response N before sending N+1. That's **head-of-line blocking**. Workaround: ~6 parallel connections per domain. Pipelining (send without waiting, responses in order) exists but is rarely used and often broken.
-- **HTTP/2:** **multiplexing** — many requests/responses in flight over one TCP connection, each a **stream** with its own ID, no ordering required. Also **binary framing** (faster to parse than 1.1's text), **HPACK** header compression (cuts repeated `Cookie`/`User-Agent` overhead), and **server push** (rarely used). Limit: runs over TCP, so one lost segment stalls all streams (TCP-level HOL blocking).
+- **HTTP/1.0:** one TCP connection per request, closed after each response. A full handshake per resource, very inefficient.
+- **HTTP/1.1:** persistent connections (`keep-alive`) reuse one connection, but requests are still **sequential**. You wait for response N before sending N+1. That's **head-of-line blocking**. Workaround: ~6 parallel connections per domain. Pipelining (send without waiting, responses in order) exists but is rarely used and often broken.
+- **HTTP/2:** **multiplexing**. Many requests/responses in flight over one TCP connection, each a **stream** with its own ID, no ordering required. Also **binary framing** (faster to parse than 1.1's text), **HPACK** header compression (cuts repeated `Cookie`/`User-Agent` overhead), and **server push** (rarely used). Limit: runs over TCP, so one lost segment stalls all streams (TCP-level HOL blocking).
 - **HTTP/3 (QUIC):** QUIC runs over UDP with its own per-stream reliability, so a lost packet blocks only its own stream. Gains: no TCP-level HOL blocking, faster setup (0-RTT on reconnect), better on lossy/cellular networks. Now widely supported by browsers and CDNs.
 
 ---
 
-### Part 2 — Request & Response Structure
+## Request & Response Structure
 
 ```
 POST /api/orders HTTP/1.1
@@ -1487,15 +1385,15 @@ Authorization: Bearer eyJhbG...
 | HEAD | Yes | Yes | Like GET, no body |
 | OPTIONS | Yes | Yes | List methods (CORS preflight) |
 
-- **Idempotent:** N calls = same effect as one. `PUT /orders/123` always yields the same state; `POST /orders` creates a new order each time. (*PATCH isn't guaranteed idempotent — e.g. an "increment" patch.)
+- **Idempotent:** N calls = same effect as one. `PUT /orders/123` always yields the same state; `POST /orders` creates a new order each time. (*PATCH isn't guaranteed idempotent, e.g. an "increment" patch.)
 - **PUT vs PATCH:** PUT replaces the whole resource (fields you omit get cleared). PATCH updates only the fields you send.
 
-**Status codes — know cold:**
+**Status codes, know cold:**
 
 | Code | Meaning | When |
 |---|---|---|
 | 200 | OK | Success with body |
-| 201 | Created | Resource created (POST) — set Location header |
+| 201 | Created | Resource created (POST), set Location header |
 | 204 | No Content | Success, no body (DELETE, PUT) |
 | 301 | Moved Permanently | Redirect, cached by browser |
 | 302 | Found | Temporary redirect, not cached |
@@ -1513,16 +1411,16 @@ Authorization: Bearer eyJhbG...
 
 ---
 
-### Part 3 — HTTP Caching
+## HTTP Caching
 
 Caching lets the browser or a proxy reuse a stored response instead of re-fetching.
 
 **Cache-Control:**
-- `max-age=N` — fresh for N seconds; served from cache without hitting the server.
-- `public` — cacheable by intermediaries (CDNs/proxies); `private` — browser only.
-- `no-store` — never cache (sensitive data).
-- `no-cache` — may cache, but must revalidate before use.
-- `s-maxage=N` — like max-age but for shared caches.
+- `max-age=N`: fresh for N seconds; served from cache without hitting the server.
+- `public`, cacheable by intermediaries (CDNs/proxies); `private`, browser only.
+- `no-store`: never cache (sensitive data).
+- `no-cache`: may cache, but must revalidate before use.
+- `s-maxage=N`: like max-age but for shared caches.
 
 **Validation (after expiry):** revalidate instead of re-downloading.
 - **ETag:** server sends `ETag: "abc123"` (content hash). Next request sends `If-None-Match: "abc123"`. Unchanged → `304 Not Modified` (no body); changed → full `200` with new ETag.
@@ -1534,47 +1432,47 @@ GET /styles.css   If-None-Match:"abc123"   (after expiry)
 → 200  ETag:"xyz456"    (changed: full new response)
 ```
 
-**stale-while-revalidate:** `max-age=60, stale-while-revalidate=3600` — serve stale instantly, revalidate in the background. No user-facing latency.
+**stale-while-revalidate:** `max-age=60, stale-while-revalidate=3600`. Serve stale instantly, revalidate in the background. No user-facing latency.
 
 ---
 
-### Part 4 — HTTPS & TLS
+## HTTPS & TLS
 
-HTTP is plaintext — anyone on the path can read or alter it. HTTPS wraps HTTP in TLS to encrypt traffic and verify the server's identity.
+HTTP is plaintext. Anyone on the path can read or alter it. HTTPS wraps HTTP in TLS to encrypt traffic and verify the server's identity.
 
 **TLS handshake:**
 1. **ClientHello:** TLS version, supported cipher suites, client random.
 2. **ServerHello:** chosen cipher suite, server random, and the server's **certificate** (public key, signed by a CA).
 3. **Verify cert:** browser checks the CA chain, domain match, and expiry.
-4. **Key exchange:** both run an algorithm (typically ECDHE) to derive a shared **session key** without sending it — an eavesdropper can't reconstruct it.
+4. **Key exchange:** both run an algorithm (typically ECDHE) to derive a shared **session key** without sending it. An eavesdropper can't reconstruct it.
 5. **Finished:** both confirm with a message encrypted under the session key.
 6. **Data:** encrypted with the symmetric session key (e.g. AES-GCM).
 
 **Symmetric vs asymmetric:** asymmetric (RSA/ECDHE) secures the key exchange but is slow, so it's paid once; symmetric (AES) is fast and carries all the data afterward.
 
-**HTTP/2 + TLS:** the spec allows HTTP/2 without TLS, but no browser implements it — so in practice it needs TLS.
+**HTTP/2 + TLS:** the spec allows HTTP/2 without TLS, but no browser implements it, so in practice it needs TLS.
 
 ---
 
-### Part 5 — Cookies & Sessions
+## Cookies & Sessions
 
-HTTP is **stateless** — each request stands alone. Cookies add state.
+HTTP is **stateless**, each request stands alone. Cookies add state.
 
 Server: `Set-Cookie: session_id=abc123; HttpOnly; Secure; SameSite=Strict; Max-Age=3600`. The browser then auto-sends `Cookie: session_id=abc123` on later requests.
 
 **Flags:**
-- `HttpOnly` — JS can't read it (blocks cookie theft via **XSS** — injected malicious scripts).
-- `Secure` — sent only over HTTPS.
-- `SameSite=Strict` — not sent on cross-site requests (blocks **CSRF** — another site triggering requests that ride on your cookies); `Lax` — sent on top-level navigation only.
-- `Max-Age=N` — expiry; without it, it's a session cookie (gone when the browser closes).
+- `HttpOnly`, JS can't read it (blocks cookie theft via **XSS**, injected malicious scripts).
+- `Secure`: sent only over HTTPS.
+- `SameSite=Strict`, not sent on cross-site requests (blocks **CSRF**, another site triggering requests that ride on your cookies); `Lax`. Sent on top-level navigation only.
+- `Max-Age=N`: expiry; without it, it's a session cookie (gone when the browser closes).
 
 **Session vs JWT:**
 - **Server-side session:** cookie holds only a session ID; server stores the data (DB/Redis). Easy to invalidate, but adds a lookup per request. Stateful.
-- **JWT (JSON Web Token):** token holds signed user claims; server verifies the signature — no lookup. Stateless and scales well, but hard to invalidate before expiry (needs a blocklist, which re-adds a lookup).
+- **JWT (JSON Web Token):** token holds signed user claims; server verifies the signature, no lookup. Stateless and scales well, but hard to invalidate before expiry (needs a blocklist, which re-adds a lookup).
 
 ---
 
-### Part 6 — CORS
+## CORS
 
 Browsers enforce the **Same-Origin Policy:** JS on `app.example.com` can't read responses from `api.otherdomain.com`. This stops malicious sites from using a user's credentials. **Origin = scheme + host + port** (so http vs https differ).
 
@@ -1593,13 +1491,13 @@ Access-Control-Request-Headers: Authorization
   Access-Control-Max-Age: 86400   (caches this preflight)
 ```
 
-**Common bug:** CORS headers returned on 200 but missing on 4xx/5xx — the browser needs them on errors too, or JS can't read it.
+**Common bug:** CORS headers returned on 200 but missing on 4xx/5xx. The browser needs them on errors too, or JS can't read it.
 
 ---
 
-### Part 7 — WebSockets
+## WebSockets
 
-WebSocket is **full-duplex** over a persistent connection — either side can send anytime, unlike HTTP's request→response.
+WebSocket is **full-duplex** over a persistent connection. Either side can send anytime, unlike HTTP's request→response.
 
 It starts as HTTP and upgrades:
 
@@ -1623,33 +1521,30 @@ After `101 Switching Protocols`, the connection is raw WebSocket, no longer HTTP
 | Use case | Periodic updates | Near-real-time over HTTP | Chat, collaboration, live data |
 
 - **Use WebSockets for** real-time bidirectional needs: chat, collaborative editing, live dashboards, multiplayer, sub-second notifications.
-- **Don't** for periodic data (use polling or SSE — server-sent events), simple request/response (use HTTP), or flaky mobile clients (persistent connections are hard).
+- **Don't** for periodic data (use polling or SSE. Server-sent events), simple request/response (use HTTP), or flaky mobile clients (persistent connections are hard).
 
----
+---$body$, step = 2
+  WHERE title = 'HTTP Deep Dive';
 
-## Networking — Day 3: DNS, Load Balancing & API Design
-
----
-
-### Part 1 — DNS Resolution
+UPDATE questions.bank SET lesson_md = $body$## DNS Resolution
 
 DNS translates domain names (`api.example.com`) into IPs (`93.184.216.34`). It's distributed, hierarchical, and heavily cached.
 
-#### The resolution chain
+### The resolution chain
 
 ```
 Browser cache → OS cache → Recursive Resolver → Root NS → TLD NS → Authoritative NS
 ```
 
-1. **Browser cache** — recent and unexpired? Use it.
-2. **OS cache / hosts file** — check `/etc/hosts` and the OS cache.
-3. **Recursive resolver** (ISP or 8.8.8.8) — checks its cache; on a miss, does the lookups below.
-4. **Root nameservers** (13 root server addresses, served worldwide via anycast — one IP, many physical servers) — point to the TLD servers ("where is `.com`?").
-5. **TLD nameserver** (`.com` run by Verisign) — points to the domain's authoritative server.
-6. **Authoritative nameserver** (run by the domain owner) — returns the actual record (the IP).
+1. **Browser cache**, recent and unexpired? Use it.
+2. **OS cache / hosts file**. Check `/etc/hosts` and the OS cache.
+3. **Recursive resolver** (ISP or 8.8.8.8). Checks its cache; on a miss, does the lookups below.
+4. **Root nameservers** (13 root server addresses, served worldwide via anycast, one IP, many physical servers), point to the TLD servers ("where is `.com`?").
+5. **TLD nameserver** (`.com` run by Verisign). Points to the domain's authoritative server.
+6. **Authoritative nameserver** (run by the domain owner). Returns the actual record (the IP).
 7. Resolver caches the result for its TTL and returns it; the TCP/TLS handshake to that IP begins.
 
-#### Record types
+### Record types
 
 | Type | Maps | Example |
 |---|---|---|
@@ -1660,55 +1555,55 @@ Browser cache → OS cache → Recursive Resolver → Root NS → TLD NS → Aut
 | TXT | Arbitrary text (SPF, DKIM) | `"v=spf1 include:..."` |
 | NS | Domain → authoritative nameserver | `example.com → ns1.example.com` |
 
-#### TTL and propagation
+### TTL and propagation
 
-**TTL** is how long resolvers cache a record. Short TTL → changes propagate fast but more query load; long TTL → fewer queries but slow changes. Before a migration, lower TTL to 60–300s a day ahead (so old high-TTL records expire), make the change, then raise it back. Old records can't be force-expired, so a former TTL of 86400 means up to 24h of "propagation."
+**TTL** is how long resolvers cache a record. Short TTL → changes propagate fast but more query load; long TTL → fewer queries but slow changes. Before a migration, lower TTL to 60-300s a day ahead (so old high-TTL records expire), make the change, then raise it back. Old records can't be force-expired, so a former TTL of 86400 means up to 24h of "propagation."
 
-#### DNS and load balancing
+### DNS and load balancing
 
-- **DNS round-robin:** return several A records; resolvers cycle through them. Crude — ignores health and load.
+- **DNS round-robin:** return several A records; resolvers cycle through them. Crude, ignores health and load.
 - **GeoDNS:** return different IPs by client location (Asia → Singapore DC).
 - **Anycast:** one IP announced from many locations via BGP (the internet's routing protocol between networks); routing picks the nearest node. Used by CDNs and DDoS protection.
 
-#### CDNs
+### CDNs
 
-A **CDN** (content delivery network — Cloudflare, Akamai, CloudFront) is a global fleet of **edge servers** that cache content close to users.
+A **CDN** (content delivery network. Cloudflare, Akamai, CloudFront) is a global fleet of **edge servers** that cache content close to users.
 - Clients reach the nearest edge via GeoDNS/anycast. Cache hit → served from the edge; miss → the edge fetches from the **origin** (your servers) and caches it per `Cache-Control`.
 - Wins: lower latency (short RTT to the edge), origin offload, absorbs traffic spikes and DDoS.
 - Best for static assets (JS/CSS/images/video); modern CDNs also terminate TLS at the edge and can cache API GETs.
 
 ---
 
-### Part 2 — Load Balancing
+## Load Balancing
 
 A load balancer spreads requests across a server pool for availability and throughput.
 
-#### Algorithms
+### Algorithms
 
 - **Round robin:** server 1, 2, 3, 1, 2, 3… Assumes equal servers.
 - **Weighted round robin:** bigger servers get a larger share.
 - **Least connections:** send to the server with fewest active connections. Best when request durations vary a lot.
-- **IP hash:** hash client IP to pin a client to one server (session affinity). Breaks when servers change — use consistent hashing.
+- **IP hash:** hash client IP to pin a client to one server (session affinity). Breaks when servers change, use consistent hashing.
 - **Consistent hashing:** place servers and keys on a ring; a key goes to the next server clockwise. Adding/removing a server remaps only ~1/N of keys. Key for distributed caches (Redis/Memcached), CDN edge selection, and shard routing.
 
-#### L4 vs L7
+### L4 vs L7
 
 **L4 (transport):** routes by IP/port on TCP/UDP; never reads the payload. Very fast. Blind to HTTP (no URLs, headers, cookies). Use for raw TCP, max throughput, latency-sensitive traffic.
 
 **L7 (application):** reads HTTP, so it can route by URL/host/header/cookie, terminate SSL, do cookie session affinity, and run HTTP-level health checks. Examples: Nginx, HAProxy, AWS ALB. Use for HTTP microservices, content-based routing, A/B tests, canaries.
 
-#### Health checks
+### Health checks
 
-LBs probe backends — TCP (can I connect?), HTTP (`GET /health` → 200?), or custom (body contains `"status":"ok"`). A failing backend is pulled from rotation until healthy. This enables zero-downtime deploys: drain → deploy → health check passes → add back.
+LBs probe backends. TCP (can I connect?), HTTP (`GET /health` → 200?), or custom (body contains `"status":"ok"`). A failing backend is pulled from rotation until healthy. This enables zero-downtime deploys: drain → deploy → health check passes → add back.
 
 ---
 
-### Part 3 — REST vs gRPC vs GraphQL
+## REST vs gRPC vs GraphQL
 
-#### REST
+### REST
 
 An architectural style for HTTP APIs:
-- **Stateless** — each request carries all it needs.
+- **Stateless**: each request carries all it needs.
 - **Resources** are nouns: `/users/123/orders`, not `/getUserOrders`.
 - **HTTP verbs:** GET read, POST create, PUT/PATCH update, DELETE delete.
 
@@ -1723,7 +1618,7 @@ GET    /users/123/orders   user's orders
 
 **Pros:** universal, human-readable, stateless, easy to cache GETs. **Cons:** over-fetching (extra fields), under-fetching (multiple round-trips), no strong typing.
 
-#### gRPC
+### gRPC
 
 Google's high-performance RPC (remote procedure call) framework. Uses **Protocol Buffers** (binary, schema-defined in `.proto`) over **HTTP/2**.
 
@@ -1742,7 +1637,7 @@ The protoc compiler generates client/server code in many languages from the `.pr
 
 **Use for** internal microservices where you own both ends, performance-critical or streaming APIs.
 
-#### GraphQL
+### GraphQL
 
 One endpoint; the **client asks for exactly the fields it wants**.
 
@@ -1756,7 +1651,7 @@ The server returns exactly that shape.
 
 **N+1:** fetching 10 users + their orders can be 1 + 10 = 11 queries. Fix with **DataLoader** (batches and dedupes).
 
-#### Comparison
+### Comparison
 
 | | REST | gRPC | GraphQL |
 |---|---|---|---|
@@ -1770,98 +1665,38 @@ The server returns exactly that shape.
 
 ---
 
-### Part 4 — API Design
+## API Design
 
 **Versioning:**
-- **URL** (`/v1/users`) — explicit, easy to route, most common; clients must update URLs.
-- **Header** (`Accept: ...; version=2`) — cleaner URLs, harder to test in a browser.
-- **No versioning (evolve):** only backwards-compatible changes — add fields, never remove/rename.
+- **URL** (`/v1/users`). Explicit, easy to route, most common; clients must update URLs.
+- **Header** (`Accept: ...; version=2`). Cleaner URLs, harder to test in a browser.
+- **No versioning (evolve):** only backwards-compatible changes. Add fields, never remove/rename.
 
 **Pagination:**
-- **Offset** (`?limit=20&offset=40`) — simple, but inserts cause duplicates/skips and high offsets are slow (DB scans and skips).
-- **Cursor** (`?limit=20&after=cursor_xyz`) — opaque pointer (e.g. last row ID/timestamp). Stable under inserts and efficient (DB jumps to the cursor). Can't jump to an arbitrary page. **Use cursor at scale.**
+- **Offset** (`?limit=20&offset=40`). Simple, but inserts cause duplicates/skips and high offsets are slow (DB scans and skips).
+- **Cursor** (`?limit=20&after=cursor_xyz`), opaque pointer (e.g. last row ID/timestamp). Stable under inserts and efficient (DB jumps to the cursor). Can't jump to an arbitrary page. **Use cursor at scale.**
 
 **Idempotency keys:** for POSTs that must not run twice (payments, orders), the client sends `Idempotency-Key: <uuid>`. Seen before → return the stored response; new → execute and store it. Prevents double-charges on retried/timed-out requests.
 
-**Rate limiting:** cap requests per client (API key/IP) so no one client can overwhelm the backend. Over the limit → `429 Too Many Requests` + `Retry-After` header. Classic algorithm: **token bucket** — tokens refill at a steady rate, each request spends one, unused tokens allow short bursts. Enforce at the gateway/LB with a shared counter store (Redis) so limits hold across servers.
+**Rate limiting:** cap requests per client (API key/IP) so no one client can overwhelm the backend. Over the limit → `429 Too Many Requests` + `Retry-After` header. Classic algorithm: **token bucket**. Tokens refill at a steady rate, each request spends one, unused tokens allow short bursts. Enforce at the gateway/LB with a shared counter store (Redis) so limits hold across servers.
 
----$body$
-) ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, body_md = EXCLUDED.body_md;
+---$body$, step = 3
+  WHERE title = 'DNS, Load Balancing & API Design';
 
-INSERT INTO questions.lessons (topic, title, body_md) VALUES (
-  'oop',
-  'Object-Oriented Programming',
-  $body$**OOP Concepts**
+UPDATE questions.bank SET lesson_md = $body$## Why OOP Exists
 
-Backend Interview Prep — 3-Day Crash Guide
-
-*Focus: Pillars · Relationships · SOLID · Design Patterns*
-
-## Resources
-
-- **Refactoring.Guru** (primary) — free, the best OOP + design patterns site. Bookmark its **Design Patterns** and **Refactoring** sections.
-- **Derek Banas on YouTube** (backup) — when a pattern doesn't click. He codes each from scratch; search the pattern name, e.g. "Derek Banas Observer pattern".
-
-*Strategy: open the page, read it, close it. Don't browse.*
-
-## 3-Day Study Plan
-
-**DAY 1 — The 4 Pillars + Class Relationships**
-
-**Topics**
-- **Encapsulation** (bundle data + behaviour, access modifiers, reduces coupling)
-- **Abstraction** (hide implementation; abstract class vs interface)
-- **Inheritance** (extends, overriding, fragile base class)
-- **Polymorphism** (overloading vs overriding, dynamic dispatch)
-- **Class relationships** (association, aggregation, composition, dependency)
-
-*Exit goal: Explain all 4 pillars with a real-world analogy each, and draw a UML diagram showing composition vs inheritance vs association.*
-
-**DAY 2 — SOLID + Creational & Structural Patterns**
-
-**Topics**
-- **SRP** (one reason to change)
-- **OCP** (extend without modifying)
-- **LSP** (subtypes must substitute; Square/Rectangle)
-- **ISP** (small interfaces over fat ones)
-- **DIP** (depend on abstractions)
-- **Singleton** · **Factory Method** · **Builder** (creational)
-- **Adapter** · **Decorator** · **Facade** (structural)
-
-*Exit goal: Explain each SOLID principle with a violation + fix. Describe Singleton, Factory, Builder, Adapter, Decorator, Facade from memory.*
-
-**DAY 3 — Behavioural Patterns + Review**
-
-**Topics**
-- **Observer** (one-to-many notify)
-- **Strategy** (swap algorithms)
-- **Command** (request as object; undo/redo)
-- **Template Method** (skeleton + subclass steps)
-- **Iterator** (traverse without exposing internals)
-- **Proxy** (control access; caching, lazy load, auth)
-- **Composition over inheritance**
-- **Review** (answer every question below out loud, no notes)
-
-*Exit goal: Pick the right pattern for a scenario, explain the tradeoff vs the naive approach, and hold a 5-min design discussion on any question below.*
-
-## OOP — Day 1: The 4 Pillars & Class Relationships
+Before OOP, procedures operated on global data. Any function could change anything, so bugs were untraceable. OOP bundles data with the code that uses it into objects and controls what outside code can touch. The four pillars make this work.
 
 ---
 
-### Why OOP Exists
-
-Before OOP, procedures operated on global data — any function could change anything, so bugs were untraceable. OOP bundles data with the code that uses it into objects and controls what outside code can touch. The four pillars make this work.
-
----
-
-### Pillar 1 — Encapsulation
+## Pillar 1, Encapsulation
 
 Bundle data (fields) and the methods that act on it into one class, and restrict direct access to the data with access modifiers:
 
-- `private` — only inside the class
-- *(no modifier)* — same package only (Java's "package-private" default)
-- `protected` — subclasses + same package
-- `public` — anyone
+- `private`: only inside the class
+- *(no modifier)*. Same package only (Java's "package-private" default)
+- `protected`: subclasses + same package
+- `public`: anyone
 
 **Why it matters:** without it, any code can do `user.age = -5`. With it, access goes through methods that validate, so the class enforces its own invariants (rules that must always hold) and stays the single source of truth for its state.
 
@@ -1876,18 +1711,18 @@ class BankAccount {
 ```
 
 **Encapsulation vs Abstraction (the common confusion):**
-- **Encapsulation = how** you hide internals (access modifiers, getters/setters) — the mechanism.
-- **Abstraction = what** you expose (a simple public interface over complexity) — the design goal.
+- **Encapsulation = how** you hide internals (access modifiers, getters/setters), the mechanism.
+- **Abstraction = what** you expose (a simple public interface over complexity), the design goal.
 
 You use encapsulation to achieve abstraction.
 
 ---
 
-### Pillar 2 — Abstraction
+## Pillar 2, Abstraction
 
-Hide complex implementation, expose only what's relevant. You drive a car with the pedals and wheel without knowing how fuel injection works — a simple interface over huge complexity. In code you achieve it with **abstract classes** and **interfaces**.
+Hide complex implementation, expose only what's relevant. You drive a car with the pedals and wheel without knowing how fuel injection works. A simple interface over huge complexity. In code you achieve it with **abstract classes** and **interfaces**.
 
-**Abstract class** — can't be instantiated; provides partial implementation and forces subclasses to fill the gaps.
+**Abstract class**: can't be instantiated; provides partial implementation and forces subclasses to fill the gaps.
 
 ```java
 abstract class Shape {
@@ -1900,29 +1735,29 @@ class Circle extends Shape {
 }
 ```
 
-**Interface** — a pure contract: what a class must do, not how (default methods allowed in Java 8+).
+**Interface**: a pure contract: what a class must do, not how (default methods allowed in Java 8+).
 
 ```java
 interface Serializable { String serialize(); void deserialize(String data); }
 ```
 
-#### Abstract class vs Interface
+### Abstract class vs Interface
 
 | | Abstract class | Interface |
 |---|---|---|
 | State (fields) | Yes | No (constants only) |
 | Constructor | Yes | No |
 | Implementation | Partial | None (or default methods, Java 8+) |
-| Multiple inheritance | No — one only | Yes — implement many |
+| Multiple inheritance | No, one only | Yes, implement many |
 | Use when | Sharing code among related classes | A contract for unrelated classes |
 
 Rule of thumb: **abstract class = "is-a" with shared code; interface = "can-do" contract.** `Dog extends Animal` (is-a); `Dog implements Serializable` (can-do).
 
-**Why only one superclass? The diamond problem** — if `D` could extend both `B` and `C`, and each overrides the same inherited method, which version does `D` get? Java avoids the ambiguity by allowing one superclass only. Multiple interfaces are safe because they carry no state; if two default methods clash, the compiler forces the class to override and choose.
+**Why only one superclass? The diamond problem**: if `D` could extend both `B` and `C`, and each overrides the same inherited method, which version does `D` get? Java avoids the ambiguity by allowing one superclass only. Multiple interfaces are safe because they carry no state; if two default methods clash, the compiler forces the class to override and choose.
 
 ---
 
-### Pillar 3 — Inheritance
+## Pillar 3, Inheritance
 
 A subclass inherits a parent's fields and methods and can extend or override them. Promotes reuse.
 
@@ -1937,22 +1772,22 @@ class Dog extends Animal {
 }
 ```
 
-**Method overriding** — a subclass replaces a parent method; its version runs at runtime for that object.
+**Method overriding**: a subclass replaces a parent method; its version runs at runtime for that object.
 
-**Fragile base class problem:** inheritance is tight coupling. Changing the parent — even harmlessly — can break subclasses. That's why we "favour composition over inheritance."
+**Fragile base class problem:** inheritance is tight coupling. Changing the parent, even harmlessly, can break subclasses. That's why we "favour composition over inheritance."
 
 **Avoid inheritance when:**
 - The relationship is "has-a", not "is-a" (a Car *has* an Engine).
 - You need runtime flexibility (you can't swap inheritance at runtime).
-- The hierarchy goes deeper than 2–3 levels.
+- The hierarchy goes deeper than 2-3 levels.
 
 ---
 
-### Pillar 4 — Polymorphism
+## Pillar 4, Polymorphism
 
-"Many forms" — one interface refers to objects of different types, and the right behaviour is chosen automatically.
+"Many forms". One interface refers to objects of different types, and the right behaviour is chosen automatically.
 
-**Compile-time (method overloading)** — same name, different parameters; the compiler picks the version.
+**Compile-time (method overloading)**: same name, different parameters; the compiler picks the version.
 
 ```java
 class Calculator {
@@ -1961,37 +1796,37 @@ class Calculator {
 }
 ```
 
-**Runtime (method overriding + dynamic dispatch)** — a parent reference points to a child object; which method runs is decided at runtime by the object's real type.
+**Runtime (method overriding + dynamic dispatch)**: a parent reference points to a child object; which method runs is decided at runtime by the object's real type.
 
 ```java
 Animal a = new Dog();
 a.speak();   // runs Dog's speak(), decided at RUNTIME
 ```
 
-**How dynamic dispatch works (vtable):** each class with overridable methods has a vtable — an array of method pointers. Calling `a.speak()` looks up the real type's vtable (Dog's) and calls its `speak()`.
+**How dynamic dispatch works (vtable):** each class with overridable methods has a vtable, an array of method pointers. Calling `a.speak()` looks up the real type's vtable (Dog's) and calls its `speak()`.
 
-**Why it matters:** you write code against the abstraction (`void makeNoise(Animal a) { a.speak(); }`) and it works with any implementation — no `if (a instanceof Dog) ...` chains to maintain when you add a type.
+**Why it matters:** you write code against the abstraction (`void makeNoise(Animal a) { a.speak(); }`) and it works with any implementation. No `if (a instanceof Dog) ...` chains to maintain when you add a type.
 
-> **Interview tip:** when asked how runtime polymorphism works, say *vtable / dynamic dispatch* — it shows you know the mechanism, not just the concept.
+> **Interview tip:** when asked how runtime polymorphism works, say *vtable / dynamic dispatch*. It shows you know the mechanism, not just the concept.
 
 ---
 
-### Class Relationships
+## Class Relationships
 
 These come up in low-level design questions ("design a parking lot / library system").
 
-- **Association** — A uses B; neither owns the other or controls its lifecycle. `Doctor treats Patient`.
-- **Aggregation ("has-a", weak ownership)** — A holds a reference to B, but B can outlive A. `Department has Employees`.
-- **Composition ("has-a", strong ownership)** — A owns B; B dies with A. `House has Rooms` (created inside it).
-- **Dependency** — A uses B temporarily (parameter or local variable). `report.generate(Printer p)`.
+- **Association**: A uses B; neither owns the other or controls its lifecycle. `Doctor treats Patient`.
+- **Aggregation ("has-a", weak ownership)**: A holds a reference to B, but B can outlive A. `Department has Employees`.
+- **Composition ("has-a", strong ownership)**: A owns B; B dies with A. `House has Rooms` (created inside it).
+- **Dependency**: A uses B temporarily (parameter or local variable). `report.generate(Printer p)`.
 
 ```java
 class House {
-    private Room bedroom = new Room();   // composition — Room dies with House
+    private Room bedroom = new Room();   // composition, Room dies with House
 }
 ```
 
-#### Summary table
+### Summary table
 
 | Relationship | Type | Lifecycle | Example |
 |---|---|---|---|
@@ -2001,19 +1836,16 @@ class House {
 | Composition | Has-a (strong) | Dependent | `House has Rooms` |
 | Dependency | Uses temporarily | Independent | `method(Printer p)` |
 
----
+---$body$, step = 1
+  WHERE title = 'The 4 Pillars & Class Relationships';
 
-## OOP — Day 2: SOLID Principles + Creational & Structural Patterns
+UPDATE questions.bank SET lesson_md = $body$## The SOLID Principles
 
----
-
-### The SOLID Principles
-
-Five principles for maintainable, extensible, testable code. Interviewers test SOLID more than patterns — know each with a violation + fix.
+Five principles for maintainable, extensible, testable code. Interviewers test SOLID more than patterns. Know each with a violation + fix.
 
 ---
 
-#### S — Single Responsibility Principle
+### S. Single Responsibility Principle
 
 **"A class should have only one reason to change."**
 
@@ -2027,13 +1859,13 @@ class UserService {
 }
 ```
 
-**Fix:** split into `UserService`, `EmailService`, `ReportService` — each with one reason to change.
+**Fix:** split into `UserService`, `EmailService`, `ReportService`. Each with one reason to change.
 
 **Tip:** SRP applies to functions and microservices too. A service handling both orders and payments violates SRP at the architecture level.
 
 ---
 
-#### O — Open/Closed Principle
+### O, Open/Closed Principle
 
 **"Open for extension, closed for modification."**
 
@@ -2056,11 +1888,11 @@ class StudentDiscount implements DiscountStrategy { public double apply(double p
 // New discount = new class, existing code untouched
 ```
 
-This is why we "program to an interface" — the interface is closed; new implementations are the extension.
+This is why we "program to an interface". The interface is closed; new implementations are the extension.
 
 ---
 
-#### L — Liskov Substitution Principle
+### L, Liskov Substitution Principle
 
 **"A subclass must be usable anywhere its superclass is, without breaking the program."**
 
@@ -2075,18 +1907,18 @@ class Square extends Rectangle {
 Rectangle r = new Square();
 r.setWidth(5);
 r.setHeight(3);
-r.area();   // expected 15, actual 9 — BROKEN
+r.area();   // expected 15, actual 9, BROKEN
 ```
 
-A square is geometrically a rectangle but behaviourally breaks the width/height contract. **Fix:** drop the inheritance — give both a `Shape` interface with `area()`, or use composition.
+A square is geometrically a rectangle but behaviourally breaks the width/height contract. **Fix:** drop the inheritance. Give both a `Shape` interface with `area()`, or use composition.
 
-Same idea with `Penguin extends Bird` overriding `fly()` to throw — fix by splitting `FlyingBird` from `Bird`.
+Same idea with `Penguin extends Bird` overriding `fly()` to throw. Fix by splitting `FlyingBird` from `Bird`.
 
-**Tip:** LSP violations show up as `instanceof` checks or `UnsupportedOperationException` in subclasses — both are smells.
+**Tip:** LSP violations show up as `instanceof` checks or `UnsupportedOperationException` in subclasses, both are smells.
 
 ---
 
-#### I — Interface Segregation Principle
+### I. Interface Segregation Principle
 
 **"Clients shouldn't be forced to depend on methods they don't use."**
 
@@ -2109,7 +1941,7 @@ ISP connects to SRP: a fat interface usually means more than one responsibility.
 
 ---
 
-#### D — Dependency Inversion Principle
+### D. Dependency Inversion Principle
 
 **"High-level modules and low-level modules should both depend on abstractions, not on each other."**
 
@@ -2135,11 +1967,11 @@ DIP is the basis for DI frameworks (Spring, Guice). The rule: **inject, don't in
 
 ---
 
-### Creational Patterns
+## Creational Patterns
 
 Control how objects are created.
 
-#### Singleton
+### Singleton
 **One instance of a class, globally accessible.** Below is the thread-safe double-checked locking version (a plain `synchronized` method also works but locks on every call).
 
 ```java
@@ -2160,11 +1992,11 @@ class Config {
 
 **Why it's an antipattern:** global mutable state (any code can change it), hidden dependencies (users don't declare they need it), and it breaks testing (shared instance, can't inject a mock).
 
-**Acceptable for** truly shared infrastructure with no mutable business state — connection pools, loggers, immutable config loaded once at startup.
+**Acceptable for** truly shared infrastructure with no mutable business state. Connection pools, loggers, immutable config loaded once at startup.
 
 ---
 
-#### Factory Method
+### Factory Method
 **Let a subclass decide which class to instantiate, decoupling creation from use.**
 
 If you write `new Dog()` everywhere, switching to `Cat` means touching every site. A factory centralises it.
@@ -2179,13 +2011,13 @@ class CatFactory extends AnimalFactory { Animal create() { return new Cat(); } }
 ```
 
 **Factory vs Factory Method vs Abstract Factory:**
-- **Simple Factory** — a static `create()` with a switch. Not a GoF (Gang of Four, the classic patterns book) pattern, just a helper.
-- **Factory Method** — an abstract method; subclasses override it to produce different objects.
-- **Abstract Factory** — creates *families* of related objects (`MacUIFactory` makes `MacButton` + `MacTextBox`; `WindowsUIFactory` makes the Windows set).
+- **Simple Factory**: a static `create()` with a switch. Not a GoF (Gang of Four, the classic patterns book) pattern, just a helper.
+- **Factory Method**: an abstract method; subclasses override it to produce different objects.
+- **Abstract Factory**: creates *families* of related objects (`MacUIFactory` makes `MacButton` + `MacTextBox`; `WindowsUIFactory` makes the Windows set).
 
 ---
 
-#### Builder
+### Builder
 **Construct a complex object step by step, avoiding telescoping constructors.**
 
 A class with 10 optional fields otherwise needs many overloads or one huge parameter list.
@@ -2200,12 +2032,12 @@ The builder holds state as you chain calls; `build()` validates and returns the 
 
 ---
 
-### Structural Patterns
+## Structural Patterns
 
 Deal with how classes and objects are composed.
 
-#### Adapter
-**Wrap an incompatible interface so it fits — a translator.**
+### Adapter
+**Wrap an incompatible interface so it fits, a translator.**
 
 Your system expects `PaymentGateway.charge(...)` but you have a `LegacyPaymentProcessor.processPayment(...)`.
 
@@ -2226,8 +2058,8 @@ class LegacyAdapter implements PaymentGateway {
 
 ---
 
-#### Decorator
-**Add behaviour to an object at runtime by wrapping it — no subclassing.**
+### Decorator
+**Add behaviour to an object at runtime by wrapping it, no subclassing.**
 
 Optional features (encryption, compression, logging) via inheritance would explode into `EncryptedCompressedLoggedMessage`-style classes. With Decorator, each feature is a wrapper sharing the same interface.
 
@@ -2252,7 +2084,7 @@ Message m = new EncryptedMessage(new CompressedMessage(new TextMessage("Hello"))
 
 ---
 
-#### Facade
+### Facade
 **A simple interface over a complex subsystem.**
 
 ```java
@@ -2271,19 +2103,16 @@ class OrderFacade {
 
 **Examples:** a web app's service layer, API gateways, SDK wrappers over messy cloud APIs.
 
----
+---$body$, step = 2
+  WHERE title = 'SOLID Principles + Creational & Structural Patterns';
 
-## OOP — Day 3: Behavioural Patterns + Composition vs Inheritance
-
----
-
-### Behavioural Patterns
+UPDATE questions.bank SET lesson_md = $body$## Behavioural Patterns
 
 Define how objects interact and communicate.
 
 ---
 
-#### Observer
+### Observer
 **One-to-many: when one object changes, all its dependents are notified automatically.**
 
 - **Subject** holds state and a list of observers; notifies them on change.
@@ -2309,16 +2138,16 @@ class EmailNotifier implements Observer {
 
 **Push vs pull:** push sends the data in `update()` (simple, but observers may get data they don't need); pull sends only a notification and observers query the subject (more decoupled).
 
-**Observer vs Pub/Sub:** Observer is direct, synchronous, single-process — observers hold a reference to the subject. Pub/Sub puts a broker (Kafka, RabbitMQ) in the middle: publisher and subscriber don't know each other, communication is async, and it can span machines.
+**Observer vs Pub/Sub:** Observer is direct, synchronous, single-process. Observers hold a reference to the subject. Pub/Sub puts a broker (Kafka, RabbitMQ) in the middle: publisher and subscriber don't know each other, communication is async, and it can span machines.
 
 **Examples:** UI event listeners, React re-render on state change, notification systems.
 
 ---
 
-#### Strategy
+### Strategy
 **Define a family of interchangeable algorithms and swap them at runtime.**
 
-A `Sorter` with a switch over sort algorithms violates OCP — every new algorithm edits `Sorter`.
+A `Sorter` with a switch over sort algorithms violates OCP. Every new algorithm edits `Sorter`.
 
 ```java
 interface SortStrategy { void sort(int[] data); }
@@ -2335,14 +2164,14 @@ class Sorter {
 
 **Backend examples:** swappable auth, payment processors, compression algorithms.
 
-**vs if/else:** Strategy replaces conditionals with polymorphism — a new algorithm is a new class, no changes to existing code.
+**vs if/else:** Strategy replaces conditionals with polymorphism. A new algorithm is a new class, no changes to existing code.
 
 ---
 
-#### Command
+### Command
 **Encapsulate a request as an object. Enables undo/redo, queuing, and logging.**
 
-- **Command** — `execute()`, optionally `undo()`. **Concrete command** wraps one operation.
+- **Command**: `execute()`, optionally `undo()`. **Concrete command** wraps one operation.
 - **Invoker** holds/runs commands. **Receiver** does the actual work.
 
 ```java
@@ -2368,12 +2197,12 @@ class CommandHistory {                     // Invoker with undo stack
 
 ---
 
-#### Template Method
+### Template Method
 **Fix an algorithm's skeleton in a base class; let subclasses fill specific steps.**
 
 ```java
 abstract class DataProcessor {
-    final void process() {        // the template — fixed order
+    final void process() {        // the template, fixed order
         readData();
         processData();
         writeOutput();
@@ -2392,11 +2221,11 @@ class CSVProcessor extends DataProcessor {
 }
 ```
 
-**When:** several classes share the same structure but differ in steps. Common in frameworks — Spring's `JdbcTemplate`, request lifecycle hooks.
+**When:** several classes share the same structure but differ in steps. Common in frameworks. Spring's `JdbcTemplate`, request lifecycle hooks.
 
 ---
 
-#### Iterator
+### Iterator
 **Traverse a collection without exposing its internal structure.**
 
 Lists, trees, graphs, and DB cursors all iterate through the same `hasNext()`/`next()` interface.
@@ -2420,10 +2249,10 @@ for (int n : new NumberRange(1, 5)) { System.out.println(n); }
 
 ---
 
-#### Proxy
-**Control access to another object — a stand-in with the same interface.**
+### Proxy
+**Control access to another object. A stand-in with the same interface.**
 
-**1. Caching** — avoid repeated expensive calls.
+**1. Caching**: avoid repeated expensive calls.
 ```java
 class CachedProductService implements ProductService {
     private ProductService real;
@@ -2434,7 +2263,7 @@ class CachedProductService implements ProductService {
 }
 ```
 
-**2. Auth** — check permissions before delegating.
+**2. Auth**: check permissions before delegating.
 ```java
 class AuthProxy implements DataService {
     private DataService real;
@@ -2446,19 +2275,19 @@ class AuthProxy implements DataService {
 }
 ```
 
-**3. Lazy loading** — defer expensive init until first use. JPA/Hibernate does this: `user.getOrders()` doesn't hit the DB until you access the orders.
+**3. Lazy loading**: defer expensive init until first use. JPA/Hibernate does this: `user.getOrders()` doesn't hit the DB until you access the orders.
 
 **Proxy vs Decorator:** Decorator *adds behaviour* (composes features); Proxy *controls access* to the real object (same interface, manages its lifecycle/access).
 
 ---
 
-### Composition over Inheritance
+## Composition over Inheritance
 
 **Deep inheritance is brittle:**
 ```
 Animal → Pet → Dog → GuideDog → TrainedGuideDog
 ```
-Every class is coupled to its parent. Change `Dog` and you may break the rest. Need a `SwimmingGuideDog`? Inheritance forces a new class for every combination — class explosion.
+Every class is coupled to its parent. Change `Dog` and you may break the rest. Need a `SwimmingGuideDog`? Inheritance forces a new class for every combination, class explosion.
 
 **Composition: inject behaviour instead of inheriting it.**
 ```java
@@ -2472,85 +2301,26 @@ class Dog {
 
 Dog guide   = new Dog(new GuideWalk(), new AdvancedCommands());
 Dog swimmer = new Dog(new Swim(), new BasicTricks());
-// swimming guide dog? new Dog(new Swim(), new GuideCommands()) — no new class
+// swimming guide dog? new Dog(new Swim(), new GuideCommands()), no new class
 ```
 
 **Rule:** favour composition for "has-a" (has a behaviour/strategy). Use inheritance only for genuine "is-a" relationships that are stable and shallow.
 
 *Full pattern cheat-sheet (all 13, with backend examples) is in the overview.*
 
----$body$
-) ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, body_md = EXCLUDED.body_md;
+---$body$, step = 3
+  WHERE title = 'Behavioural Patterns + Composition vs Inheritance';
 
-INSERT INTO questions.lessons (topic, title, body_md) VALUES (
-  'system-design',
-  'System Design',
-  $body$**System Design**
-
-Backend Interview Prep — 3-Day Crash Guide
-*Focus: HLD (high-level design) · Scalability · LLD (low-level/OOP design) · Trade-offs*
-
-## Resources
-
-- **Primary — Alex Xu, *System Design Interview* Vol. 1.** The most interview-aligned resource: one classic question per chapter with a full walkthrough. Vol. 1 covers what you need for L4/L5. Chapters mapped per day below.
-- **Free — ByteByteGo blog (same author).** Covers most Vol. 1 concepts with diagrams. Use if you don't have the book.
-- **Free — Grokking the System Design Interview (Educative).** Good secondary reference for specific systems.
-
-*Strategy: read the chapter, then sketch the design from memory.*
-
-## 3-Day Study Plan
-
-**DAY 1 — Foundations / Building Blocks**
-
-**Topics**
-- **Scaling** — single server → app/DB split → load balancer → horizontal scale
-- **Load balancing** — round robin, least connections, consistent hashing
-- **Caching** — cache-aside, write-through, write-behind, LRU eviction, CDN
-- **DB replication** — primary/replica, read replicas, failover
-- **DB sharding** — shard key, hotspots
-- **CAP theorem**
-- **Back-of-envelope estimation** — QPS (queries/sec), storage, bandwidth *(Alex Xu Ch 1–2)*
-
-*Exit goal: Whiteboard a system from single server to horizontally scaled, cached, replicated — and explain every component.*
-
-**DAY 2 — Classic HLD Problems**
-
-**Topics**
-- **Rate Limiter** — token bucket, leaky bucket, sliding window; placement
-- **Key-Value Store** — consistent hashing, replication, quorum, conflict resolution, gossip
-- **URL Shortener** — hashing vs base62, 301 vs 302, schema, read-heavy caching
-- **Web Crawler** — BFS, politeness, dedup, distributed
-- **Notification System** — push/pull, fan-out, channels, retry
-- **News Feed** — fan-out on write vs read, ranking
-
-*Exit goal: Walk any of these 6 systems end-to-end: requirements → estimation → HLD → deep dive → bottlenecks.*
-
-**DAY 3 — LLD + More Systems + Framework**
-
-**Topics**
-- **Chat System** — WebSocket vs polling, presence, ordering, storage
-- **Search Autocomplete** — trie, top-K, distributed, caching
-- **YouTube** — chunked upload, CDN, transcoding, streaming
-- **LLD: parking lot / elevator / vending machine** — classes, state machines, patterns
-- **Interview framework**
-- **Review** — sketch 2 Day-2 systems from memory
-
-*Exit goal: A repeatable framework for any design question: open with requirements, estimate scale, draw the HLD, discuss trade-offs unprompted.*
-
-## System Design — Day 1: Foundations & Building Blocks
-
----
-
-### The Interview Framework (Memorise This)
+UPDATE questions.bank SET lesson_md = $body$## The Interview Framework (Memorise This)
 
 Use this on every question. Interviewers reward structure over perfect answers.
 
 ```
-Step 1 — Clarify requirements     (5 min)
-Step 2 — Estimate scale           (3 min)
-Step 3 — High-level design        (10 min)
-Step 4 — Component deep dives     (15 min)
-Step 5 — Bottlenecks & trade-offs (5 min)
+Step 1. Clarify requirements     (5 min)
+Step 2. Estimate scale           (3 min)
+Step 3. High-level design        (10 min)
+Step 4. Component deep dives     (15 min)
+Step 5. Bottlenecks & trade-offs (5 min)
 ```
 
 1. **Clarify:** functional reqs (what it does) + non-functional (scale, latency, consistency, availability). Ask before drawing: real-time or eventual? Read- or write-heavy? Global or single region?
@@ -2559,13 +2329,13 @@ Step 5 — Bottlenecks & trade-offs (5 min)
    - 1M DAU × 10 req/day ≈ 115 QPS; 100M DAU ≈ 11.5K QPS.
    - 1 KB/req × 10M req/day = 10 GB/day ≈ 3.6 TB/year.
    - SSD read ~0.1ms · network round trip (same DC) ~0.5ms · HDD seek ~10ms.
-3. **HLD:** draw boxes first — Client → LB → API servers → DB/Cache. No detail yet.
-4. **Deep dive:** pick 2–3 components the interviewer probes. This is where you differentiate.
+3. **HLD:** draw boxes first. Client → LB → API servers → DB/Cache. No detail yet.
+4. **Deep dive:** pick 2-3 components the interviewer probes. This is where you differentiate.
 5. **Bottlenecks:** what breaks at 10× scale? What did you sacrifice?
 
 ---
 
-### Part 1 — Scaling from Zero to Millions
+## Scaling from Zero to Millions
 
 - **Single server:** web + app + DB on one box. Fine for a side project. First bottleneck: the DB.
 - **App/DB split:** separate the app server from the DB so each scales independently.
@@ -2579,17 +2349,17 @@ Client → DNS → Load Balancer → [App 1]
 
 Gives horizontal scaling, no single point of failure, and zero-downtime deploys.
 
-- **LB algorithms:** **round robin** — rotate through servers in order (simple default); **least connections** — pick the server with fewest active requests (better when request costs vary); **hash** — hash user/IP to a server (use consistent hashing so adding a server doesn't reshuffle everyone).
-- **L4 vs L7:** L4 balances on IP/port — fast, content-blind. L7 reads the HTTP request — can route by path or cookie, slightly costlier.
-- **Health checks:** the LB pings servers and pulls failures from rotation — this is what makes failover and zero-downtime deploys actually work.
-- **Stateless app servers:** keep sessions in Redis, not on the box, so any server handles any request. Essential for horizontal scaling — otherwise you need sticky routing (LB pins each user to one server).
+- **LB algorithms:** **round robin**. Rotate through servers in order (simple default); **least connections**. Pick the server with fewest active requests (better when request costs vary); **hash**. Hash user/IP to a server (use consistent hashing so adding a server doesn't reshuffle everyone).
+- **L4 vs L7:** L4 balances on IP/port, fast, content-blind. L7 reads the HTTP request. Can route by path or cookie, slightly costlier.
+- **Health checks:** the LB pings servers and pulls failures from rotation. This is what makes failover and zero-downtime deploys actually work.
+- **Stateless app servers:** keep sessions in Redis, not on the box, so any server handles any request. Essential for horizontal scaling. Otherwise you need sticky routing (LB pins each user to one server).
 
-**Vertical (scale up):** more CPU/RAM on one machine. Simple, no code change — but hard ceiling, single point of failure, expensive.
+**Vertical (scale up):** more CPU/RAM on one machine. Simple, no code change. But hard ceiling, single point of failure, expensive.
 **Horizontal (scale out):** more machines. Needs stateless design; scales ~indefinitely; more ops complexity. **Preferred for production.**
 
 ---
 
-### Part 2 — Database Replication
+## Database Replication
 
 One **primary** takes all writes; **replicas** get async copies and serve reads.
 
@@ -2600,15 +2370,15 @@ Reads  → Replica 1, Replica 2
 
 - **Read scaling:** add replicas. **HA:** promote a replica if the primary fails. **Analytics:** run heavy queries on a replica without slowing production.
 - **Replication lag:** replicas trail by ms–seconds, so a read right after a write can be stale → eventual consistency at the DB layer.
-- **Failover:** detect failure (heartbeat — a periodic "I'm alive" ping) → elect a new primary (consensus via Raft/ZooKeeper, or the managed DB does it) → repoint app/DNS.
+- **Failover:** detect failure (heartbeat. A periodic "I'm alive" ping) → elect a new primary (consensus via Raft/ZooKeeper, or the managed DB does it) → repoint app/DNS.
 
 ---
 
-### Part 3 — Caching
+## Caching
 
-DB reads take 1–10ms; cache reads are <1ms (in-process) or ~0.5ms (Redis). For read-heavy workloads with repeated queries, caching is the highest-leverage win.
+DB reads take 1-10ms; cache reads are <1ms (in-process) or ~0.5ms (Redis). For read-heavy workloads with repeated queries, caching is the highest-leverage win.
 
-**Cache-aside (lazy loading) — most common:**
+**Cache-aside (lazy loading), most common:**
 
 ```
 check cache → HIT:  return value
@@ -2630,7 +2400,7 @@ Pro: only requested data gets cached. Con: first read after a miss is slow; cach
 
 **Write-behind (write-back):** write cache now, DB async later. Very fast writes; risk of data loss if the cache dies before flushing.
 
-**Eviction:** **LRU** (drop least-recently-used — most common, good for temporal locality), **LFU** (least-frequently-used), **TTL** (expire after a fixed time).
+**Eviction:** **LRU** (drop least-recently-used. Most common, good for temporal locality), **LFU** (least-frequently-used), **TTL** (expire after a fixed time).
 
 **Cache stampede (thundering herd):** a hot key expires and thousands of requests hit the DB at once. Fixes: probabilistic early refresh; mutex lock (one request refills, others wait or serve stale); stale-while-revalidate.
 
@@ -2641,9 +2411,9 @@ Pro: only requested data gets cached. Con: first read after a miss is slow; cach
 
 ---
 
-### Part 4 — Database Sharding
+## Database Sharding
 
-**Sharding** = horizontal partitioning: split one big table across DB instances (shards), each holding a subset of rows. E.g. users 1–1M on shard 1, 1M–2M on shard 2.
+**Sharding** = horizontal partitioning: split one big table across DB instances (shards), each holding a subset of rows. E.g. users 1-1M on shard 1, 1M–2M on shard 2.
 
 **Shard key** decides the shard; a bad one causes hotspots:
 - `created_at` → all new writes hit the current shard while old shards sit idle.
@@ -2652,32 +2422,31 @@ Pro: only requested data gets cached. Con: first read after a miss is slow; cach
 
 **Problems sharding adds:**
 - **Cross-shard joins:** joining tables on different shards means fetching from each and joining in the app. Expensive.
-- **Cross-shard transactions:** ACID across shards needs distributed txns (2-phase commit) — complex and slow.
+- **Cross-shard transactions:** ACID across shards needs distributed txns (2-phase commit), complex and slow.
 - **Hotspots:** a celebrity on one shard overwhelms it. Mitigate with a random suffix on the key for hot entities.
-- **Rebalancing:** adding/removing shards moves data — almost all of it without consistent hashing, ~1/N with it.
+- **Rebalancing:** adding/removing shards moves data. Almost all of it without consistent hashing, ~1/N with it.
 
 **Consistent hashing:** map servers and keys onto a ring; a key goes to the first server clockwise. Add a server → only the keys between it and the previous server move. Remove one → only its keys move to the next server. ~1/N keys remap, not all.
 **Virtual nodes:** give each physical server many ring positions for even load and fewer hotspots from uneven spacing.
 
 ---
 
-### Part 5 — CAP Theorem (Applied)
+## CAP Theorem (Applied)
 
-CAP: during a network partition you can keep **C**onsistency **or** **A**vailability, not both — CP (consistent) vs AP (available).
+CAP: during a network partition you can keep **C**onsistency **or** **A**vailability, not both. CP (consistent) vs AP (available).
 
 - **Pick CP** when stale data costs money: payments, inventory ("1 left in stock"), seat booking, bank transfers.
 - **Pick AP** when slight staleness is fine: social feeds, view counts, analytics, DNS, search indexes.
 - **Middle ground:** most systems are AP for most data, CP only where it matters (e.g. AP feed, CP payments).
 
+---$body$, step = 1
+  WHERE title = 'Foundations & Building Blocks';
+
+UPDATE questions.bank SET lesson_md = $body$For each: requirements → estimation → HLD → deep dives → bottlenecks.
+
 ---
 
-## System Design — Day 2: Classic HLD Problems
-
-For each: requirements → estimation → HLD → deep dives → bottlenecks.
-
----
-
-### Design a Rate Limiter
+## Design a Rate Limiter
 
 **Algorithms:**
 - **Token bucket:** bucket holds N tokens, refills R/sec; each request takes one, reject if empty. Allows bursts up to bucket size.
@@ -2704,21 +2473,21 @@ EXPIRE rate:{user_id}:{minute} 120    # auto-clean old windows
 
 ---
 
-### Design a Key-Value Store
+## Design a Key-Value Store
 
 **Requirements:** GET(key), PUT(key, value); billions of keys; high availability; tunable consistency.
 
-- **Partitioning — consistent hashing:** each key → first node clockwise on the ring; adding/removing a node remaps only ~1/N keys.
-- **Replication:** store each key on N nodes (e.g. 3) — primary + next N-1 clockwise. Survives node loss.
+- **Partitioning. Consistent hashing:** each key → first node clockwise on the ring; adding/removing a node remaps only ~1/N keys.
+- **Replication:** store each key on N nodes (e.g. 3), primary + next N-1 clockwise. Survives node loss.
 - **Quorum consistency:** N = replicas, W = write acks required, R = read responses required.
   - W + R > N → strong consistency; W + R ≤ N → eventual.
   - N=3: W=2, R=2 → strong, tolerates 1 failure. W=1, R=1 → fastest, eventual.
-- **Conflict resolution:** LWW (timestamps — simple, risks clock skew) or vector clocks ((node, counter) causality; return both versions when concurrent for the client to resolve).
-- **Membership — gossip:** nodes periodically share state with random peers; spreads in O(log N) rounds, no central coordinator. Used by Cassandra and Amazon's Dynamo.
+- **Conflict resolution:** LWW (timestamps. Simple, risks clock skew) or vector clocks ((node, counter) causality; return both versions when concurrent for the client to resolve).
+- **Membership. Gossip:** nodes periodically share state with random peers; spreads in O(log N) rounds, no central coordinator. Used by Cassandra and Amazon's Dynamo.
 
 ---
 
-### Design a URL Shortener
+## Design a URL Shortener
 
 **Estimation:**
 - 100M URLs/day ≈ 1,200 write QPS.
@@ -2727,7 +2496,7 @@ EXPIRE rate:{user_id}:{minute} 120    # auto-clean old windows
 
 **Short code:**
 - **Hash:** MD5/SHA256 → take first 7 chars. Collisions possible → retry with an appended counter.
-- **Base62 of auto-increment ID (preferred):** encode the DB's BIGINT id in [a-zA-Z0-9]. 62^7 ≈ 3.5T codes — no collisions, no retry logic. Con: sequential codes are guessable/enumerable — name it as a trade-off.
+- **Base62 of auto-increment ID (preferred):** encode the DB's BIGINT id in [a-zA-Z0-9]. 62^7 ≈ 3.5T codes. No collisions, no retry logic. Con: sequential codes are guessable/enumerable, name it as a trade-off.
 
 ```sql
 CREATE TABLE short_urls (
@@ -2745,18 +2514,18 @@ CREATE TABLE short_urls (
 
 ---
 
-### Design a News Feed
+## Design a News Feed
 
-**Core decision — fan-out on write vs read:**
+**Core decision, fan-out on write vs read:**
 - **Write (push):** on post, precompute it into all followers' feeds (Redis sorted sets). Reads are instant; writes = N followers, so a 10M-follower celebrity = 10M writes per post. Too much.
 - **Read (pull):** on feed load, query followed users' recent posts and merge. Writes are cheap; reads are expensive and degrade as you follow more people.
 - **Hybrid (Twitter/Meta):** regular users (<~10K followers) → fan-out on write; celebrities → fan-out on read, merged at load. Fast reads for most, bounded write amplification.
 
-**Feed storage:** Redis sorted set per user — key `feed:{user_id}`, member `post_id`, score `timestamp`. `ZREVRANGE feed:{user_id} 0 19` → 20 latest post IDs, then fetch post data from cache/DB.
+**Feed storage:** Redis sorted set per user. Key `feed:{user_id}`, member `post_id`, score `timestamp`. `ZREVRANGE feed:{user_id} 0 19` → 20 latest post IDs, then fetch post data from cache/DB.
 
 ---
 
-### Design a Notification System
+## Design a Notification System
 
 ```
 Producers (Order/User svc) → Kafka topic "notifications"
@@ -2774,29 +2543,26 @@ Producers (Order/User svc) → Kafka topic "notifications"
 
 ---
 
-### Design a Web Crawler
+## Design a Web Crawler
 
 ```
 Seed URLs → URL Frontier (priority queue) → Downloader → Parser
   → Seen-URL Filter (dedup) → Content Storage → Scheduler (re-crawl)
 ```
 
-- **Dedup:** **bloom filter** — a tiny probabilistic set answering "definitely new" or "probably seen" — for fast checks; canonical URLs in a DB for definitive ones.
+- **Dedup:** **bloom filter**. A tiny probabilistic set answering "definitely new" or "probably seen". For fast checks; canonical URLs in a DB for definitive ones.
 - **Politeness:** per-domain rate limits, respect `robots.txt`, space out requests to the same host.
 - **URL normalisation:** treat `Example.com/path?b=2&a=1` and `example.com/path?a=1&b=2` as one page before the dedup check.
 - **Distributed:** workers pull from a shared frontier (Redis/Kafka), partitioned by domain hash so each worker owns certain domains (easier per-domain politeness).
 
----
+---$body$, step = 2
+  WHERE title = 'Classic HLD Problems';
 
-## System Design — Day 3: More Systems + LLD + Trade-offs
-
----
-
-### Design a Chat System
+UPDATE questions.bank SET lesson_md = $body$## Design a Chat System
 
 **Requirements:** 1:1 + group chat, ordered delivery, presence, history, push for offline users.
 
-**Protocol — WebSocket:** HTTP polling is high-latency and wasteful. WebSocket gives a persistent full-duplex connection; server and client can push anytime. At scale, clients land on different chat servers, so servers must route between each other.
+**Protocol. WebSocket:** HTTP polling is high-latency and wasteful. WebSocket gives a persistent full-duplex connection; server and client can push anytime. At scale, clients land on different chat servers, so servers must route between each other.
 
 ```
 Client A ─WS─► Chat Server 1 ─┐
@@ -2811,7 +2577,7 @@ Client B ─WS─► Chat Server 2 ─┤→ Message Queue (Kafka)
 
 - **Routing across servers:** A→B on different servers via the queue (Server 1 → Kafka → Server 2 → WS to B), or a Redis presence service tells you B's server for direct routing.
 
-**Storage — Cassandra** (write-heavy; always read by conversation + time range):
+**Storage. Cassandra** (write-heavy; always read by conversation + time range):
 
 ```sql
 CREATE TABLE messages (
@@ -2825,13 +2591,13 @@ CREATE TABLE messages (
 
 Partition key `conversation_id` colocates a conversation; clustering key `message_id` keeps it time-sorted. `... WHERE conversation_id = ? LIMIT 20` is fast.
 
-- **IDs — Snowflake:** 64-bit = unused sign bit (1) + timestamp (41) + datacenter (5) + machine (5) + sequence (12). Unique, ~time-sortable, no coordination. Auto-increment needs a central generator → bottleneck at scale.
-- **Presence:** each connection heartbeats (~every 5s); store `presence:{user_id}` in Redis with a short TTL — no heartbeat → key expires → offline.
+- **IDs. Snowflake:** 64-bit = unused sign bit (1) + timestamp (41) + datacenter (5) + machine (5) + sequence (12). Unique, ~time-sortable, no coordination. Auto-increment needs a central generator → bottleneck at scale.
+- **Presence:** each connection heartbeats (~every 5s); store `presence:{user_id}` in Redis with a short TTL. No heartbeat → key expires → offline.
 - **Offline:** store the message + send a push (APNs/FCM); on reconnect the client fetches messages since its last-seen timestamp.
 
 ---
 
-### Design Search Autocomplete (Typeahead)
+## Design Search Autocomplete (Typeahead)
 
 **Requirements:** top-K completions per prefix in <100ms, ranked by frequency.
 
@@ -2859,19 +2625,19 @@ Pipeline: search logs → Kafka → Spark (count freq, filter spam) → new trie
 
 ---
 
-### Design YouTube (Upload & Streaming)
+## Design YouTube (Upload & Streaming)
 
 **Upload:** User → Upload Service → raw storage (S3) → async transcode to multiple resolutions (1080p/720p/360p) → CDN.
 **Streaming:** User → nearest CDN edge → origin (S3 transcoded file) on a miss.
 
-- **Chunked upload:** split multi-GB videos into 5–10MB chunks, upload each independently, reassemble server-side. Resumable — on failure re-upload only the failed chunk.
+- **Chunked upload:** split multi-GB videos into 5-10MB chunks, upload each independently, reassemble server-side. Resumable. On failure re-upload only the failed chunk.
 - **Transcoding pipeline:** CPU-heavy (a 1-hr video can take 30+ min). On "all chunks received", enqueue a job (SQS/Kafka); a worker pool runs FFmpeg → S3/CDN; update metadata → notify user. Each resolution is an independent job → transcode in parallel.
-- **Adaptive bitrate (HLS/DASH):** split video into 2–10s segments; the player reads a manifest and switches resolution as the network changes — smooth quality without buffering.
-- **Metadata DB** (relational): `video_id, user_id, title, status (uploading/processing/published/failed), duration_s, view_count, created_at`. View counts are written constantly — increment in Redis and flush periodically instead of hitting the row on every view (avoids hot-row contention).
+- **Adaptive bitrate (HLS/DASH):** split video into 2-10s segments; the player reads a manifest and switches resolution as the network changes. Smooth quality without buffering.
+- **Metadata DB** (relational): `video_id, user_id, title, status (uploading/processing/published/failed), duration_s, view_count, created_at`. View counts are written constantly. Increment in Redis and flush periodically instead of hitting the row on every view (avoids hot-row contention).
 
 ---
 
-### LLD — Design a Parking Lot
+## LLD, Design a Parking Lot
 
 Tests OOP in a design context.
 
@@ -2894,9 +2660,9 @@ AVAILABLE ─park─► OCCUPIED ─leave─► AVAILABLE
 
 ---
 
-### The Trade-offs Cheat Sheet
+## The Trade-offs Cheat Sheet
 
-Name trade-offs unprompted — the single biggest differentiator.
+Name trade-offs unprompted. The single biggest differentiator.
 
 | Decision | Trade-off |
 |---|---|
@@ -2913,7 +2679,7 @@ Name trade-offs unprompted — the single biggest differentiator.
 
 ---
 
-### Full Framework — Worked Example
+## Full Framework, Worked Example
 
 **"Design a chat system for 50M DAU."**
 
@@ -2921,181 +2687,86 @@ Name trade-offs unprompted — the single biggest differentiator.
 2. **Estimate:** 50M DAU × 20 msgs/day = 1B msgs/day ≈ 12K write QPS. ~200 B/msg → 200 GB/day → ~365 TB over 5 yrs.
 3. **HLD:** WebSocket to chat servers → message queue (decouple/buffer) → Cassandra (write-heavy, partition by conversation) → Redis (presence + recent cache) → push service for offline.
 4. **Deep dive (pick 2):**
-   - *Storage:* Cassandra keyed `(conversation_id, message_id TIMEUUID)` — partition colocates a conversation, TIMEUUID gives time-sorted reads for free.
+   - *Storage:* Cassandra keyed `(conversation_id, message_id TIMEUUID)`. Partition colocates a conversation, TIMEUUID gives time-sorted reads for free.
    - *Presence:* heartbeat every 5s; `presence:{user_id}` in Redis with a 10s TTL; no heartbeat → key expires → offline. Self-cleaning.
 5. **Bottlenecks:** WebSocket connections can saturate one server → scale out, route by consistent hashing (user_id → server), cross-server via Kafka. Very large groups (>500) → fan-out on read.
 
----$body$
-) ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, body_md = EXCLUDED.body_md;
+---$body$, step = 3
+  WHERE title = 'More Systems + LLD + Trade-offs';
 
-INSERT INTO questions.lessons (topic, title, body_md) VALUES (
-  'security',
-  'Security',
-  $body$**Security Fundamentals**
-
-Backend Interview Prep — Lean Guide (starts from zero)
-
-*Focus: Login/permissions · HTTPS · Common attacks · Safe habits*
-
-## Why This Matters
-
-Security rarely gets its own interview round for new grads. Instead it shows up as **follow-up questions**: "how would you secure this API?", "how do you store passwords?" You don't need to be a hacker. You need **safe default habits** and enough vocabulary to reason out loud. That alone puts you ahead of candidates who only think about the happy path.
-
-## Resources
-
-### Primary: OWASP Top 10 (owasp.org)
-
-A famous list of the 10 most common website security holes, maintained by security professionals. Read the plain-English summary of each — you only need to understand *what the attack is* and *how to stop it*, not perform it.
-
-### Supplement: one short "web security basics" video
-
-Use only if something (usually CSRF) doesn't click. Two sources, no more.
-
-## Concept 1 — Authentication vs Authorization (know this cold)
+UPDATE questions.bank SET lesson_md = $body$## Concept 1. Authentication vs Authorization (know this cold)
 
 These sound alike but are different:
 
-- **Authentication (authN)** = *who are you?* — proving your identity (logging in with a password).
-- **Authorization (authZ)** = *what are you allowed to do?* — checking your permissions after you've logged in.
+- **Authentication (authN)** = *who are you?*. Proving your identity (logging in with a password).
+- **Authorization (authZ)** = *what are you allowed to do?*. Checking your permissions after you've logged in.
 
 **Analogy:** at a concert, **authentication** is the bouncer checking your ID at the door. **Authorization** is whether your ticket lets you into the VIP area. Different checks.
 
-## Concept 2 — Storing passwords (a classic question)
+## Concept 2. Storing passwords (a classic question)
 
 If someone steals your database, they shouldn't get everyone's passwords. So:
 
 - **Never store the plain password.** (Obvious once you say it.)
-- **Don't "encrypt" it either** — encryption can be reversed.
+- **Don't "encrypt" it either**: encryption can be reversed.
 - **Hash it.** A **hash** is a one-way function: easy to go password → scrambled output, practically impossible to go back. **Analogy: a blender.** You can blend a smoothie; you can't un-blend it back into fruit.
-- Use a **slow, salted** hash — the named tools are **bcrypt, scrypt, Argon2**.
+- Use a **slow, salted** hash. The named tools are **bcrypt, scrypt, Argon2**.
   - **Salt** = a random value added to each password before hashing, so two people with the same password get different hashes. Stops attackers using precomputed lists ("rainbow tables").
-  - **Slow** = deliberately takes a moment to compute, so an attacker can't try billions of guesses per second.
+  - **Slow** = deliberately takes a moment to compute, so an attacker can't try billions of guesses per second.$body$, step = 1
+  WHERE title = 'Authentication, Authorization & Password Storage';
 
-## Concept 3 — Staying logged in: Sessions vs Tokens
+UPDATE questions.bank SET lesson_md = $body$## Concept 3. Staying logged in: Sessions vs Tokens
 
 After you log in, how does the site remember you on the next click?
 
-- **Session** — the server keeps a note ("user #42 is logged in") and hands your browser a **session ID** (stored in a cookie — mark it **HttpOnly** so page scripts can't steal it). Easy to cancel (delete the note), but the server has to store all these notes.
-- **Token (JWT)** — the server gives your browser a signed pass it can verify later without storing anything. **JWT = JSON Web Token.** Scales nicely (server stores nothing), but **hard to cancel early** — so you keep them short-lived.
-- **OAuth** — lets one app act on your behalf on another without ever seeing your password (delegated *authorization*). "Log in with Google" is **OpenID Connect (OIDC)**, a login layer built on top of OAuth. (Gotcha interviewers like: OAuth itself is authZ, not login.)
+- **Session**: the server keeps a note ("user #42 is logged in") and hands your browser a **session ID** (stored in a cookie. Mark it **HttpOnly** so page scripts can't steal it). Easy to cancel (delete the note), but the server has to store all these notes.
+- **Token (JWT)**: the server gives your browser a signed pass it can verify later without storing anything. **JWT = JSON Web Token.** Scales nicely (server stores nothing), but **hard to cancel early**, so you keep them short-lived.
+- **OAuth**: lets one app act on your behalf on another without ever seeing your password (delegated *authorization*). "Log in with Google" is **OpenID Connect (OIDC)**, a login layer built on top of OAuth. (Gotcha interviewers like: OAuth itself is authZ, not login.)
 
-## Concept 4 — HTTPS / TLS (encrypting data on the wire)
+## Concept 4. HTTPS / TLS (encrypting data on the wire)
 
 When data travels over the internet, others on the network could read or tamper with it. **HTTPS** prevents that.
 
 - **TLS** is the technology that encrypts the connection. **HTTPS = HTTP + TLS** (the padlock in your browser).
-- Two useful phrases: **encryption in transit** (protecting data while it travels — that's TLS) vs **encryption at rest** (protecting data while it's stored in a database/disk).
-- Rough mechanics (enough for an interview): the browser and server do a **handshake** to agree on a secret key, then encrypt everything with it. A **certificate** (issued by a trusted authority) proves the server really is who it claims to be — so you're not talking to an imposter.
+- Two useful phrases: **encryption in transit** (protecting data while it travels. That's TLS) vs **encryption at rest** (protecting data while it's stored in a database/disk).
+- Rough mechanics (enough for an interview): the browser and server do a **handshake** to agree on a secret key, then encrypt everything with it. A **certificate** (issued by a trusted authority) proves the server really is who it claims to be. So you're not talking to an imposter.$body$, step = 2
+  WHERE title = 'Sessions, Tokens & HTTPS';
 
-## Concept 5 — The attacks you must be able to explain
+UPDATE questions.bank SET lesson_md = $body$## Concept 5. The attacks you must be able to explain
 
 From the OWASP list, these four come up most:
 
-- **SQL Injection** — the app builds a database query by gluing user input directly into it, so a sneaky input becomes *commands* instead of *data* (e.g. typing something that makes the query dump the whole table). **Fix: parameterized queries** (a.k.a. prepared statements) — the database treats input strictly as data, never as commands. Never build queries by string-concatenation.
+- **SQL Injection**: the app builds a database query by gluing user input directly into it, so a sneaky input becomes *commands* instead of *data* (e.g. typing something that makes the query dump the whole table). **Fix: parameterized queries** (a.k.a. prepared statements). The database treats input strictly as data, never as commands. Never build queries by string-concatenation.
 
-- **XSS (Cross-Site Scripting)** — an attacker gets their `<script>` to run inside another user's browser on your site (e.g. via a comment box), stealing data or sessions. **Fix: escape/sanitize anything user-supplied before showing it**, and use a Content-Security-Policy.
+- **XSS (Cross-Site Scripting)**: an attacker gets their `<script>` to run inside another user's browser on your site (e.g. via a comment box), stealing data or sessions. **Fix: escape/sanitize anything user-supplied before showing it**, and use a Content-Security-Policy.
 
-- **CSRF (Cross-Site Request Forgery)** — while you're logged into your bank, a malicious page tricks your browser into quietly sending a request to the bank using your existing login. **Fix: CSRF tokens and SameSite cookies** so requests must prove they came from your real site.
+- **CSRF (Cross-Site Request Forgery)**: while you're logged into your bank, a malicious page tricks your browser into quietly sending a request to the bank using your existing login. **Fix: CSRF tokens and SameSite cookies** so requests must prove they came from your real site.
 
-- **Broken access control** — a logged-in user reaches data they shouldn't, e.g. changing `?id=42` to `?id=43` in the URL to see someone else's info. **Fix: check permissions (authZ) on every request, on the server. Never trust the client.**
+- **Broken access control**: a logged-in user reaches data they shouldn't, e.g. changing `?id=42` to `?id=43` in the URL to see someone else's info. **Fix: check permissions (authZ) on every request, on the server. Never trust the client.**
 
 *(XSS vs CSRF confusion is common: XSS = attacker's **script runs in the page**. CSRF = attacker **rides your existing login** to send a request. Different.)*
 
-## Concept 6 — Safe-default habits (sprinkle these into any answer)
+## Concept 6. Safe-default habits (sprinkle these into any answer)
 
-- **Least privilege** — give each user or service the *minimum* access it needs, nothing more.
-- **Never trust user input** — always validate and clean it on the server.
-- **Defense in depth** — use several layers; don't rely on a single lock.
-- **Don't invent your own crypto** — use trusted, battle-tested libraries.
-- **Keep secrets out of code** — never hardcode passwords/keys or commit them; use environment variables or a secrets manager.$body$
-) ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, body_md = EXCLUDED.body_md;
+- **Least privilege**: give each user or service the *minimum* access it needs, nothing more.
+- **Never trust user input**: always validate and clean it on the server.
+- **Defense in depth**: use several layers; don't rely on a single lock.
+- **Don't invent your own crypto**: use trusted, battle-tested libraries.
+- **Keep secrets out of code**: never hardcode passwords/keys or commit them; use environment variables or a secrets manager.$body$, step = 3
+  WHERE title = 'Common Attacks & Safe Defaults';
 
-INSERT INTO questions.lessons (topic, title, body_md) VALUES (
-  'ai-tooling',
-  'AI Tooling',
-  $body$**AI Tooling & AI-Assisted Engineering**
+UPDATE questions.bank SET lesson_md = $body$## First, three words you'll hear
 
-Backend Interview Prep — Lean Guide (starts from zero)
+- **Stack trace**: the error report your program prints when it crashes. It lists the chain of function calls that led to the crash, with file and line numbers (Python prints the most recent call *last*; Java/JavaScript print it *first*). It usually tells you *what* went wrong and *where*. **Read it, don't skim it.**
+- **Breakpoint**: a marker you place on a line of code that tells the debugger "pause here." When the program reaches it, it freezes so you can look around.
+- **Stepping**: once paused, you run the program **one line at a time** ("step over") and watch how the values change. This is how you catch the exact moment things go wrong.
 
-*Focus: AI in your workflow · Prompts · Agents · Responsible AI*
-
-## Why This Matters
-
-Both the Meta and Google new-grad job posts explicitly say they want people who use AI tools well. Meta's post lists *"prompt/context engineering, agent orchestration,"* *"responsible, ethical AI,"* and *"integrate AI tools to drive measurable impact."*
-
-Here's the good news: this is the **easiest topic to sound strong on**, because most candidates can't. You don't need to be an AI researcher. You need to (1) understand the words below, and (2) have one real story about using an AI tool to get work done. That's it.
-
-## Start Here: What is an "AI tool," really?
-
-A **Large Language Model (LLM)** — like the one behind ChatGPT, Claude, or GitHub Copilot — is a program that predicts text. Think of it as **autocomplete on steroids**: you give it words, it predicts the most useful words to come next. Trained on enormous amounts of text, that simple idea is powerful enough to write code, explain errors, and answer questions.
-
-An **AI coding assistant** (Claude Code, Cursor, GitHub Copilot) is an LLM wired into your editor. You ask, it writes code / tests / explanations. **You stay in charge**: you read what it wrote and decide if it's right. That last sentence is the single most important thing to say in an interview.
-
-## Resources
-
-### Primary: actually use one tool on a small project
-
-The best prep is having used Claude Code, Cursor, or Copilot for real, even once. If you have, you already have your interview answers — this doc just gives you the words for them.
-
-### Supplement: skim Anthropic's "Prompt Engineering" docs once
-
-Just for vocabulary. This is a *talking-points* topic, not a memorize-the-textbook topic. Don't overinvest.
-
-## The Words You Need (each explained plainly)
-
-- **Prompt** — the instruction you type to the AI. "Write a function that reverses a string." A *good* prompt is specific and gives an example of what you want.
-
-- **Context** — the background info you hand the AI along with your prompt: the relevant code file, the error message, the rules it must follow. **The AI can only be as good as the context you give it.** Give it junk → you get junk. "Context engineering" just means being deliberate about what info you feed it.
-
-- **Token** — how the AI chops up text. Roughly ¾ of a word = one token. You'll see the word "tokens" a lot; it just means "pieces of text."
-
-- **Context window** — how much text the AI can "hold in its head" at once, measured in tokens. Like short-term memory. If you dump too much irrelevant stuff in, quality drops — another reason to give it *only* what matters.
-
-- **Hallucination** — when the AI makes something up and states it confidently, e.g. inventing a function that doesn't exist. This is the #1 risk. **Always verify** its output; never trust it blindly on anything important.
-
-- **RAG (Retrieval-Augmented Generation)** — a technique: instead of pasting a whole 500-page manual into the prompt, you first *retrieve* just the few relevant paragraphs and give the AI those. How AI tools answer questions over big or private data without seeing all of it at once.
-
-- **Agent** — an AI that doesn't just answer once, but works in a **loop**: it takes an action (read a file, run a command), looks at the result, and decides the next step — repeating until the task is done. Claude Code is an agent: it can edit files and run tests on its own, checking as it goes.
-
-- **Orchestration** — a fancy word for *coordinating multiple steps or multiple agents* to finish a bigger task. If someone asks, "wiring several AI steps together into one workflow" is a fine answer.
-
-- **Prompting vs fine-tuning** — two ways to get an AI to do what you want. **Prompting** (just asking well, plus RAG) is cheap and needs no training. **Fine-tuning** means actually retraining the model on your data for a narrow task — expensive, and only worth it when prompting genuinely isn't enough. Default to prompting.
-
-## Responsible AI (Meta asks about this by name — easy points)
-
-Just common sense, stated clearly:
-
-- **Verify before you ship.** The AI can be confidently wrong. Read and test its output — you own the code, not the model.
-- **Never paste secrets.** Don't put passwords, API keys, or customer data into a prompt.
-- **Keep a human in the loop** for anything that matters. AI assists the decision; it doesn't make it.
-- **Watch for bias** — AI trained on internet data can carry the internet's biases; sanity-check outputs that affect people.$body$
-) ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, body_md = EXCLUDED.body_md;
-
-INSERT INTO questions.lessons (topic, title, body_md) VALUES (
-  'debugging',
-  'Debugging',
-  $body$**Debugging**
-
-Backend Interview Prep — Lean Guide (starts from zero)
-
-*Focus: A systematic method · Common bug types · Hands-on practice*
-
-## Why This Matters
-
-A **bug** is just code that behaves differently from what you intended. Debugging almost never gets its own interview round — but it's baked into the **coding interview** ("your code has a bug, find it") and behavioural ("tell me about a hard bug you fixed"). What interviewers want to see: a **calm, systematic method**, not randomly changing lines and hoping. This doc gives you that method, plus a real program you can practice on.
-
-## First, three words you'll hear
-
-- **Stack trace** — the error report your program prints when it crashes. It lists the chain of function calls that led to the crash, with file and line numbers (Python prints the most recent call *last*; Java/JavaScript print it *first*). It usually tells you *what* went wrong and *where*. **Read it — don't skim it.**
-- **Breakpoint** — a marker you place on a line of code that tells the debugger "pause here." When the program reaches it, it freezes so you can look around.
-- **Stepping** — once paused, you run the program **one line at a time** ("step over") and watch how the values change. This is how you catch the exact moment things go wrong.
-
-## The Method (memorize this — it's your answer to "how do you debug?")
+## The Method (memorize this. It's your answer to "how do you debug?")
 
 1. **Reproduce it.** A bug you can't trigger on demand, you can't fix. Find the exact input or steps that cause it, reliably.
 2. **Read the error.** The stack trace tells you what and where. Start at the most recent call that's in *your* code (skip the library lines).
 3. **Form a hypothesis.** A specific, testable guess: "I bet this value is empty here" or "I think this loop runs one time too many."
-4. **Isolate — binary search the problem.** Cut the search area in half repeatedly: check the middle — is the bug before or after this point? Add a print or breakpoint there and narrow down until you're on the exact line. (Same trick as `git bisect`, which finds the exact commit that introduced a bug.)
+4. **Isolate. Binary search the problem.** Cut the search area in half repeatedly: check the middle. Is the bug before or after this point? Add a print or breakpoint there and narrow down until you're on the exact line. (Same trick as `git bisect`, which finds the exact commit that introduced a bug.)
 5. **Check your assumptions.** The bug is almost always hiding in something you *assumed* was true. Print the actual value. Is the input what you expected? Is this code even running?
 6. **Fix, then verify.** Confirm the fix on your repro. Then ask "could this same bug be elsewhere?" and add a test so it can never come back.
 
@@ -3103,50 +2774,33 @@ One-liner if asked: **reproduce → read the error → hypothesize → binary-se
 
 ## Two tools: Print vs Debugger
 
-- **Print/log statements** — drop `print(x)` to see values. Fast, works anywhere (even in production). Downside: messy, and you have to re-run.
-- **Debugger (breakpoints)** — pause the program and inspect *everything* live, step line by line. Best for tricky local logic.
+- **Print/log statements**: drop `print(x)` to see values. Fast, works anywhere (even in production). Downside: messy, and you have to re-run.
+- **Debugger (breakpoints)**: pause the program and inspect *everything* live, step line by line. Best for tricky local logic.
 - Good answer: *"I start with prints to narrow down where it goes wrong, then switch to a debugger to inspect the state once I'm close."*
 
 👉 **Practice this hands-on:** open `debug-practice.py` in this folder and follow the instructions at the top. It has real bugs for you to find with the VS Code debugger. See `HOW-TO-DEBUG-IN-VSCODE.md` for setup.
 
-## Common Bug Types (learn to spot these fast)
-
-- **Off-by-one** — being one off in a count or index: `<` vs `<=`, or reading one past the end of a list. The #1 bug in coding interviews.
-- **Null / None** — using a value that was never set, or a lookup that found nothing.
-- **Edge cases** — empty input, a single item, duplicates, negatives, the maximum size. Always test these.
-- **Aliasing / shared references** — two names point at the *same* object, so changing one "mysteriously" changes the other.
-- **Race conditions** — a timing bug from two things touching shared data at once; hard to reproduce (see the OS notes on locks).
-- **Type / overflow** — a number too big for its type, or mixing up a string `"5"` with the number `5`.
-
-## Production Debugging (mention for extra credit)
-
-- **Logs** — recorded messages with request IDs so you can trace what happened after the fact.
-- **Metrics** — dashboards showing error rates and latency, so you spot *when* it started.
-- **Distributed tracing** — following a single request as it hops across multiple services to find which hop failed.
-
-## How to debug `debug-practice.py` in VS Code (2-minute setup)
-
 You need this once. After that, debugging is just pressing **F5**.
 
-### One-time setup
+## One-time setup
 
 1. **Install the Python extension.** Open VS Code → Extensions (the square icon on the left, or `Ctrl+Shift+X`) → search **"Python"** (by Microsoft) → Install. This also gives you the debugger.
-2. **Open this project folder** in VS Code (`File > Open Folder…` → pick `interview-prep`). A `.vscode/launch.json` is already set up for you — you don't need to create it.
+2. **Open this project folder** in VS Code (`File > Open Folder…` → pick `interview-prep`). A `.vscode/launch.json` is already set up for you, you don't need to create it.
 3. That's it.
 
-### The debug loop (do this for each bug)
+## The debug loop (do this for each bug)
 
 1. Open `DEBUGGING/debug-practice.py`.
 2. Press **F5**. The tests run and print `PASS`/`FAIL` in the terminal at the bottom.
 3. Pick a **FAIL**ing function. Find its line in the file.
 4. **Set a breakpoint:** click in the empty margin just left of a line number. A **red dot** appears. Put it on the first interesting line of that function.
 5. Press **F5** again. The program runs, then **pauses** at your red dot (the line highlights).
-6. Look at the **VARIABLES** panel (top-left) — it shows every variable's current value *right now*.
+6. Look at the **VARIABLES** panel (top-left). It shows every variable's current value *right now*.
 7. Press **F10** ("Step Over") to run the next line. Watch the variables change. Keep pressing F10.
-8. Find the exact line where a value becomes *wrong* — that's the bug.
+8. Find the exact line where a value becomes *wrong*, that's the bug.
 9. Fix the code, press **F5**, and confirm the test now says **PASS**.
 
-### The buttons you'll use
+## The buttons you'll use
 
 | Key | Button | What it does |
 |---|---|---|
@@ -3155,106 +2809,155 @@ You need this once. After that, debugging is just pressing **F5**.
 | **F11** | ↓ Step Into | Go *inside* the function on this line |
 | **Shift+F5** | ■ Stop | Stop debugging |
 
-### Panels to know
+## Panels to know
 
-- **VARIABLES** (top-left) — live values while paused. Your main tool.
-- **WATCH** — type an expression (e.g. `total + count`) to track it continuously.
-- **CALL STACK** — the chain of function calls that got you here (a live stack trace).
-- **DEBUG CONSOLE** (bottom) — while paused, type any Python expression to inspect it, e.g. `user` or `len(numbers)`.
+- **VARIABLES** (top-left), live values while paused. Your main tool.
+- **WATCH**: type an expression (e.g. `total + count`) to track it continuously.
+- **CALL STACK**: the chain of function calls that got you here (a live stack trace).
+- **DEBUG CONSOLE** (bottom). While paused, type any Python expression to inspect it, e.g. `user` or `len(numbers)`.
 
-### Tip
+## Tip
 
-The skill isn't the buttons — it's **forming a guess before you step** ("I bet `i` never reaches 5"), then using the debugger to confirm or kill that guess. That's step 3 of the method in `debugging-overview.md`.$body$
-) ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, body_md = EXCLUDED.body_md;
+The skill isn't the buttons. It's **forming a guess before you step** ("I bet `i` never reaches 5"), then using the debugger to confirm or kill that guess. That's step 3 of the method in `debugging-overview.md`.$body$, step = 1
+  WHERE title = 'A Systematic Debugging Method';
 
-INSERT INTO questions.lessons (topic, title, body_md) VALUES (
-  'behavioural',
-  'Behavioural',
-  $body$**Behavioural Interviews — Google & Meta Story Bank**
+UPDATE questions.bank SET lesson_md = $body$## Common Bug Types (learn to spot these fast)
 
-*Competency mapping · STAR stories · your projects.*
+- **Off-by-one**: being one off in a count or index: `<` vs `<=`, or reading one past the end of a list. The #1 bug in coding interviews.
+- **Null / None**: using a value that was never set, or a lookup that found nothing.
+- **Edge cases**: empty input, a single item, duplicates, negatives, the maximum size. Always test these.
+- **Aliasing / shared references**: two names point at the *same* object, so changing one "mysteriously" changes the other.
+- **Race conditions**: a timing bug from two things touching shared data at once; hard to reproduce (see the OS notes on locks).
+- **Type / overflow**: a number too big for its type, or mixing up a string `"5"` with the number `5`.$body$, step = 2
+  WHERE title = 'Common Bug Types & Isolating Them';
 
-## What Google vs Meta Actually Test
+UPDATE questions.bank SET lesson_md = $body$## Production Debugging (mention for extra credit)
+
+- **Logs**: recorded messages with request IDs so you can trace what happened after the fact.
+- **Metrics**: dashboards showing error rates and latency, so you spot *when* it started.
+- **Distributed tracing**: following a single request as it hops across multiple services to find which hop failed.$body$, step = 3
+  WHERE title = 'Debugging in Production';
+
+UPDATE questions.bank SET lesson_md = $body$## Start Here: What is an "AI tool," really?
+
+A **Large Language Model (LLM)**, like the one behind ChatGPT, Claude, or GitHub Copilot, is a program that predicts text. Think of it as **autocomplete on steroids**: you give it words, it predicts the most useful words to come next. Trained on enormous amounts of text, that simple idea is powerful enough to write code, explain errors, and answer questions.
+
+An **AI coding assistant** (Claude Code, Cursor, GitHub Copilot) is an LLM wired into your editor. You ask, it writes code / tests / explanations. **You stay in charge**: you read what it wrote and decide if it's right. That last sentence is the single most important thing to say in an interview.
+
+## The words you need
+
+- **Prompt**: the instruction you type to the AI. "Write a function that reverses a string." A *good* prompt is specific and gives an example of what you want.
+- **Context**: the background info you hand the AI along with your prompt: the relevant code file, the error message, the rules it must follow. **The AI can only be as good as the context you give it.** Give it junk → you get junk. "Context engineering" just means being deliberate about what info you feed it.
+- **Token**: how the AI chops up text. Roughly ¾ of a word = one token. You'll see the word "tokens" a lot; it just means "pieces of text."
+- **Context window**: how much text the AI can "hold in its head" at once, measured in tokens. Like short-term memory. If you dump too much irrelevant stuff in, quality drops. Another reason to give it *only* what matters.
+- **Prompting vs fine-tuning**: two ways to get an AI to do what you want. **Prompting** (just asking well, plus RAG) is cheap and needs no training. **Fine-tuning** means actually retraining the model on your data for a narrow task. Expensive, and only worth it when prompting genuinely isn't enough. Default to prompting.$body$, step = 1
+  WHERE title = 'LLMs, Prompts & Context';
+
+UPDATE questions.bank SET lesson_md = $body$## The words you need
+
+- **RAG (Retrieval-Augmented Generation)**: a technique: instead of pasting a whole 500-page manual into the prompt, you first *retrieve* just the few relevant paragraphs and give the AI those. How AI tools answer questions over big or private data without seeing all of it at once.
+- **Agent**: an AI that doesn't just answer once, but works in a **loop**: it takes an action (read a file, run a command), looks at the result, and decides the next step. Repeating until the task is done. Claude Code is an agent: it can edit files and run tests on its own, checking as it goes.
+- **Orchestration**: a fancy word for *coordinating multiple steps or multiple agents* to finish a bigger task. If someone asks, "wiring several AI steps together into one workflow" is a fine answer.
+- **Prompting vs fine-tuning**: two ways to get an AI to do what you want. **Prompting** (just asking well, plus RAG) is cheap and needs no training. **Fine-tuning** means actually retraining the model on your data for a narrow task. Expensive, and only worth it when prompting genuinely isn't enough. Default to prompting.$body$, step = 2
+  WHERE title = 'Agents, RAG & Fine-tuning';
+
+UPDATE questions.bank SET lesson_md = $body$## The words you need
+
+- **Hallucination**: when the AI makes something up and states it confidently, e.g. inventing a function that doesn't exist. This is the #1 risk. **Always verify** its output; never trust it blindly on anything important.
+
+## Responsible AI (Meta asks about this by name, easy points)
+
+Just common sense, stated clearly:
+
+- **Verify before you ship.** The AI can be confidently wrong. Read and test its output. You own the code, not the model.
+- **Never paste secrets.** Don't put passwords, API keys, or customer data into a prompt.
+- **Keep a human in the loop** for anything that matters. AI assists the decision; it doesn't make it.
+- **Watch for bias**: AI trained on internet data can carry the internet's biases; sanity-check outputs that affect people.$body$, step = 3
+  WHERE title = 'Hallucination & Responsible AI';
+
+UPDATE questions.bank SET lesson_md = $body$## What Google vs Meta Actually Test
 
 Different interviews. Knowing the difference lets you prep the right stories.
 
-| | **Google — Googleyness & Leadership** | **Meta — Core Values** |
+| | **Google, Googleyness & Leadership** | **Meta, Core Values** |
 | --- | --- | --- |
-| Format | 1 round, ~4 questions | 1 round in the new-grad loop, ~3–4 questions |
+| Format | 1 round, ~4 questions | 1 round in the new-grad loop, ~3-4 questions |
 | Evaluates | Googleyness (collaboration, ambiguity, integrity) + Leadership (ownership, impact). Whole loop is scored on 4 attributes: GCA (general cognitive ability), role knowledge, leadership, Googleyness. | The 6 core values: Move Fast · Focus on Long-Term Impact · Build Awesome Things · Live in the Future · Be Direct & Respect Your Colleagues · Meta, Metamates, Me. Map each story to one. |
-| Tone | Conversational — they probe how you think | Direct — they want crisp, outcome-focused answers |
+| Tone | Conversational, they probe how you think | Direct, they want crisp, outcome-focused answers |
 | Differentiator | Humble, self-aware, defaults to collaboration | Biases toward action, measures impact |
 | Red flag | Taking all credit, blaming others, not owning mistakes | Vague outcomes, no data, process over results |
 
 ## The STAR Framework
 
-Every story uses this. Total answer 2–3 min. Interviewers probe each section.
+Every story uses this. Total answer 2-3 min. Interviewers probe each section.
 
 | **Letter** | **Section** | **Cover this** | **Time** |
 | --- | --- | --- | --- |
-| **S** | Situation | Set the scene in 2–3 sentences: project, what was at stake, what made it hard. | ~20s |
-| **T** | Task | YOUR specific responsibility — not the team's. | ~10s |
+| **S** | Situation | Set the scene in 2-3 sentences: project, what was at stake, what made it hard. | ~20s |
+| **T** | Task | YOUR specific responsibility, not the team's. | ~10s |
 | **A** | Action | The meat. What you did, step by step, with trade-offs considered. | ~90s |
-| **R** | Result | Quantified outcome. What changed, what you learned, what you'd do differently. | ~30s |
+| **R** | Result | Quantified outcome. What changed, what you learned, what you'd do differently. | ~30s |$body$, step = 1
+  WHERE title = 'STAR & What Each Company Tests';
 
-## Your Story Bank — 9 Competencies
+UPDATE questions.bank SET lesson_md = $body$## Your Story Bank, 9 Competencies
 
-Fill every scaffold; one strong story can cover two competencies, so 6–8 distinct stories is enough. Spread them across projects — don't pull more than ~3 from one source.
+Fill every scaffold; one strong story can cover two competencies, so 6-8 distinct stories is enough. Spread them across projects. Don't pull more than ~3 from one source.
 
 *Projects to draw from: sgmalls · PeerPrep · Aqua Vitae Parfums · NUS coursework · TA/leadership.*
 
 **1. Ownership / Taking Initiative**
-- **Asks:** G — *something outside your core responsibilities.* / M — *took ownership of a project end to end.*
+- **Asks:** G. *something outside your core responsibilities.* / M. *took ownership of a project end to end.*
 - **Mine + prompts:** sgmalls (sole engineer, schema to deployment), Aqua Vitae (solo build). What did you pick up that wasn't your job, and why? What did you decide autonomously, and what trade-offs (Astro vs Next.js, D1 vs Postgres)?
 - **Your story:** ________________________________________
 
 **2. Technical Trade-off / Ambiguity**
-- **Asks:** G — *a technical decision with incomplete information.* / M — *move fast without all the information you wanted.*
+- **Asks:** G. *a technical decision with incomplete information.* / M. *move fast without all the information you wanted.*
 - **Mine + prompts:** sgmalls (static vs dynamic pages, shard strategy), PeerPrep (microservices), MT5 optimizer. What made it hard, and what were the options and unknowns? Did you prototype or consult anyone? When did you stop researching and commit?
 - **Your story:** ________________________________________
 
 **3. Failure / Learning from Mistakes**
-- **Asks:** G — *a time you failed. What did you learn?* / M — *something you built didn't go as planned.*
-- **Mine + prompts:** A prod bug, a missed deadline, an architectural regret, an underperforming project. What went wrong — technical, process, or judgment? (Be honest; interviewers spot a spun non-failure.) How did you course-correct, and what concretely changed in how you work?
+- **Asks:** G, *a time you failed. What did you learn?* / M. *something you built didn't go as planned.*
+- **Mine + prompts:** A prod bug, a missed deadline, an architectural regret, an underperforming project. What went wrong. Technical, process, or judgment? (Be honest; interviewers spot a spun non-failure.) How did you course-correct, and what concretely changed in how you work?
 - **Your story:** ________________________________________
 
 **4. Disagreement / Pushback**
-- **Asks:** G — *disagreed with a teammate or manager.* / M — *influence someone who didn't report to you.*
+- **Asks:** G. *disagreed with a teammate or manager.* / M. *influence someone who didn't report to you.*
 - **Mine + prompts:** PeerPrep architecture disagreements, a group-project conflict, pushing back on a prof/TA. What was the disagreement and the other side's position? How did you raise it, with what evidence? Escalate, or disagree and commit (back it anyway)?
 - **Your story:** ________________________________________
 
 **5. Collaboration / Impact on Team**
-- **Asks:** G — *helped a teammate grow or succeed.* / M — *made the people around you more effective.*
-- **Mine + prompts:** PeerPrep (code reviews, unblocking others), tutoring/TA, hackathon teams. Was someone stuck, behind, or missing context? What did you do — pair, review, document, mentor, restructure? Outcome for them and the project?
+- **Asks:** G. *helped a teammate grow or succeed.* / M. *made the people around you more effective.*
+- **Mine + prompts:** PeerPrep (code reviews, unblocking others), tutoring/TA, hackathon teams. Was someone stuck, behind, or missing context? What did you do. Pair, review, document, mentor, restructure? Outcome for them and the project?
 - **Your story:** ________________________________________
 
 **6. Navigating Ambiguity / Undefined Problems**
-- **Asks:** G — *a problem with no clear answer.* / M — *figure out what to build when requirements weren't clear.*
-- **Mine + prompts:** sgmalls SEO strategy (no playbook), Aqua Vitae product decisions, hackathon scoping. What was undefined, and why couldn't you just ask for clarity? How did you structure it — set constraints, run experiments, talk to users? What shipped, and how did it turn out?
+- **Asks:** G. *a problem with no clear answer.* / M. *figure out what to build when requirements weren't clear.*
+- **Mine + prompts:** sgmalls SEO strategy (no playbook), Aqua Vitae product decisions, hackathon scoping. What was undefined, and why couldn't you just ask for clarity? How did you structure it. Set constraints, run experiments, talk to users? What shipped, and how did it turn out?
 - **Your story:** ________________________________________
 
 **7. Delivering Impact / High-Stakes Project**
-- **Asks:** G — *your most impactful project. Why?* / M — *go above and beyond to deliver.*
+- **Asks:** G, *your most impactful project. Why?* / M. *go above and beyond to deliver.*
 - **Mine + prompts:** sgmalls (12,630 static pages, Google indexing), PeerPrep (production microservices), Aqua Vitae launch. Quantify everything (pages, users, load time, uptime, time saved). Why did it matter beyond finishing? Hardest technical part, and what did you do that a less experienced engineer wouldn't?
 - **Your story:** ________________________________________
 
 **8. Prioritisation / Saying No**
-- **Asks:** G — *prioritise ruthlessly under time pressure.* / M — *hard trade-offs about what to build.*
+- **Asks:** G. *prioritise ruthlessly under time pressure.* / M. *hard trade-offs about what to build.*
 - **Mine + prompts:** sgmalls launch cuts, balancing coursework + projects + job search, hackathon scoping. What competed for your time or scope? What criteria did you use to cut or defer? Who was affected, and was the call right in hindsight?
 - **Your story:** ________________________________________
 
 **9. Receiving Feedback**
-- **Asks:** G — *hard feedback you received. What did you do with it?* / M — *someone was direct with you about a real problem.*
-- **Mine + prompts:** PeerPrep code-review pushback, a prof/TA critique, user complaints on sgmalls/Aqua Vitae. What was the feedback, and your honest first reaction? What did you change, and how did they know you'd heard them? Pick something that stung — not cosmetic notes.
-- **Your story:** ________________________________________
+- **Asks:** G, *hard feedback you received. What did you do with it?* / M. *someone was direct with you about a real problem.*
+- **Mine + prompts:** PeerPrep code-review pushback, a prof/TA critique, user complaints on sgmalls/Aqua Vitae. What was the feedback, and your honest first reaction? What did you change, and how did they know you'd heard them? Pick something that stung, not cosmetic notes.
+- **Your story:** ________________________________________$body$, step = 2
+  WHERE title = 'The Competencies You Will Be Asked About';
 
-## 1-Day Prep Plan
+UPDATE questions.bank SET lesson_md = $body$## 1-Day Prep Plan
 
 One focused day is enough.
 
 | Morning (2h) | Fill in all 9 scaffolds as bullet notes. Force a number into each (pages, hours saved, % improvement, team size). Reusing one project for more than ~3 stories? Redistribute. |
 | --- | --- |
-| Afternoon (2h) | Say each story aloud, full STAR, timed to 2–3 min. Record 3 and play back — natural or rehearsed? Mock with a friend or AI and have them probe with follow-ups. |
+| Afternoon (2h) | Say each story aloud, full STAR, timed to 2-3 min. Record 3 and play back, natural or rehearsed? Mock with a friend or AI and have them probe with follow-ups. |
 | Exit goal | Deliver any of the 9 stories in under 3 min, with a specific result, without notes. |
 
 ## Critical Rules
@@ -3265,6 +2968,14 @@ One focused day is enough.
 - **Don't over-rehearse.** Scripted sounds fake. Know the skeleton cold; improvise the words.
 - **Google: lead with collaboration**, not heroic solo effort.
 - **Meta: lead with outcome**, then explain how you got there.
-- **Prepare for follow-ups.** Expect "Why that approach?", "What would you do differently?", "What did others think?" Your skeleton needs that depth.$body$
-) ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, body_md = EXCLUDED.body_md;
+- **Prepare for follow-ups.** Expect "Why that approach?", "What would you do differently?", "What did others think?" Your skeleton needs that depth.$body$, step = 3
+  WHERE title = 'Delivering an Answer That Lands';
 
+-- Every row must have both, or a step page renders an empty lesson.
+DO $check$
+BEGIN
+  IF EXISTS (SELECT 1 FROM questions.bank WHERE lesson_md IS NULL OR step IS NULL) THEN
+    RAISE EXCEPTION 'a question set was left without a lesson or a step';
+  END IF;
+END
+$check$;

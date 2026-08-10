@@ -120,48 +120,128 @@ export async function listQuestions(pool: pg.Pool, filters: ListFilters): Promis
   };
 }
 
-export interface LessonSummary {
+export interface RoadmapStep {
+  id: string;
+  step: number;
+  title: string;
+  questionCount: number;
+}
+
+export interface RoadmapTopic {
   topic: string;
   title: string;
-}
-
-export interface Lesson extends LessonSummary {
-  bodyMd: string;
-}
-
-/**
- * The nine lessons, without their bodies — e.g.
- *   listLessons(pool)
- * returns `[{ topic: 'ai-tooling', title: 'AI Tooling' }, ...]`.
- *
- * `body_md` is left out because it is the whole weight of the table: the nine
- * bodies together are about 160KB, and the index page needs none of it. This
- * is the same reason `SUMMARY_COLUMNS` exists, for a different reason — there
- * it is secrecy, here it is size.
- */
-export async function listLessons(pool: pg.Pool): Promise<LessonSummary[]> {
-  const { rows } = await pool.query<LessonSummary>(
-    'SELECT topic, title FROM questions.lessons ORDER BY title',
-  );
-  return rows;
+  summary: string;
+  dependsOn: string[];
+  gridX: number;
+  gridY: number;
+  steps: RoadmapStep[];
 }
 
 /**
- * Reads one lesson in full — e.g.
- *   getLesson(pool, 'os')
- * returns `{ topic, title, bodyMd }`, or `null` if no lesson has that topic.
+ * Everything the roadmap screen draws, in one query.
  *
- * `topic` is the primary key and the same string the bank carries in `tags[1]`,
- * which is what lets a lesson page list the questions that drill it without a
- * join table.
+ * The nine topics with their prerequisites and grid positions, each carrying
+ * its three steps. It is one call rather than one per topic because the whole
+ * thing is nine rows and twenty-seven children: paginating it would cost more
+ * requests than it saves bytes, and the roadmap cannot render a partial graph
+ * anyway, since a missing topic is a missing arrow.
+ *
+ * No lesson bodies. Those are about 400KB together and this screen shows none
+ * of them.
  */
-export async function getLesson(pool: pg.Pool, topic: string): Promise<Lesson | null> {
-  const { rows } = await pool.query<{ topic: string; title: string; body_md: string }>(
-    'SELECT topic, title, body_md FROM questions.lessons WHERE topic = $1',
-    [topic],
+export async function getRoadmap(pool: pg.Pool): Promise<RoadmapTopic[]> {
+  const { rows } = await pool.query<{
+    topic: string;
+    title: string;
+    summary: string;
+    depends_on: string[];
+    grid_x: number;
+    grid_y: number;
+    steps: RoadmapStep[] | null;
+  }>(`
+    SELECT t.topic, t.title, t.summary, t.depends_on, t.grid_x, t.grid_y,
+           (
+             SELECT json_agg(json_build_object(
+                      'id', b.id, 'step', b.step, 'title', b.title,
+                      'questionCount', jsonb_array_length(b.parts)
+                    ) ORDER BY b.step)
+             FROM questions.bank b
+             WHERE b.tags[1] = t.topic
+           ) AS steps
+    FROM questions.topics t
+    ORDER BY t.grid_y, t.grid_x
+  `);
+
+  return rows.map((r) => ({
+    topic: r.topic,
+    title: r.title,
+    summary: r.summary,
+    dependsOn: r.depends_on,
+    gridX: r.grid_x,
+    gridY: r.grid_y,
+    steps: r.steps ?? [],
+  }));
+}
+
+export interface Step {
+  id: string;
+  topic: string;
+  topicTitle: string;
+  step: number;
+  title: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  parts: string[];
+  lessonMd: string;
+  /** The other steps in this topic, so the page can offer them without a
+   * second request and without sending the reader back to the roadmap. */
+  siblings: { id: string; step: number; title: string }[];
+}
+
+/**
+ * One step in full: its lesson, its questions, and the way on to its siblings.
+ *
+ * Everything the step page needs, so opening one is a single request. Still no
+ * `reference_md`: the answer is a separate call that checks who is asking.
+ */
+export async function getStep(pool: pg.Pool, id: string): Promise<Step | null> {
+  const { rows } = await pool.query<{
+    id: string;
+    topic: string;
+    topic_title: string;
+    step: number;
+    title: string;
+    difficulty: string;
+    parts: string[];
+    lesson_md: string;
+    siblings: { id: string; step: number; title: string }[] | null;
+  }>(
+    `SELECT b.id, b.tags[1] AS topic, t.title AS topic_title, b.step, b.title,
+            b.difficulty, b.parts, b.lesson_md,
+            (
+              SELECT json_agg(json_build_object('id', s.id, 'step', s.step, 'title', s.title)
+                     ORDER BY s.step)
+              FROM questions.bank s
+              WHERE s.tags[1] = b.tags[1]
+            ) AS siblings
+     FROM questions.bank b
+     JOIN questions.topics t ON t.topic = b.tags[1]
+     WHERE b.id = $1`,
+    [id],
   );
+
   const row = rows[0];
-  return row ? { topic: row.topic, title: row.title, bodyMd: row.body_md } : null;
+  if (!row) return null;
+  return {
+    id: row.id,
+    topic: row.topic,
+    topicTitle: row.topic_title,
+    step: row.step,
+    title: row.title,
+    difficulty: row.difficulty as Step['difficulty'],
+    parts: row.parts,
+    lessonMd: row.lesson_md,
+    siblings: row.siblings ?? [],
+  };
 }
 
 /** Fetches one question by id, or `null` if no row has that id. */

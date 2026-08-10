@@ -5,28 +5,30 @@ import {
   getQuestion,
   type Difficulty,
   type Question,
+  type RoadmapTopic,
   type Session,
 } from './api';
 import { signOutUser, watchUser, type User } from './auth';
-import { LearnPage } from './pages/Learn';
-import { LessonPage } from './pages/Lesson';
+import { useTheme } from './theme';
+import { RoadmapPage } from './pages/Roadmap';
+import { TopicDialog } from './pages/TopicDialog';
+import { StepPage } from './pages/Step';
 import { LoginPage } from './pages/Login';
-import { QuestionsPage } from './pages/Questions';
 import { MatchPage } from './pages/Match';
 import { SessionPage } from './pages/Session';
 import { SummaryPage } from './pages/Summary';
 
 /**
- * A `useState` switch rather than a router. There are seven screens and no
+ * A `useState` switch rather than a router. There are six screens and no
  * deep-linking requirement in this phase, so react-router would be a
  * dependency and a concept for nothing. The one place it costs something is
  * noted on the session screen: a refresh mid-session drops you back to the
- * question list rather than rejoining.
+ * roadmap rather than rejoining.
  */
 export type View =
-  | { name: 'learn' }
-  | { name: 'lesson'; topic: string }
-  | { name: 'questions' }
+  | { name: 'roadmap' }
+  | { name: 'step'; stepId: string }
+  | { name: 'signin' }
   | { name: 'match'; preset?: { topic: string; difficulty: Difficulty } }
   | { name: 'session'; session: Session; question: Question }
   | { name: 'summary'; summary: SessionSummary };
@@ -41,9 +43,9 @@ export interface SessionSummary {
 export function App() {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
-  // Learn, not the bank. The material is the thing you can use without an
-  // account and without a partner, so it is what an arriving visitor sees.
-  const [view, setView] = useState<View>({ name: 'learn' });
+  const [view, setView] = useState<View>({ name: 'roadmap' });
+  const [openTopic, setOpenTopic] = useState<RoadmapTopic | null>(null);
+  const [theme, toggleTheme] = useTheme();
 
   useEffect(
     () =>
@@ -57,13 +59,13 @@ export function App() {
   const [active, setActive] = useState<Session | null>(null);
 
   // Users creates the profile row lazily on this call, and `/match/join`
-  // refuses a uid it has never seen — so this has to happen once per sign-in,
+  // refuses a uid it has never seen, so this has to happen once per sign-in
   // before the user can reach anything that matters.
   //
   // Asking for the active session in the same pass is what stops the app lying
   // about where you are: navigating away from the editor closes the socket but
   // does not end anything, so without this the nav would keep offering to
-  // "find a partner" while you were still in a room.
+  // find a partner while you were still in a room.
   useEffect(() => {
     if (!user) return setActive(null);
     void ensureProfile().catch(() => {});
@@ -73,54 +75,49 @@ export function App() {
   }, [user]);
 
   /** Back into a session already in progress. The room is rebuilt from its
-   * snapshot server-side, so this resumes rather than restarts. */
+   * snapshot on the server, so this resumes rather than restarts. */
   const resume = async (session: Session) => {
     try {
       setView({ name: 'session', session, question: await getQuestion(session.questionId) });
     } catch {
-      /* the nav entry stays; trying again is harmless */
+      /* the nav entry stays, and trying again is harmless */
     }
   };
 
+  const openStep = (stepId: string) => {
+    setOpenTopic(null);
+    setView({ name: 'step', stepId });
+  };
+
+  /** Signed out, anything that needs an account goes to the sign-in form
+   * instead of to a dead end. */
+  const guarded = (next: View): View => (user ? next : { name: 'signin' });
+
   if (!ready) return <main className="muted">Loading…</main>;
+
+  const onRoadmap = view.name === 'roadmap' || view.name === 'step';
 
   return (
     <>
       <header>
-        {/* The wordmark is the way back to the front page — an inert <h1>
-            in the corner of an app is a dead end everyone tries to click. */}
         <h1>
-          <button className="wordmark" onClick={() => setView({ name: 'learn' })}>
+          <button className="wordmark" onClick={() => setView({ name: 'roadmap' })}>
             deepcs
           </button>
         </h1>
+
         <nav>
-          {/* `aria-current` is what marks the tab you are on, and the blue
-              outline in styles.css is drawn from it rather than from a second
-              class — so the highlight cannot drift out of step with what a
-              screen reader announces. A lesson counts as being under Learn. */}
           <button
-            aria-current={view.name === 'learn' || view.name === 'lesson' ? 'page' : undefined}
-            onClick={() => setView({ name: 'learn' })}
+            aria-current={onRoadmap ? 'page' : undefined}
+            onClick={() => setView({ name: 'roadmap' })}
           >
-            Learn
+            Roadmap
           </button>
-          <button
-            aria-current={view.name === 'questions' ? 'page' : undefined}
-            onClick={() => setView({ name: 'questions' })}
-          >
-            Questions
-          </button>
-          {/* Shown signed out too, and labelled the same either way. It is the
-              only route to the sign-in form, so it cannot be hidden — but
-              calling it "Sign in" while signed out describes the step rather
-              than the destination, and a visitor deciding whether this site is
-              worth an account learns nothing from it. It says what it does;
-              clicking it signed out explains that pairing needs an account. */}
+
           {/* Three states, not two. "Return to session" while you are already
               looking at it is a button that does nothing, so being in the room
-              gets its own quiet green marker and only leaving it turns into a
-              blue call to go back. */}
+              gets its own quiet marker and only leaving it turns into a call
+              to go back. */}
           {active ? (
             view.name === 'session' ? (
               <span className="live">In session</span>
@@ -132,39 +129,56 @@ export function App() {
           ) : (
             <button
               aria-current={view.name === 'match' ? 'page' : undefined}
-              onClick={() => setView({ name: 'match' })}
+              onClick={() => setView(guarded({ name: 'match' }))}
             >
               Find a partner
             </button>
           )}
-          {user && (
-            <>
-              <span className="muted">{user.email}</span>
-              <button onClick={() => void signOutUser()}>Sign out</button>
-            </>
+
+          {/* Always present, signed in or out. Signed out it is the way in;
+              signed in it is where you go to leave, and hiding it would mean
+              the only account control appears and disappears depending on
+              state the visitor cannot see. */}
+          {user ? (
+            <button className="quiet" onClick={() => void signOutUser()} title={user.email ?? ''}>
+              Sign out
+            </button>
+          ) : (
+            <button
+              aria-current={view.name === 'signin' ? 'page' : undefined}
+              onClick={() => setView({ name: 'signin' })}
+            >
+              Sign in
+            </button>
           )}
+
+          <button
+            className="quiet"
+            onClick={toggleTheme}
+            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+          >
+            {theme === 'dark' ? '☀' : '☾'}
+          </button>
         </nav>
       </header>
 
-      <main>
-        {/* The bank is public (DESIGN.md §2) — a signed-out visitor can browse
-            and read, which is what makes the deployed site useful to one
-            person rather than an empty room. */}
-        {view.name === 'learn' && (
-          <LearnPage onOpen={(topic) => setView({ name: 'lesson', topic })} />
-        )}
+      <main className={view.name === 'roadmap' ? 'wide' : undefined}>
+        {view.name === 'roadmap' && <RoadmapPage onOpenTopic={setOpenTopic} />}
 
-        {view.name === 'lesson' && (
-          <LessonPage
-            topic={view.topic}
-            onBack={() => setView({ name: 'learn' })}
+        {view.name === 'step' && (
+          <StepPage
+            stepId={view.stepId}
+            signedIn={Boolean(user)}
+            onOpenStep={openStep}
+            onBack={() => setView({ name: 'roadmap' })}
             onPractise={(topic, difficulty) =>
-              setView({ name: 'match', preset: { topic, difficulty } })
+              setView(guarded({ name: 'match', preset: { topic, difficulty } }))
             }
           />
         )}
 
-        {view.name === 'questions' && <QuestionsPage signedIn={Boolean(user)} />}
+        {view.name === 'signin' && <LoginPage />}
 
         {view.name === 'match' &&
           (user ? (
@@ -193,9 +207,15 @@ export function App() {
         )}
 
         {view.name === 'summary' && (
-          <SummaryPage summary={view.summary} onDone={() => setView({ name: 'learn' })} />
+          <SummaryPage summary={view.summary} onDone={() => setView({ name: 'roadmap' })} />
         )}
       </main>
+
+      {/* Over the roadmap rather than replacing it, so closing it puts you
+          back exactly where you were on the map. */}
+      {openTopic && view.name === 'roadmap' && (
+        <TopicDialog topic={openTopic} onOpenStep={openStep} onClose={() => setOpenTopic(null)} />
+      )}
     </>
   );
 }

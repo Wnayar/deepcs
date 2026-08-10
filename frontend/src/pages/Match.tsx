@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   getQuestion,
+  getRoadmap,
   joinQueue,
   matchStatus,
   type Difficulty,
   type Question,
   type Session,
 } from '../api';
-import { TOPICS } from '../topics';
 
 /** How often to ask whether a partner turned up. */
 const POLL_MS = 2_000;
@@ -34,7 +34,27 @@ interface Props {
  * case. Every topic and difficulty resolves to a question, so a join never
  * dead-ends on an empty combination.
  */
+/**
+ * The topic list, fetched rather than written out here.
+ *
+ * It was a constant duplicated in two screens, and the database is the thing
+ * that actually decides which topics exist: a topic seeded but missing from a
+ * hard-coded list is a question set nobody can ever be matched on, and it
+ * fails silently. Falling back to an empty list would leave the form unusable,
+ * so a failed fetch leaves the select empty and the error visible instead.
+ */
+function useTopics(): { topic: string; title: string }[] {
+  const [topics, setTopics] = useState<{ topic: string; title: string }[]>([]);
+  useEffect(() => {
+    getRoadmap()
+      .then((res) => setTopics(res.topics.map((t) => ({ topic: t.topic, title: t.title }))))
+      .catch(() => setTopics([]));
+  }, []);
+  return topics;
+}
+
 export function MatchPage({ active, preset, onMatched, onResume }: Props) {
+  const topics = useTopics();
   const [topic, setTopic] = useState(preset?.topic ?? 'os');
   const [difficulty, setDifficulty] = useState<Difficulty>(preset?.difficulty ?? 'medium');
   const [waiting, setWaiting] = useState(false);
@@ -123,9 +143,9 @@ export function MatchPage({ active, preset, onMatched, onResume }: Props) {
 
       <div className="row" style={{ marginBottom: '1rem' }}>
         <select value={topic} disabled={waiting} onChange={(event) => setTopic(event.target.value)}>
-          {TOPICS.map((name) => (
-            <option key={name} value={name}>
-              {name}
+          {topics.map((t) => (
+            <option key={t.topic} value={t.topic}>
+              {t.title}
             </option>
           ))}
         </select>

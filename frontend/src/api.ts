@@ -151,22 +151,43 @@ export function endSession(sessionId: string) {
   return request<{ endedAt: string }>(`/match/sessions/${sessionId}/end`, { method: 'POST' });
 }
 
-export interface LessonSummary {
+export interface RoadmapStep {
+  id: string;
+  step: number;
+  title: string;
+  questionCount: number;
+}
+
+export interface RoadmapTopic {
   topic: string;
   title: string;
+  summary: string;
+  /** Topics that make this one easier to read, drawn as an arrow into it. */
+  dependsOn: string[];
+  gridX: number;
+  gridY: number;
+  steps: RoadmapStep[];
 }
 
-export interface Lesson extends LessonSummary {
-  bodyMd: string;
+export interface Step {
+  id: string;
+  topic: string;
+  topicTitle: string;
+  step: number;
+  title: string;
+  difficulty: Difficulty;
+  parts: string[];
+  lessonMd: string;
+  siblings: { id: string; step: number; title: string }[];
 }
 
-/** The nine topics, e.g. `[{ topic: 'os', title: 'Operating Systems' }, ...]`.
- * Public — the Learn index works signed out. */
-export function listLessons() {
-  return request<{ items: LessonSummary[] }>('/lessons');
+/** The nine topics with their prerequisites and steps. Public: the roadmap
+ * works signed out. */
+export function getRoadmap() {
+  return request<{ topics: RoadmapTopic[] }>('/roadmap');
 }
 
-/** One lesson's markdown, e.g. getLesson('os'). */
-export function getLesson(topic: string) {
-  return request<Lesson>(`/lessons/${encodeURIComponent(topic)}`);
+/** One step in full: its lesson, its questions, and its sibling steps. */
+export function getStep(id: string) {
+  return request<Step>(`/steps/${id}`);
 }

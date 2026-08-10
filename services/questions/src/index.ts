@@ -4,13 +4,7 @@ import { createPool, pingDb } from '@deepcs/shared/db';
 import { createRedis, pingRedis } from '@deepcs/shared/redis';
 import { getUserId } from '@deepcs/shared/headers';
 import { SERVICES } from '@deepcs/shared/services';
-import {
-  getLesson,
-  getQuestion,
-  getReferenceMd,
-  listLessons,
-  listQuestions,
-} from './repository.js';
+import { getQuestion, getReferenceMd, getRoadmap, getStep, listQuestions } from './repository.js';
 import { cached } from './cache.js';
 
 const pool = createPool();
@@ -87,50 +81,52 @@ app.get('/questions', async (req, reply) => {
 });
 
 /**
- * The topics you can learn, e.g.
- *   GET /lessons
- * returns `[{ topic: "os", title: "Operating Systems" }, ...]` — nine of them,
- * without their bodies.
+ * The whole roadmap, e.g.
+ *   GET /roadmap
+ * returns `{ topics: [{ topic, title, summary, dependsOn, gridX, gridY,
+ * steps: [...] }, ...] }` for all nine topics.
  *
- * Public, like the question list. A lesson is teaching material; there is
- * nothing here to gate.
+ * Public, like the bank. It is teaching material and there is nothing here to
+ * gate. It is also one request rather than nine: the screen draws arrows
+ * between topics, so a half-loaded roadmap is a wrong roadmap rather than a
+ * short one.
  */
-app.get('/lessons', async (_req, reply) => {
-  const { value, hit } = await cached(redis, 'questions:lessons', LIST_CACHE_TTL_SECONDS, () =>
-    listLessons(pool),
+app.get('/roadmap', async (_req, reply) => {
+  const { value, hit } = await cached(redis, 'questions:roadmap', LIST_CACHE_TTL_SECONDS, () =>
+    getRoadmap(pool),
   );
   reply.header('x-cache', hit ? 'HIT' : 'MISS');
-  return reply.send({ items: value });
-});
-
-// A topic slug as seeded: lowercase words joined by hyphens, e.g. "system-design".
-const topicParams = z.object({ topic: z.string().regex(/^[a-z][a-z-]{0,62}[a-z]$/) });
-
-/**
- * One lesson in full, e.g.
- *   GET /lessons/os
- * returns `{ topic, title, bodyMd }` where `bodyMd` is the markdown the Learn
- * page renders, or 404 for a topic with no lesson.
- *
- * Not cached. The bodies run to 40KB and are read once per visit, so caching
- * them buys a Postgres primary-key lookup at the cost of holding the entire
- * corpus in Redis.
- */
-app.get('/lessons/:topic', async (req, reply) => {
-  const parsed = topicParams.safeParse(req.params);
-  if (!parsed.success) {
-    return reply.code(400).send({ error: 'invalid topic' });
-  }
-
-  const lesson = await getLesson(pool, parsed.data.topic);
-  if (!lesson) {
-    return reply.code(404).send({ error: 'not found' });
-  }
-
-  return reply.send(lesson);
+  return reply.send({ topics: value });
 });
 
 const idParams = z.object({ id: z.string().uuid() });
+
+/**
+ * One step: its lesson, its questions, and its sibling steps, e.g.
+ *   GET /steps/3f2e1c9a-...-b1a4
+ * returns `{ id, topic, topicTitle, step, title, difficulty, parts, lessonMd,
+ * siblings }`, or 404.
+ *
+ * Everything one screen needs in one call. Not cached: the lesson bodies are
+ * about 400KB together and each is read once per visit, so caching them trades
+ * a primary-key lookup for holding the whole corpus in Redis.
+ *
+ * No `reference_md`. The answer has its own route below, which checks who is
+ * asking; this one is public.
+ */
+app.get('/steps/:id', async (req, reply) => {
+  const parsed = idParams.safeParse(req.params);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid id' });
+  }
+
+  const step = await getStep(pool, parsed.data.id);
+  if (!step) {
+    return reply.code(404).send({ error: 'not found' });
+  }
+
+  return reply.send(step);
+});
 
 /**
  * Get a single question by id, e.g. GET /questions/3f2e1c9a-...-b1a4.
