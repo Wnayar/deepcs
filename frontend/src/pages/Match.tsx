@@ -1,15 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
+import { clearQueued, markQueued, nextDelayMs, readQueued } from '../queue';
 import { getRoadmap, joinQueue, matchStatus, type Difficulty, type Session } from '../api';
 
-/** How often to ask whether a partner turned up. */
-const POLL_MS = 2_000;
+/** How soon to ask the first time. Everything after that widens, and the
+ * schedule lives in `queue.ts` alongside the reason it exists. */
+const FIRST_POLL_MS = 2_000;
 
 interface Props {
   /** A session already in progress, if there is one. */
   active: Session | null;
   /** Told to the shell so the header can offer the way back into the room. */
   onJoined: (session: Session) => void;
+  /** Told to the shell so its own watcher starts or stops. The flag it reads
+   * lives in storage, which React has no way to observe. */
+  onQueueChanged: () => void;
 }
 
 const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard'];
@@ -57,7 +62,7 @@ function useTopics(): { topic: string; title: string }[] {
   return topics;
 }
 
-export function MatchPage({ active, onJoined }: Props) {
+export function MatchPage({ active, onJoined, onQueueChanged }: Props) {
   const topics = useTopics();
   const navigate = useNavigate();
   const preset = usePreset();
@@ -72,6 +77,8 @@ export function MatchPage({ active, onJoined }: Props) {
   const enter = async (session: Session) => {
     setWaiting(false);
     clearTimeout(timer.current);
+    clearQueued();
+    onQueueChanged();
     try {
       onJoined(session);
       await navigate(`/session/${session.id}`);
@@ -81,6 +88,10 @@ export function MatchPage({ active, onJoined }: Props) {
   };
 
   const poll = async () => {
+    if (document.hidden) {
+      timer.current = setTimeout(() => void poll(), FIRST_POLL_MS);
+      return;
+    }
     try {
       const status = await matchStatus(topic, difficulty);
       if (status.status === 'matched') return void enter(status.session);
@@ -90,7 +101,14 @@ export function MatchPage({ active, onJoined }: Props) {
         const rejoined = await joinQueue(topic, difficulty);
         if (rejoined.status === 'matched') return void enter(rejoined.session);
       }
-      timer.current = setTimeout(() => void poll(), POLL_MS);
+      // Widening, and only while this tab is in front of somebody. A match
+      // screen left open in a background tab has nobody to tell, and the
+      // request still costs a warm service and a woken database.
+      const queued = readQueued();
+      timer.current = setTimeout(
+        () => void poll(),
+        queued ? nextDelayMs(Date.now() - queued.since) : FIRST_POLL_MS,
+      );
     } catch (err) {
       setWaiting(false);
       setError(err instanceof Error ? err.message : 'lost contact with matching');
@@ -103,7 +121,10 @@ export function MatchPage({ active, onJoined }: Props) {
     try {
       const result = await joinQueue(topic, difficulty);
       if (result.status === 'matched') return void enter(result.session);
-      timer.current = setTimeout(() => void poll(), POLL_MS);
+      // Remembered, so the shell keeps watching after this screen is left.
+      markQueued(topic, difficulty);
+      onQueueChanged();
+      timer.current = setTimeout(() => void poll(), FIRST_POLL_MS);
     } catch (err) {
       setWaiting(false);
       setError(err instanceof Error ? err.message : 'could not join the queue');
@@ -114,6 +135,12 @@ export function MatchPage({ active, onJoined }: Props) {
     // Leaves the queue entry behind: there is no leave endpoint, so the entry
     // is claimed by whoever joins next. Worth knowing rather than pretending
     // the button does more than it does.
+    //
+    // Which is exactly why the queued flag is *not* cleared here. Pressing this
+    // stops this screen asking; it does not take you out of the queue, so a
+    // partner can still arrive. Clearing the flag would stop the shell watching
+    // too, and put back the bug where somebody is matched into a session nobody
+    // tells them about. The flag expires on its own.
     clearTimeout(timer.current);
     setWaiting(false);
   };

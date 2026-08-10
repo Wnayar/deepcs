@@ -3,21 +3,13 @@ import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'rea
 import { currentSession, ensureProfile, type Question, type Session } from './api';
 import { signOutUser, watchUser, type User } from './auth';
 import { useTheme } from './theme';
+import { clearQueued, nextDelayMs, readQueued } from './queue';
 import { RoadmapPage } from './pages/Roadmap';
 import { StepPage } from './pages/Step';
 import { LoginPage } from './pages/Login';
 import { MatchPage } from './pages/Match';
 import { SessionRoute } from './pages/Session';
 import { SummaryPage } from './pages/Summary';
-
-/**
- * How often the shell asks whether a partner has turned up.
- *
- * Slower than the match screen's own poll, because this one runs while you are
- * doing something else and only exists to notice an event you would otherwise
- * miss entirely.
- */
-const ACTIVE_SESSION_POLL_MS = 4_000;
 
 export interface SessionSummary {
   question: Question;
@@ -46,6 +38,9 @@ export function App() {
    * header can say a partner has arrived rather than inviting them back to a
    * room they have never been in. */
   const [arrived, setArrived] = useState(false);
+  /** Bumped when the queue is joined or left, purely to restart the watcher
+   * below: the flag it reads lives in storage, which React cannot observe. */
+  const [queuedAt, setQueuedAt] = useState(0);
   const [theme, toggleTheme] = useTheme();
 
   useEffect(
@@ -74,34 +69,70 @@ export function App() {
   }, [user]);
 
   /**
-   * Keep asking, until there is a session to be in.
+   * Watch for a partner, from wherever the reader happens to be.
    *
-   * Being matched is something that happens *to* you. Whoever joins the queue
-   * first is matched by the second person's request, and is usually not looking
-   * at the match screen when it lands: they queued, got bored, and went to read
-   * a lesson. The match screen polls, but it unmounts when you navigate away,
-   * so that person ended up in a session nobody had told them about, while
-   * their partner sat alone in the editor.
+   * Being matched is something that happens *to* you: whoever queues first is
+   * matched by the second person's request. The match screen notices that, but
+   * only while it is on screen, so somebody who queued and went to read a
+   * lesson was put into a session nobody told them about.
    *
-   * Asking from the shell instead means it is noticed from any page. It stops
-   * as soon as there is a session, so this is not a background timer for the
-   * whole visit, and it is a primary-key lookup on an indexed column.
+   * Three conditions guard it, and each one is a cost decision as much as a
+   * correctness one:
+   *
+   *   - **Only while queued.** Watching whenever someone is signed in and has
+   *     no session meant every reader polled forever. Neon suspends idle
+   *     compute and Cloud Run scales to zero, and neither can happen while a
+   *     request arrives every few seconds, so an idle tab was an always-on
+   *     database and two always-on services billed all month.
+   *   - **Only while the tab is in front.** A backgrounded tab has nobody to
+   *     tell.
+   *   - **Not forever, and not at a fixed rate.** A match is most likely in the
+   *     first moments; after that the cost of asking is unchanged and the odds
+   *     are not, so the gap widens and eventually it gives up.
    */
   useEffect(() => {
     if (!user || active) return;
-    const timer = setInterval(() => {
-      void currentSession()
-        .then((session) => {
-          if (!session) return;
-          setActive(session);
-          setArrived(true);
-        })
-        .catch(() => {
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let stopped = false;
+
+    const tick = async () => {
+      if (stopped) return;
+
+      const queued = readQueued();
+      if (!queued) return; // nothing to wait for, or waited long enough
+
+      if (!document.hidden) {
+        try {
+          const session = await currentSession();
+          if (session && !stopped) {
+            clearQueued();
+            setActive(session);
+            setArrived(true);
+            return;
+          }
+        } catch {
           /* transient, and the next tick tries again */
-        });
-    }, ACTIVE_SESSION_POLL_MS);
-    return () => clearInterval(timer);
-  }, [user, active]);
+        }
+      }
+
+      if (!stopped) timer = setTimeout(() => void tick(), nextDelayMs(Date.now() - queued.since));
+    };
+
+    // An immediate check on returning to the tab, so someone who switches back
+    // is not left staring at a stale header until the next gap elapses.
+    const onVisible = () => {
+      if (!document.hidden) void tick();
+    };
+
+    void tick();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [user, active, queuedAt]);
 
   if (!ready) return <main className="muted">Loading…</main>;
 
@@ -180,7 +211,17 @@ export function App() {
           <Route path="/signin" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
           <Route
             path="/match"
-            element={user ? <MatchPage active={active} onJoined={setActive} /> : <LoginPage />}
+            element={
+              user ? (
+                <MatchPage
+                  active={active}
+                  onJoined={setActive}
+                  onQueueChanged={() => setQueuedAt(Date.now())}
+                />
+              ) : (
+                <LoginPage />
+              )
+            }
           />
           <Route
             path="/session/:id"

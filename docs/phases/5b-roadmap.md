@@ -296,6 +296,29 @@ for, or has been reloaded since, still finds its way back. A test in
 `reveal.test.ts` pins that contract by matching two users where one of them
 never polls at all.
 
+That watcher then had to be paid for. Polling from the shell means it runs while
+the reader is doing something else, and the first version ran whenever anyone was
+signed in without a session, forever. At four seconds that is 21,600 requests for
+a tab left open overnight, but the request count is not the problem: Neon
+suspends idle compute and Cloud Run scales to zero, and a request every four
+seconds stops both. One idle tab was an always-on database and two always-on
+services, billed all month, for nobody.
+
+`frontend/src/queue.ts` holds the three rules that bound it. Ask only while
+actually queued, which is a flag in storage rather than React state because
+navigating away is exactly the case that broke. Ask only while the tab is in
+front of a reader. And widen the gap as the wait goes on, because a match is most
+likely in the first moments and a fixed interval keeps paying the first price for
+the last odds, then give up after fifteen minutes. A whole wait now costs about
+eighty requests instead of 450, and an idle reader costs none instead of 900 an
+hour.
+
+The one thing that deliberately does *not* clear the flag is the "stop waiting"
+button, and that is worth reading `Match.tsx` for. There is no leave-the-queue
+endpoint, so pressing it stops this screen asking without taking you out of the
+queue: a partner can still arrive. Clearing the flag would stop the shell
+watching too and put the original bug straight back.
+
 The header then has three states rather than two, and the third is the one worth
 having. "Return to session" is right for someone who stepped out of a room they
 have been in, and wrong for someone who has never seen it: nothing has happened

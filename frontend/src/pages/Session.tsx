@@ -173,6 +173,10 @@ export function SessionPage({ session, question, onEnded }: Props) {
   useEffect(() => {
     if (reference || !consent.you) return;
     const timer = setInterval(async () => {
+      // Nobody is reading a hidden tab, and the answer is still there when it
+      // comes back. Cheap on its own, but this is the third fixed-interval
+      // poll in the app and they add up to whether the database ever sleeps.
+      if (document.hidden) return;
       try {
         const state = await revealState(session.id);
         setConsent({ you: state.you, partner: state.partner });

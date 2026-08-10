@@ -559,6 +559,18 @@ setting is a security control, not a deployment detail.
   most of the point of the split (ADR-01), and it doesn't exist unless CI is
   wired for it.
 
+**Polling is a cost decision, not a UI one.** The browser polls to learn it has
+been matched, because being matched is something another user's request causes.
+Left unguarded that quietly defeats the two mechanisms this whole cost model
+rests on: Neon suspends idle compute and Cloud Run scales to zero, and neither
+can happen while a request arrives every few seconds. An early version watched
+whenever a user was signed in and had no session, which made every reader of a
+lesson an always-on database and two always-on services, billed all month, for
+nobody. Three rules now bound it, in `frontend/src/queue.ts`: ask only while
+actually queued, only while the tab is in front of a reader, and on a widening
+gap that gives up after fifteen minutes. A whole fifteen-minute wait costs about
+eighty requests; an idle reader costs none.
+
 **The cost of six deployables, stated honestly:** a cold match request can chain
 cold starts — Gateway → Matching → Users → Questions, each potentially starting
 from zero. That's the real price of `--min-instances=0`, and it's accepted rather
