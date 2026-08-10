@@ -96,10 +96,6 @@ export function App() {
     setView({ name: 'step', stepId });
   };
 
-  /** Signed out, anything that needs an account goes to the sign-in form
-   * instead of to a dead end. */
-  const guarded = (next: View): View => (user ? next : { name: 'signin' });
-
   if (!ready) return <main className="muted">Loading…</main>;
 
   const onRoadmap = view.name === 'roadmap' || view.name === 'step';
@@ -136,7 +132,7 @@ export function App() {
           ) : (
             <button
               aria-current={view.name === 'match' ? 'page' : undefined}
-              onClick={() => setView(guarded({ name: 'match' }))}
+              onClick={() => setView({ name: 'match' })}
             >
               Find a partner
             </button>
@@ -180,7 +176,7 @@ export function App() {
             onOpenStep={openStep}
             onBack={() => setView({ name: 'roadmap' })}
             onPractise={(topic, difficulty) =>
-              setView(guarded({ name: 'match', preset: { topic, difficulty } }))
+              setView({ name: 'match', preset: { topic, difficulty } })
             }
           />
         )}

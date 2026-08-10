@@ -106,29 +106,27 @@ is checked. A line says "this is the order I would read them in", so the lines
 only have to lead the eye downward, and the curves are deliberately loose
 rather than routed around obstacles.
 
-The shape is one tree with a single root:
+The shape is one tree with a single root, widening and narrowing as it goes
+down:
 
 ```
-                    Operating Systems
-                   /                 \
-            Networking        Object-Oriented Programming
-                |                      |
-            Databases              Debugging
-                   \                 /
-                      Security
-                          |
+                        Operating Systems
+                       /                 \
+              Networking          Object-Oriented Programming
+              /         \                        |
+      Databases      Security                Debugging
+              \          |                   /
                     System Design
-                   /                 \
-            AI Tooling            Behavioural
+                   /             \
+            AI Tooling        Behavioural
 ```
 
 Operating Systems is the root because nearly everything below leans on knowing
-what a process, a thread and memory are. Networking and OOP split the path into
-a machine side and a code side, which rejoin at Security, since most of security
-is networking and databases seen from the other side. System Design is near the
-end because it is mostly the earlier topics applied at scale.
+what a process, a thread and memory are. It splits into a machine side and a
+code side, widens to three, and converges on System Design, which is mostly
+everything above it applied at scale.
 
-AI Tooling and Behavioural sit at the bottom, and that placement is honest about
+AI Tooling and Behavioural close it out, and that placement is honest about
 something: neither actually requires anything above it. They are last because
 they are the two you can pick up whenever you like, not because they are hard.
 
@@ -147,7 +145,8 @@ cycle.
 | `services/questions/src/repository.ts` | `getRoadmap` and `getStep`: one query per screen. |
 | `services/questions/src/index.ts` | The two routes, and which one is cached. |
 | `services/gateway/src/index.ts` | `ROUTES`: three prefixes reach Questions, one per screen. |
-| `frontend/src/pages/Roadmap.tsx` | Pan, zoom and the edge curves. |
+| `frontend/src/roadmap-layout.ts` | The geometry, kept out of the component so it can be tested. |
+| `frontend/src/pages/Roadmap.tsx` | Pan, zoom, and why a press is not captured on pointerdown. |
 | `frontend/src/pages/Step.tsx` | Questions, then lesson, then the answer. |
 | `frontend/src/styles.css` | The tokens both themes are built from. |
 | `services/questions/src/repository.test.ts` | The guards for all of the above. |
@@ -192,6 +191,22 @@ the first attempt:
    the zoom and the map appeared to hit a boundary.
 3. **`user-select: none` on the canvas.** Otherwise a drag across a label turns
    into a text highlight partway through and the pan stops.
+
+A fourth was subtler and produced a page that looked simply empty. The canvas
+had `height: 100%`, but `main` is a flex item with `flex: 1`, so its basis is
+zero and any `height` set on it is ignored for layout. The percentage then had
+nothing definite to resolve against and the canvas measured zero, so fitting the
+tree to it worked out `(0 - padding) / treeHeight`: a *negative* scale, drawing
+everything mirrored and shrunk to a speck. Nothing threw and nothing warned.
+
+That is why the geometry now lives in `roadmap-layout.ts` rather than inside the
+component. `fitView` returns `null` for a canvas too small to have been laid out
+instead of answering with a number that renders nothing, and it is tested across
+every plausible window size, including ones too small to fit the tree at all.
+
+Finally, a plain wheel moves the map and only ctrl or a trackpad pinch zooms it.
+Zooming on a bare scroll is the behaviour people complain about on every map
+that does it: scrolling should move the thing under the cursor, not resize it.
 
 Beyond those, the part worth reading is the zoom. Scaling towards the origin
 makes the map slide away as it grows, which feels like the zoom is fighting

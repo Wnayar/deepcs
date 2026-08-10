@@ -174,7 +174,14 @@ main {
 main.wide {
   max-width: none;
   padding: 0;
-  height: calc(100dvh - 3.25rem);
+  display: flex;
+  flex-direction: column;
+  /* `main` is a flex item with `flex: 1`, so its basis is 0 and any `height`
+     set here is ignored for layout. A percentage height on the canvas then has
+     nothing definite to resolve against and measures zero. Filling with flex
+     instead is the only version that gives the canvas a real height.
+     `min-height: 0` stops a flex item refusing to shrink below its content. */
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -321,8 +328,8 @@ button:focus-visible {
 
 .canvas {
   position: relative;
-  width: 100%;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   background-image: radial-gradient(circle, var(--line) 1px, transparent 1px);
   background-size: 26px 26px;
@@ -383,44 +390,33 @@ button:focus-visible {
 
 .canvas-controls {
   position: absolute;
-  right: 1rem;
-  bottom: 1rem;
-  display: flex;
-  gap: 0.35rem;
-  z-index: 2;
-}
-
-.canvas-title {
-  position: absolute;
-  left: 1.25rem;
-  top: 1.1rem;
-  z-index: 2;
-  max-width: 21rem;
-  /* The map is dragged from anywhere, including from behind this text. */
-  pointer-events: none;
-}
-
-.canvas-title h2 {
-  font-size: 1.15rem;
-  margin: 0 0 0.2rem;
-}
-
-.canvas-title p {
-  margin: 0;
-  line-height: 1.45;
-}
-
-.canvas-hint {
-  position: absolute;
   left: 1rem;
   bottom: 1rem;
   z-index: 2;
-  font-size: 0.8rem;
-  color: var(--fg-faint);
-  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  padding: 0.3rem 0.6rem;
+  background: var(--surface);
+}
+
+.canvas-controls button {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  padding: 0.45rem 0.6rem;
+  line-height: 1;
+  color: var(--fg-muted);
+}
+
+.canvas-controls button + button {
+  border-top: 1px solid var(--line);
+}
+
+.canvas-controls button:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--fg);
 }
 
 /* ── Dialog ────────────────────────────────────────────────────────────────── */
@@ -544,12 +540,6 @@ button:focus-visible {
   background: var(--accent-soft);
   color: var(--accent);
   font-weight: 600;
-}
-
-/* The starting topic, marked so the eye has somewhere to begin. */
-.node.start rect {
-  stroke: var(--accent);
-  stroke-width: 2;
 }
 
 /* The questions this lesson prepares you for, shown before the lesson. */
