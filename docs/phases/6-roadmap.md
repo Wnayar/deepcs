@@ -204,9 +204,10 @@ component. `fitView` returns `null` for a canvas too small to have been laid out
 instead of answering with a number that renders nothing, and it is tested across
 every plausible window size, including ones too small to fit the tree at all.
 
-Finally, a plain wheel moves the map and only ctrl or a trackpad pinch zooms it.
-Zooming on a bare scroll is the behaviour people complain about on every map
-that does it: scrolling should move the thing under the cursor, not resize it.
+Scrolling zooms, and dragging moves. A trackpad pinch arrives as a wheel event
+with `ctrlKey` set, which is the only way a browser reports one, so both gestures
+zoom but at their own sensitivity: a shared constant makes a pinch move in leaps
+or a wheel barely move at all.
 
 Beyond those, the part worth reading is the zoom. Scaling towards the origin
 makes the map slide away as it grows, which feels like the zoom is fighting

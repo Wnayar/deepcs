@@ -76,26 +76,23 @@ export function RoadmapPage({ onOpenTopic }: { onOpenTopic: (topic: RoadmapTopic
 
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
+      const box = element.getBoundingClientRect();
 
-      // A trackpad pinch arrives as a wheel event with ctrlKey set, which is
-      // the only way the browser reports one. Treating that as zoom and a
-      // plain wheel as movement is what every map does, and it is what people
-      // expect: scrolling should move the thing under the cursor, not resize
-      // it. Zoom is also on the buttons for anyone without a scroll wheel.
-      if (event.ctrlKey || event.metaKey) {
-        const box = element.getBoundingClientRect();
-        setView((v) =>
-          zoomAt(
-            v,
-            Math.exp(-event.deltaY * 0.01),
-            event.clientX - box.left,
-            event.clientY - box.top,
-          ),
-        );
-        return;
-      }
+      // A trackpad pinch reaches the page as a wheel event with ctrlKey set,
+      // which is the only way a browser reports one. Both it and a plain
+      // scroll zoom, but they arrive at very different magnitudes, so each
+      // gets its own sensitivity: one shared constant makes a pinch move in
+      // leaps or a wheel barely move at all.
+      const step = event.ctrlKey || event.metaKey ? 0.01 : 0.002;
 
-      setView((v) => ({ ...v, x: v.x - event.deltaX, y: v.y - event.deltaY }));
+      setView((v) =>
+        zoomAt(
+          v,
+          Math.exp(-event.deltaY * step),
+          event.clientX - box.left,
+          event.clientY - box.top,
+        ),
+      );
     };
 
     element.addEventListener('wheel', onWheel, { passive: false });
