@@ -5,10 +5,23 @@ import { createService } from '@deepcs/shared/service';
 import { USER_ID_HEADER } from '@deepcs/shared/headers';
 import { createRedis, pingRedis } from '@deepcs/shared/redis';
 import { SERVICES } from '@deepcs/shared/services';
-import { bearerToken, createVerifier, TokenError } from './auth.js';
+import { bearerToken, createVerifier, queryToken, TokenError } from './auth.js';
 import { BUCKETS, createRateLimiter } from './rate-limit.js';
 
 const { app, start } = createService({ name: 'gateway', port: SERVICES.gateway.port });
+
+/**
+ * @fastify/http-proxy's WebSocket proxying reads `wsClientOptions.rewriteRequestHeaders`
+ * at runtime (its index.js merges it straight into the client options and calls it
+ * directly), but the package's published types omit that field entirely — the whole
+ * options object it hands to `fastify.register` ends up structurally impossible to
+ * satisfy from a caller's side no matter how the value is shaped or cast, so the
+ * escape hatch lives in one place, at the actual call, rather than as a per-property
+ * cast that still fails the surrounding object's own check.
+ */
+async function registerProxyRoute(options: Record<string, unknown>): Promise<void> {
+  await app.register(proxy, options as unknown as Parameters<typeof proxy>[1]);
+}
 
 const redis = createRedis();
 const limiter = createRateLimiter(redis);
@@ -25,7 +38,18 @@ const verify = createVerifier({
 await app.register(cors, {
   origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
   credentials: true,
-  exposedHeaders: ['x-request-id', 'x-ratelimit-limit', 'x-ratelimit-remaining'],
+  // A response header a browser cannot read may as well not be sent: `fetch`
+  // hides everything outside the CORS-safelist unless it is named here.
+  // `retry-after` is the one the 429 above depends on — a frontend backing off
+  // would otherwise read null — and `x-cache` is what makes phase 2's cache
+  // visible from anywhere other than curl.
+  exposedHeaders: [
+    'x-request-id',
+    'x-ratelimit-limit',
+    'x-ratelimit-remaining',
+    'retry-after',
+    'x-cache',
+  ],
 });
 
 await app.register(helmet, {
@@ -54,6 +78,12 @@ declare module 'fastify' {
  *   broken token      -> 401. Presenting something malformed or expired is an
  *                        attempt to authenticate, and a failed one.
  *   valid token       -> X-User-Id injected from `sub`.
+ *
+ * A WebSocket upgrade (Collab, from phase 4) is a fourth case in practice: a
+ * browser's native WebSocket constructor cannot set an Authorization header,
+ * so the token arrives as `?token=` instead. That fallback is read only when
+ * the request is actually a WS upgrade, so it never widens how an ordinary
+ * HTTP route can be authenticated.
  */
 app.addHook('onRequest', async (req, reply) => {
   req.userId = null;
@@ -68,7 +98,9 @@ app.addHook('onRequest', async (req, reply) => {
    */
   delete req.headers[USER_ID_HEADER];
 
-  const token = bearerToken(req.headers.authorization);
+  const isWebSocketUpgrade = req.headers.upgrade?.toLowerCase() === 'websocket';
+  const token =
+    bearerToken(req.headers.authorization) ?? (isWebSocketUpgrade ? queryToken(req.query) : null);
   if (token === null) return;
 
   try {
@@ -98,6 +130,19 @@ app.addHook('onRequest', async (req, reply) => {
  * to exhaust everyone else's allowance.
  */
 app.addHook('onRequest', async (req, reply) => {
+  /**
+   * Health checks are exempt, and the reason is not tidiness.
+   *
+   * Registering the health routes in createService *before* this hook exists
+   * does not exempt them — Fastify binds hooks to every route at boot, not at
+   * registration — so without this line an uptime probe drew from the same
+   * anonymous bucket as real traffic. At more than one probe a second it
+   * exhausts capacity 60 on its own and a perfectly healthy Gateway starts
+   * answering 429, which reads as an outage and, in the CI smoke test, is one
+   * loop-count change away from failing the build.
+   */
+  if (req.url.startsWith('/health')) return;
+
   const [key, bucket] = req.userId
     ? [`rl:user:${req.userId}`, BUCKETS.user]
     : [`rl:ip:${req.ip}`, BUCKETS.ip];
@@ -161,31 +206,50 @@ const ROUTES = [
   { prefix: '/collab', service: 'collab', websocket: true },
 ] as const;
 
+/**
+ * Forward the identity and the trace id. `X-User-Id` is present only if the
+ * hook above verified a token; on a public route it is absent, and absent
+ * must be read downstream as anonymous rather than as "skip the check" (§6).
+ */
+function rewriteHttpHeaders(req: unknown, headers: Record<string, unknown>) {
+  return {
+    ...headers,
+    'x-request-id': String((req as { id: unknown }).id),
+    ...((req as { userId: string | null }).userId
+      ? { [USER_ID_HEADER]: (req as { userId: string }).userId }
+      : {}),
+  };
+}
+
+/**
+ * The WebSocket upgrade to the upstream is a *second*, separate proxied
+ * connection (@fastify/http-proxy opens it itself), with its own header
+ * rewrite hook — `rewriteHttpHeaders` above only applies to the plain HTTP
+ * path. The default here forwards nothing but `cookie`, so without this,
+ * Collab's `/collab/connect` would never see `X-User-Id` at all and would
+ * 401 every socket, authorized or not. Note the reversed argument order
+ * versus the HTTP variant — that's the proxy library's own inconsistency,
+ * not a typo.
+ */
+function rewriteWsHeaders(headers: Record<string, unknown>, req: unknown) {
+  return rewriteHttpHeaders(req, headers);
+}
+
 for (const route of ROUTES) {
   const host =
     process.env[`${route.service.toUpperCase()}_URL`] ??
     `http://${route.service}:${SERVICES[route.service].port}`;
 
-  await app.register(proxy, {
+  await registerProxyRoute({
     upstream: host,
     prefix: route.prefix,
     rewritePrefix: route.prefix,
     websocket: route.websocket,
-    replyOptions: {
-      /**
-       * Forward the identity and the trace id. `X-User-Id` is present only if
-       * the hook above verified a token; on a public route it is absent, and
-       * absent must be read downstream as anonymous rather than as "skip the
-       * check" (§6).
-       */
-      rewriteRequestHeaders: (req, headers) => ({
-        ...headers,
-        'x-request-id': String(req.id),
-        ...((req as unknown as { userId: string | null }).userId
-          ? { [USER_ID_HEADER]: (req as unknown as { userId: string }).userId }
-          : {}),
-      }),
-    },
+    replyOptions: { rewriteRequestHeaders: rewriteHttpHeaders },
+    // Passed on every route rather than only the WebSocket one: http-proxy
+    // constructs its WebSocketProxy only when `websocket` is true, so on the
+    // other four this is read by nobody.
+    wsClientOptions: { rewriteRequestHeaders: rewriteWsHeaders },
   });
 }
 

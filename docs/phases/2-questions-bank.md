@@ -19,7 +19,7 @@ the whole thing.
 
 ## 1. `reference_md` is absent by construction, not by filtering · ~5 min
 
-📄 [`repository.ts:29`](../../services/questions/src/repository.ts#L29)
+📄 [`repository.ts:32`](../../services/questions/src/repository.ts#L32)
 
 **The failure:** a question's answer key sits in the same table row as its
 public fields. Some future endpoint does `SELECT *` for a quick feature, ships
@@ -30,14 +30,14 @@ through with a partner first.
 `id, title, difficulty, parts, tags, created_at` — and every query on the
 public read path uses it. `reference_md` is never in that list, so there is no
 row shape a route handler could accidentally forward it from. Tested at
-[`repository.test.ts:31`](../../services/questions/src/repository.test.ts#L31).
+[`repository.test.ts:41`](../../services/questions/src/repository.test.ts#L41).
 
 **Say it as:** *"The safe way to keep a column off the wire isn't to remember
 to strip it in the handler — it's to never select it in the first place."*
 
 ## 2. Cursor over offset · ~5 min
 
-📄 [`repository.ts:44`](../../services/questions/src/repository.ts#L44)
+📄 [`repository.ts:47`](../../services/questions/src/repository.ts#L47)
 
 **The failure:** `OFFSET 40 LIMIT 20` on a bank someone is actively paging
 through. Postgres reads and discards the first 40 rows every time — wasted
@@ -129,7 +129,7 @@ back in phase 1's role array. No new grant needed; only a new table.
 
 ## The column list is the whole guarantee
 
-→ [`repository.ts:29`](../../services/questions/src/repository.ts#L29)
+→ [`repository.ts:32`](../../services/questions/src/repository.ts#L32)
 
 ```ts
 const SUMMARY_COLUMNS = 'id, title, difficulty, parts, tags, created_at';
@@ -140,13 +140,15 @@ selects exactly this list. `reference_md` isn't filtered out after the fact;
 it's never fetched from Postgres in the first place. DESIGN.md is explicit
 about why: the reference answer is released only to Matching, over the
 internal network, once Matching has verified both participants consented to
-reveal it (ADR-06) — and that consent flow doesn't exist yet (phase 3).
+reveal it (ADR-06) — and that consent flow still doesn't exist: phase 3
+owns the state and deferred it, and phase 4 shipped without needing it, so it
+arrives with the reveal UI in phase 5.
 Questions has no way to know who consented, so for now the only safe answer is
 *never*.
 
 ## Filter, search, paginate — one query
 
-→ [`repository.ts:44-79`](../../services/questions/src/repository.ts#L44)
+→ [`repository.ts:47-90`](../../services/questions/src/repository.ts#L47)
 
 ```sql
 SELECT id, title, difficulty, parts, tags, created_at

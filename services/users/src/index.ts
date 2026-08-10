@@ -1,24 +1,26 @@
 import { z } from 'zod';
-import { createService } from '@deepcs/shared/service';
+import { createService, probe } from '@deepcs/shared/service';
 import { createPool, pingDb } from '@deepcs/shared/db';
 import { getUserId } from '@deepcs/shared/headers';
 import { SERVICES } from '@deepcs/shared/services';
 import { profileExists, upsertProfile } from './repository.js';
 
-const { app, start } = createService({ name: 'users', port: SERVICES.users.port });
-
 const pool = createPool();
+
+// Every route here reads or writes Postgres, so an unreachable database means
+// this instance can only produce 500s — readiness says no rather than
+// accepting traffic it cannot serve.
+const deps = async () => ({ postgres: await probe(pingDb(pool)) });
+
+const { app, start } = createService({
+  name: 'users',
+  port: SERVICES.users.port,
+  ready: deps,
+});
 
 app.get('/', async () => ({ service: 'users', phase: 1 }));
 
-app.get('/health/deps', async () => {
-  try {
-    await pingDb(pool);
-    return { postgres: 'ok' };
-  } catch {
-    return { postgres: 'unreachable' };
-  }
-});
+app.get('/health/deps', deps);
 
 /**
  * The post-sign-in call (DESIGN.md §5). Creates the profile row on first sight

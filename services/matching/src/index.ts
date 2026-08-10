@@ -1,18 +1,34 @@
 import { z } from 'zod';
-import { createService } from '@deepcs/shared/service';
+import { createService, probe } from '@deepcs/shared/service';
 import { createPool, pingDb } from '@deepcs/shared/db';
 import { createRedis, pingRedis } from '@deepcs/shared/redis';
 import { getUserId } from '@deepcs/shared/headers';
 import { SERVICES } from '@deepcs/shared/services';
 import { checkUserExists, findQuestion } from './clients.js';
 import { createQueue } from './queue.js';
-import { createSession, findActiveSessionForUser, type Session } from './repository.js';
-
-const { app, start } = createService({ name: 'matching', port: SERVICES.matching.port });
+import {
+  createSession,
+  findActiveSessionForUser,
+  findSessionById,
+  type Session,
+} from './repository.js';
 
 const pool = createPool();
 const redis = createRedis();
 const queue = createQueue(redis);
+
+// Both, and neither is optional here: the queue *is* Redis, and the session
+// rows are Postgres. Losing either one makes every route on this service fail.
+const deps = async () => {
+  const [postgres, redisState] = await Promise.all([probe(pingDb(pool)), probe(pingRedis(redis))]);
+  return { postgres, redis: redisState };
+};
+
+const { app, start } = createService({
+  name: 'matching',
+  port: SERVICES.matching.port,
+  ready: deps,
+});
 
 const usersUrl = process.env.USERS_URL;
 if (!usersUrl) throw new Error('USERS_URL is not set');
@@ -21,13 +37,7 @@ if (!questionsUrl) throw new Error('QUESTIONS_URL is not set');
 
 app.get('/', async () => ({ service: 'matching', phase: 3 }));
 
-app.get('/health/deps', async () => {
-  const [db, rd] = await Promise.allSettled([pingDb(pool), pingRedis(redis)]);
-  return {
-    postgres: db.status === 'fulfilled' ? 'ok' : 'unreachable',
-    redis: rd.status === 'fulfilled' ? 'ok' : 'unreachable',
-  };
-});
+app.get('/health/deps', deps);
 
 /** Shapes a session for the response, from `callerUid`'s point of view —
  * `partnerUid` is whichever side of the pair isn't the caller. */
@@ -168,6 +178,47 @@ app.get('/match/status', async (req, reply) => {
   }
 
   return reply.send({ status: 'none' });
+});
+
+const participantParams = z.object({ id: z.string().uuid() });
+
+/**
+ * Am *I* in this session? e.g.
+ *   GET /match/sessions/3f2e1c9a-.../participant     (X-User-Id: bob)
+ * returns `{ participant: true, questionId, partnerUid }` if bob is in that
+ * session, `{ participant: false }` if the session exists and he isn't, and
+ * 404 if the id doesn't exist at all. Collab calls it to authorize a
+ * WebSocket, passing the uid the Gateway verified for that socket.
+ *
+ * The subject is the caller's own `X-User-Id` rather than a uid in the query
+ * string, and that is the whole access-control story. This route lives under
+ * the `/match` prefix, which the Gateway proxies, so it is reachable from a
+ * browser — and a version that answered about *any* uid would hand anyone
+ * holding a session id the other participant's identity. Asking only about
+ * yourself makes that impossible to express, which is a stronger guarantee
+ * than remembering to check.
+ */
+app.get('/match/sessions/:id/participant', async (req, reply) => {
+  const params = participantParams.safeParse(req.params);
+  if (!params.success) {
+    return reply.code(400).send({ error: 'invalid id' });
+  }
+
+  const uid = getUserId(req);
+  if (!uid) {
+    return reply.code(401).send({ error: 'unauthorized' });
+  }
+
+  const session = await findSessionById(pool, params.data.id);
+  if (!session) {
+    return reply.code(404).send({ error: 'not found' });
+  }
+
+  if (uid !== session.userAUid && uid !== session.userBUid) {
+    return reply.send({ participant: false });
+  }
+
+  return reply.send({ ...toResponse(session, uid).session, participant: true });
 });
 
 app.addHook('onClose', async () => {

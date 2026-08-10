@@ -34,3 +34,16 @@ catalog:
   '@fastify/cors': ^11.1.0
   '@fastify/helmet': ^13.0.2
   '@fastify/http-proxy': ^11.3.0
+
+  # ── phase 4 ────────────────────────────────────────────────────────────────
+  # yjs + y-protocols (not the y-websocket server package): the sync and
+  # awareness wire protocols are used directly so the room map, the
+  # cross-instance Redis relay and Postgres snapshotting are first-class code
+  # here rather than bolted onto someone else's connection bookkeeping
+  # (DESIGN.md §5 — "the learning is in the sync topology").
+  yjs: ^13.6.32
+  y-protocols: ^1.0.7
+  lib0: ^0.2.117
+  '@fastify/websocket': ^11.3.0
+  ws: ^8.21.3
+  '@types/ws': ^8.18.1

@@ -121,7 +121,10 @@ It fixes four things:
    and an [`onSend` hook](../../packages/shared/src/service.ts#L66) echoes it
    back. That one header is what turns six separate log streams into one
    traceable request path once a call goes Gateway → Matching → Users.
-3. **Split health endpoints** — `/health/live` and `/health/ready`.
+3. **Split health endpoints** — `/health/live` and `/health/ready`. Readiness
+   takes an optional per-service probe and answers 503 when a dependency it
+   genuinely needs is unreachable; a service that needs nothing (the Gateway)
+   passes no probe and says so by returning no `checks` at all.
 4. **Graceful shutdown** — SIGTERM stops accepting new connections and lets
    in-flight requests finish.
 
@@ -152,7 +155,6 @@ of which service this is.
 | File (× gateway, users, questions, matching, collab) | What it does |
 |---|---|
 | [`src/index.ts`](../../services/gateway/src/index.ts) | 8 lines. Call `createService`, add a `/` route, `await start()`. Phase 1+ fills these in. |
-| [`src/health.test.ts`](../../services/gateway/src/health.test.ts) | Two vitest tests: the two health endpoints answer separately, and an inbound `x-request-id` is propagated rather than replaced. They use `app.inject()` — Fastify's in-process request simulator, so no port is bound and the tests can't collide. |
 | [`tsup.config.ts`](../../services/gateway/tsup.config.ts) | Bundler config. [`noExternal`](../../services/gateway/tsup.config.ts#L16) is the load-bearing line — deep-dive below. |
 | [`package.json`](../../services/gateway/package.json) | Scripts (`dev` = tsx watch, `build` = tsup, `start` = node dist), and `"@deepcs/shared": "workspace:*"` — resolve that name from this repo, never npm. |
 | `tsconfig.json` | Extend base, compile `src`. |
@@ -169,9 +171,19 @@ event log, it exits. The reason it can't be a server is on
 to come from outside, and the **exit code is the entire contract**: 0 means the
 run succeeded, anything else marks it failed and retryable.
 
-That's also why Stats has no `health.test.ts` and why its `test` script carries
-`--passWithNoTests` — vitest exits 1 on an empty suite otherwise, and a red CI
-job for "this package correctly has no tests yet" trains you to ignore red.
+That's also why Stats has no tests of its own yet, and why its `test` script
+carries `--passWithNoTests` — vitest exits 1 on an empty suite otherwise, and a
+red CI job for "this package correctly has no tests yet" trains you to ignore
+red.
+
+**Where the health-endpoint tests live.** Each service used to carry its own
+`src/health.test.ts`. All five were byte-identical apart from the service name,
+and none of them touched the service — they tested `createService`, which is
+shared. They are now one parameterised suite at
+[`packages/shared/src/service.test.ts`](../../packages/shared/src/service.test.ts),
+which also covers the `x-request-id` propagation and the `trustProxy` behaviour
+the Gateway's rate limiter depends on. It uses `app.inject()` — Fastify's
+in-process request simulator, so no port is bound and the tests cannot collide.
 
 ---
 

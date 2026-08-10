@@ -15,13 +15,15 @@ name: deepcs
 # Postgres role (ADR-09), so a shared default would be the one line that
 # silently undoes the boundary every other part of phase 1 enforces. The
 # services that need Postgres set their own; the Gateway needs none.
+#
+# There is deliberately no shared `environment:` here, and it is worth knowing
+# why rather than adding one back. A YAML merge key is *shallow*: if a service
+# declares its own `environment:`, the anchor's is discarded outright rather
+# than merged into it. Every service below sets at least one variable of its
+# own (its DATABASE_URL, or the Gateway's CORS_ORIGIN), so an anchored block
+# would be silently dropped for all of them — the five common variables really
+# do have to be repeated per service.
 x-service: &service
-  environment:
-    LOG_LEVEL: ${LOG_LEVEL:-info}
-    NODE_ENV: development
-    REDIS_URL: redis://redis:6379
-    FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-demo-deepcs}
-    FIREBASE_AUTH_EMULATOR_HOST: firebase-auth:9099
   depends_on:
     postgres:
       condition: service_healthy
@@ -218,6 +220,11 @@ services:
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-demo-deepcs}
       FIREBASE_AUTH_EMULATOR_HOST: firebase-auth:9099
       DATABASE_URL: postgresql://collab_svc:collab_svc@postgres:5432/deepcs
+      # Internal service-to-service calls (clients.ts), reached by compose's
+      # service-name DNS — not through the Gateway, since these are
+      # server-to-server, not client-facing.
+      MATCHING_URL: http://matching:8083
+      QUESTIONS_URL: http://questions:8082
     ports:
       - '8084:8084'
     volumes:

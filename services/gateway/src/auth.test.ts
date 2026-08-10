@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { bearerToken, createVerifier, TokenError } from './auth.js';
+import { bearerToken, createVerifier, queryToken, TokenError } from './auth.js';
 
 const PROJECT = 'demo-deepcs';
 const ISSUER = `https://securetoken.google.com/${PROJECT}`;
@@ -38,6 +38,35 @@ describe('bearerToken', () => {
   it('is case-insensitive on the scheme', () => {
     expect(bearerToken('bearer abc')).toBe('abc');
     expect(bearerToken('Bearer abc')).toBe('abc');
+  });
+});
+
+describe('queryToken', () => {
+  // Collab's WS handshake (phase 4): a browser's native WebSocket constructor
+  // can't set an Authorization header, so the token travels as ?token=
+  // instead. The onRequest hook in index.ts only consults this for requests
+  // carrying an Upgrade: websocket header — these tests cover the parsing
+  // itself, not that gating.
+  it('reads the token from a query object', () => {
+    expect(queryToken({ token: 'abc123' })).toBe('abc123');
+  });
+
+  it('returns null when token is missing', () => {
+    expect(queryToken({ sessionId: 's1' })).toBeNull();
+  });
+
+  it('returns null for an empty token', () => {
+    expect(queryToken({ token: '' })).toBeNull();
+  });
+
+  it('returns null for a non-string token', () => {
+    expect(queryToken({ token: ['abc'] })).toBeNull();
+  });
+
+  it('returns null for a non-object query', () => {
+    expect(queryToken(undefined)).toBeNull();
+    expect(queryToken(null)).toBeNull();
+    expect(queryToken('token=abc')).toBeNull();
   });
 });
 
