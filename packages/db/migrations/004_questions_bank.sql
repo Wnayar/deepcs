@@ -1,14 +1,11 @@
--- The question bank (DESIGN.md §Questions).
+-- The question bank.
 --
--- `reference_md` is stored here but this service never serves it over HTTP
--- (see services/questions/src/repository.ts) — it is released only to
--- Matching, over the internal network, once Matching has verified consent
--- (ADR-06, phase 3). Questions has no way to know who consented, so the
--- column is simply never selected on the public read path.
+-- `reference_md` (the answer text) is stored here, but the Questions service
+-- never sends it over HTTP (see repository.ts) — it's meant to stay hidden
+-- until a future "reveal" flow confirms both users agreed to see it.
 --
--- Filtering is by `tags`, not a separate `topic` column — DESIGN.md's row
--- shape lists parts[], reference_md, tags text[] (GIN-indexed), difficulty,
--- with no topic field of its own. A question's topic is just its first tag.
+-- No `topic` column — filtering is entirely through `tags`. A question's
+-- topic is just its first, most general tag (e.g. "os", "networking").
 
 CREATE TABLE IF NOT EXISTS questions.bank (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -11,10 +11,9 @@ const { app, start } = createService({ name: 'questions', port: SERVICES.questio
 const pool = createPool();
 const redis = createRedis();
 
-/** Read-through cache TTL for the list/search endpoint. Short on purpose: the
- * bank is nearly static, so even a minute of staleness is invisible, but a
- * short TTL means a future write path (there is none yet) can't go stale for
- * long by accident. */
+/** How long a cached list/search result is reused before asking Postgres
+ * again. Short, because the bank barely changes, but long enough that repeat
+ * queries during a demo actually hit the cache. */
 const LIST_CACHE_TTL_SECONDS = 60;
 
 app.get('/', async () => ({ service: 'questions', phase: 2 }));
@@ -38,14 +37,18 @@ const listQuery = z.object({
 });
 
 /**
- * List / filter / search / paginate the bank. Every query param is optional
- * and they combine (AND) — e.g.
- *   GET /questions?tags=os,networking&difficulty=hard&q=memory&limit=5
- *   → hard questions tagged "os" OR "networking", with "memory" in the title,
- *     at most 5 at a time.
+ * List, filter, search, and paginate the bank. Every query param below is
+ * optional, and using more than one narrows the results (they combine with
+ * AND). For example:
  *
- * Paginate by taking `nextCursor` from one response and passing it as
- * `cursor` on the next call — repeat until `nextCursor` comes back `null`.
+ *   GET /questions?tags=os,networking&difficulty=hard&q=memory&limit=5
+ *
+ * returns up to 5 hard questions that are tagged "os" or "networking" and
+ * have "memory" in the title.
+ *
+ * To page through results: take `nextCursor` from the response and send it
+ * back as the `cursor` param on the next request. Keep going until
+ * `nextCursor` is `null` — that means there's nothing left.
  */
 app.get('/questions', async (req, reply) => {
   const parsed = listQuery.safeParse(req.query);
@@ -67,8 +70,7 @@ app.get('/questions', async (req, reply) => {
     listQuestions(pool, filters),
   );
 
-  // DESIGN.md's phase 2 demoable claim is "cache hits visible" — this is the
-  // only place that's true, so it's a header rather than a log line.
+  // Lets a caller see whether this came from the cache or from Postgres.
   reply.header('x-cache', hit ? 'HIT' : 'MISS');
   return reply.send(result);
 });
@@ -76,9 +78,10 @@ app.get('/questions', async (req, reply) => {
 const idParams = z.object({ id: z.string().uuid() });
 
 /**
- * Get one question by id — e.g. GET /questions/3f2e1c9a-...-b1a4
- * → { id, title, difficulty, parts, tags, createdAt } (no reference_md, see
- * repository.ts). An id that doesn't exist is a 404, not an empty body.
+ * Get a single question by id, e.g. GET /questions/3f2e1c9a-...-b1a4.
+ * Returns { id, title, difficulty, parts, tags, createdAt } — no
+ * `reference_md` (see the note on SUMMARY_COLUMNS in repository.ts). If the
+ * id doesn't exist, the response is a 404, not an empty body.
  */
 app.get('/questions/:id', async (req, reply) => {
   const parsed = idParams.safeParse(req.params);

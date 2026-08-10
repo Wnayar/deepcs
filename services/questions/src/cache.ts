@@ -2,16 +2,18 @@ import type Redis from 'ioredis';
 
 export interface CacheResult<T> {
   value: T;
-  /** Surfaced as `X-Cache` so a cache hit is demoable, not just faster. */
+  /** True if `value` came from Redis instead of `compute()`. */
   hit: boolean;
 }
 
 /**
- * Read-through cache for the list/search endpoint (DESIGN.md §Questions): the
- * bank is read-heavy and almost never written, so caching it is a pure
- * optimisation — unlike the Gateway's rate-limit script, correctness never
- * depends on this. A cache miss or a Redis outage just means falling through
- * to Postgres, so failures here are swallowed rather than propagated.
+ * A read-through cache: check Redis first, and on a miss (or any Redis
+ * error) fall back to `compute()` and best-effort save the result for next
+ * time.
+ *
+ * The bank rarely changes, so caching it is just a speed optimization, not
+ * something correctness depends on — unlike the Gateway's rate-limit script,
+ * a broken Redis here should make requests slower, never wrong or failed.
  */
 export async function cached<T>(
   redis: Redis,

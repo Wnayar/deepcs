@@ -23,25 +23,26 @@ export interface ListResult {
 }
 
 /**
- * `reference_md` is never in this list — DESIGN.md §Questions: it's released
- * only to Matching, over the internal network, after Matching has verified
- * consent (ADR-06, phase 3). Not selecting it here is what makes "never served
- * to a browser" true rather than merely intended: there's no field to forget to
- * strip in the route handler.
+ * The columns every public query selects. `reference_md` (the answer text)
+ * is deliberately left out — it's meant to stay hidden until a future
+ * "reveal" flow checks both users agreed to see it. Leaving it out of the
+ * query, instead of stripping it from the response later, means there's no
+ * field a route handler could ever forget to remove.
  */
 const SUMMARY_COLUMNS = 'id, title, difficulty, parts, tags, created_at';
 
 /**
- * List / filter / search / cursor-paginate (DESIGN.md §Questions).
+ * Lists questions, applying whichever filters are present, then returns one
+ * page plus a cursor for the next one.
  *
- * Cursor over offset: `WHERE id > $last ORDER BY id LIMIT n` reads and
- * discards nothing, and doesn't duplicate or skip rows if the bank changes
- * between pages the way `OFFSET` does.
+ * Pagination remembers the last id seen instead of a page number/offset:
+ * `WHERE id > $cursor ORDER BY id LIMIT n`. That avoids two `OFFSET`
+ * problems — reading and throwing away rows just to skip them, and
+ * skipping or repeating a row if the bank changes mid-pagination.
  *
- * Filtering is by `tags` (array overlap — DESIGN.md's row shape has no
- * separate `topic` column) and `difficulty`; search is a plain `ILIKE` on
- * title. The bank is small and read-heavy, not write-heavy, so a full
- * full-text index would be solving a problem this dataset doesn't have.
+ * Search is a plain `ILIKE` on the title, not a full-text index — the bank
+ * is only 15 rows, so a fancier index would solve a problem this dataset
+ * doesn't have yet.
  */
 export async function listQuestions(pool: pg.Pool, filters: ListFilters): Promise<ListResult> {
   const conditions: string[] = [];
@@ -49,9 +50,8 @@ export async function listQuestions(pool: pg.Pool, filters: ListFilters): Promis
 
   if (filters.tags && filters.tags.length > 0) {
     params.push(filters.tags);
-    // `&&` is array overlap, not equality — true if the row's `tags` and the
-    // requested `filters.tags` share at least one element. e.g. a row tagged
-    // {'os','memory'} matches a request for tags=['memory','db'].
+    // `&&` means "share at least one tag", not "match exactly" — e.g. a row
+    // tagged {os, memory} matches a request for tags=[memory, databases].
     conditions.push(`tags && $${params.length}::text[]`);
   }
   if (filters.difficulty) {
@@ -64,10 +64,8 @@ export async function listQuestions(pool: pg.Pool, filters: ListFilters): Promis
   }
   if (filters.cursor) {
     params.push(filters.cursor);
-    // `cursor` is just the last id you saw — e.g. after a page ending in id
-    // "abc", pass cursor="abc" to get the rows sorted right after it. Nothing
-    // fancier: `id > $cursor` combined with `ORDER BY id` below is the entire
-    // pagination mechanism.
+    // `cursor` is the last id from the previous page, so this keeps only
+    // rows that sort after it — e.g. cursor="abc" skips straight past "abc".
     conditions.push(`id > $${params.length}`);
   }
 
@@ -91,6 +89,7 @@ export async function listQuestions(pool: pg.Pool, filters: ListFilters): Promis
   };
 }
 
+/** Fetches one question by id, or `null` if no row has that id. */
 export async function getQuestion(pool: pg.Pool, id: string): Promise<QuestionSummary | null> {
   const { rows } = await pool.query<QuestionRow>(
     `SELECT ${SUMMARY_COLUMNS} FROM questions.bank WHERE id = $1`,
