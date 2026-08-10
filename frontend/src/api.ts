@@ -105,6 +105,20 @@ export function getQuestion(id: string) {
   return request<Question>(`/questions/${id}`);
 }
 
+/** The answer, for solo study. Needs a signed-in caller; the bank itself is
+ * public but the answer key is not. */
+export function questionReference(id: string) {
+  return request<{ referenceMd: string }>(`/questions/${id}/reference`);
+}
+
+/** The session I am in right now, or null. Called on sign-in so the app knows
+ * whether "find a partner" would actually start something new. */
+export function currentSession() {
+  return request<{ session: Session | null } | { status: 'matched'; session: Session }>(
+    '/match/session',
+  ).then((body) => body.session ?? null);
+}
+
 export function joinQueue(topic: string, difficulty: Difficulty) {
   return request<MatchStatus>('/match/join', {
     method: 'POST',

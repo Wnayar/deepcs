@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { listQuestions, type Difficulty, type Question } from '../api';
+import { listQuestions, questionReference, type Difficulty, type Question } from '../api';
 
 const TOPICS = [
   'os',
@@ -128,22 +128,7 @@ export function QuestionsPage({ signedIn }: { signedIn: boolean }) {
       {!error && items.length === 0 && !loading && <p className="muted">Nothing matches.</p>}
 
       {items.map((question) => (
-        <article className="card" key={question.id}>
-          <h3>{question.title}</h3>
-          <div>
-            <span className="tag">{question.difficulty}</span>
-            {question.tags.map((tag) => (
-              <span className="tag" key={tag}>
-                {tag}
-              </span>
-            ))}
-          </div>
-          <ol className="muted" style={{ margin: '0.5rem 0 0', paddingLeft: '1.2rem' }}>
-            {question.parts.map((part) => (
-              <li key={part}>{part}</li>
-            ))}
-          </ol>
-        </article>
+        <QuestionCard key={question.id} question={question} signedIn={signedIn} />
       ))}
 
       <div className="row">
@@ -157,5 +142,76 @@ export function QuestionsPage({ signedIn }: { signedIn: boolean }) {
         {!signedIn && <span className="muted">Sign in to solve one with a partner.</span>}
       </div>
     </>
+  );
+}
+
+/**
+ * One question, closed by default.
+ *
+ * The header is topic and difficulty then the title — the two things you
+ * actually choose on. The rest of the tags stay in the data for filtering but
+ * are not shown: "processes · threads · fork · context-switch" adds nothing to
+ * a card already headed "Processes & Threads". The questions themselves live
+ * behind the click, because a list where every card lists six of them cannot
+ * be scanned.
+ */
+function QuestionCard({ question, signedIn }: { question: Question; signedIn: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [reference, setReference] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const showAnswer = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setReference((await questionReference(question.id)).referenceMd);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'could not load the answer');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <article className="card">
+      <button
+        onClick={() => setOpen((was) => !was)}
+        style={{ border: 0, padding: 0, background: 'none', textAlign: 'left', width: '100%' }}
+      >
+        <div className="muted" style={{ fontSize: '0.8rem' }}>
+          {question.tags[0]} · {question.difficulty}
+        </div>
+        <h3 style={{ margin: '0.15rem 0' }}>{question.title}</h3>
+        <div className="muted" style={{ fontSize: '0.8rem' }}>
+          {question.parts.length} questions {open ? '▾' : '▸'}
+        </div>
+      </button>
+
+      {open && (
+        <>
+          <ol style={{ margin: '0.75rem 0 0', paddingLeft: '1.2rem' }}>
+            {question.parts.map((part) => (
+              <li key={part}>{part}</li>
+            ))}
+          </ol>
+
+          <div className="row" style={{ marginTop: '0.75rem' }}>
+            {signedIn ? (
+              !reference && (
+                <button onClick={() => void showAnswer()} disabled={loading}>
+                  {loading ? 'Loading…' : 'Show answer'}
+                </button>
+              )
+            ) : (
+              <span className="muted">Sign in to see the answer.</span>
+            )}
+          </div>
+
+          {error && <p className="error">{error}</p>}
+          {reference && <div className="reference">{reference}</div>}
+        </>
+      )}
+    </article>
   );
 }

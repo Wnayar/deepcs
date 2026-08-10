@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ensureProfile, type Question, type Session } from './api';
+import { currentSession, ensureProfile, getQuestion, type Question, type Session } from './api';
 import { signOutUser, watchUser, type User } from './auth';
 import { LoginPage } from './pages/Login';
 import { QuestionsPage } from './pages/Questions';
@@ -42,12 +42,33 @@ export function App() {
     [],
   );
 
+  const [active, setActive] = useState<Session | null>(null);
+
   // Users creates the profile row lazily on this call, and `/match/join`
   // refuses a uid it has never seen — so this has to happen once per sign-in,
   // before the user can reach anything that matters.
+  //
+  // Asking for the active session in the same pass is what stops the app lying
+  // about where you are: navigating away from the editor closes the socket but
+  // does not end anything, so without this the nav would keep offering to
+  // "find a partner" while you were still in a room.
   useEffect(() => {
-    if (user) void ensureProfile().catch(() => {});
+    if (!user) return setActive(null);
+    void ensureProfile().catch(() => {});
+    void currentSession()
+      .then(setActive)
+      .catch(() => setActive(null));
   }, [user]);
+
+  /** Back into a session already in progress. The room is rebuilt from its
+   * snapshot server-side, so this resumes rather than restarts. */
+  const resume = async (session: Session) => {
+    try {
+      setView({ name: 'session', session, question: await getQuestion(session.questionId) });
+    } catch {
+      /* the nav entry stays; trying again is harmless */
+    }
+  };
 
   if (!ready) return <main className="muted">Loading…</main>;
 
@@ -61,9 +82,15 @@ export function App() {
               to the sign-in form, so this is the only route to it. Hiding it
               until you are signed in leaves a signed-out visitor with no way
               to sign in at all. */}
-          <button onClick={() => setView({ name: 'match' })}>
-            {user ? 'Find a partner' : 'Sign in'}
-          </button>
+          {active ? (
+            <button className="primary" onClick={() => void resume(active)}>
+              Return to session
+            </button>
+          ) : (
+            <button onClick={() => setView({ name: 'match' })}>
+              {user ? 'Find a partner' : 'Sign in'}
+            </button>
+          )}
           {user && (
             <>
               <span className="muted">{user.email}</span>
@@ -82,7 +109,12 @@ export function App() {
         {view.name === 'match' &&
           (user ? (
             <MatchPage
-              onMatched={(session, question) => setView({ name: 'session', session, question })}
+              active={active}
+              onMatched={(session, question) => {
+                setActive(session);
+                setView({ name: 'session', session, question });
+              }}
+              onResume={(session) => void resume(session)}
             />
           ) : (
             <LoginPage />
@@ -93,7 +125,10 @@ export function App() {
             session={view.session}
             question={view.question}
             displayName={user.email ?? user.uid}
-            onEnded={(summary) => setView({ name: 'summary', summary })}
+            onEnded={(summary) => {
+              setActive(null);
+              setView({ name: 'summary', summary });
+            }}
           />
         )}
 

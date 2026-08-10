@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 const USERS_URL = process.env.USERS_URL ?? 'http://127.0.0.1:8081';
 const MATCHING_URL = process.env.MATCHING_URL ?? 'http://127.0.0.1:8083';
 const QUESTIONS_URL = process.env.QUESTIONS_URL ?? 'http://127.0.0.1:8082';
+const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:8080';
 
 const JSON_HEADERS = { 'content-type': 'application/json' };
 
@@ -60,6 +61,12 @@ async function matchedPair() {
   });
   const matched = (await res.json()) as { status: string; session?: { id: string } };
   return { alice, bob, sessionId: matched.session?.id ?? '' };
+}
+
+/** Any real question id, for the answer-release tests. */
+async function firstQuestionId(): Promise<string> {
+  const res = await fetch(`${QUESTIONS_URL}/questions?limit=1`);
+  return ((await res.json()) as { items: { id: string }[] }).items[0]!.id;
 }
 
 const reveal = (sessionId: string, uid: string, method: 'GET' | 'POST' = 'POST') =>
@@ -231,6 +238,90 @@ describe.skipIf(!process.env.CI && process.env.MATCHING_URL === undefined)(
       // this test fail whenever a previous run left somebody in this queue.
       expect(['waiting', 'matched']).toContain(body.status);
       expect(body.session?.id ?? null).not.toBe(sessionId);
+    });
+  },
+);
+
+describe.skipIf(!process.env.CI && process.env.MATCHING_URL === undefined)('studying alone', () => {
+  /**
+   * Deliberately not gated on consent. The lesson for a question teaches the
+   * same material and is public, so withholding the crisp version from
+   * someone revising by themselves protects nothing and just makes solo
+   * practice useless. What mutual consent still buys is coordination inside
+   * a session, which is a different thing from secrecy.
+   */
+  it('gives a signed-in caller the answer with no session involved', async (ctx) => {
+    if (!(await allReachable())) return ctx.skip();
+    const id = await firstQuestionId();
+
+    const res = await fetch(`${QUESTIONS_URL}/questions/${id}/reference`, {
+      headers: { 'x-user-id': 'someone-studying-alone' },
+    });
+
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { referenceMd: string }).referenceMd.length).toBeGreaterThan(0);
+  });
+
+  it('gives an anonymous caller nothing', async (ctx) => {
+    if (!(await allReachable())) return ctx.skip();
+    const id = await firstQuestionId();
+
+    // The bank stays browsable signed out; the answer key does not come
+    // with it.
+    expect((await fetch(`${QUESTIONS_URL}/questions/${id}/reference`)).status).toBe(401);
+  });
+
+  it('is not reachable through the Gateway without a token', async (ctx) => {
+    if (!(await allReachable())) return ctx.skip();
+    const id = await firstQuestionId();
+
+    // The Gateway strips any inbound X-User-Id, so forging one gets nowhere.
+    const res = await fetch(`${GATEWAY_URL}/questions/${id}/reference`, {
+      headers: { 'x-user-id': 'forged' },
+    });
+
+    expect(res.status).toBe(401);
+  });
+});
+
+describe.skipIf(!process.env.CI && process.env.MATCHING_URL === undefined)(
+  'the session I am in',
+  () => {
+    it('is null before anything has been joined', async (ctx) => {
+      if (!(await allReachable())) return ctx.skip();
+      const res = await fetch(`${MATCHING_URL}/match/session`, {
+        headers: { 'x-user-id': `nobody-${Math.random().toString(36).slice(2)}` },
+      });
+      expect(await res.json()).toEqual({ session: null });
+    });
+
+    /** What the app asks on load. `/match/status` cannot answer it — that route
+     * demands a topic and difficulty the app does not have yet. */
+    it('reports the live session without being told the topic', async (ctx) => {
+      if (!(await allReachable())) return ctx.skip();
+      const { alice, sessionId } = await matchedPair();
+
+      const res = await fetch(`${MATCHING_URL}/match/session`, {
+        headers: { 'x-user-id': alice },
+      });
+      const body = (await res.json()) as { session?: { id: string } };
+
+      expect(body.session?.id).toBe(sessionId);
+    });
+
+    it('goes back to null once the session ends', async (ctx) => {
+      if (!(await allReachable())) return ctx.skip();
+      const { alice, sessionId } = await matchedPair();
+      await fetch(`${MATCHING_URL}/match/sessions/${sessionId}/end`, {
+        method: 'POST',
+        headers: { 'x-user-id': alice },
+      });
+
+      const res = await fetch(`${MATCHING_URL}/match/session`, {
+        headers: { 'x-user-id': alice },
+      });
+
+      expect(await res.json()).toEqual({ session: null });
     });
   },
 );

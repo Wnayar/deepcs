@@ -24,7 +24,10 @@ const TOPICS = [
 const POLL_MS = 2_000;
 
 interface Props {
+  /** A session already in progress, if there is one. */
+  active: Session | null;
   onMatched: (session: Session, question: Question) => void;
+  onResume: (session: Session) => void;
 }
 
 /**
@@ -38,7 +41,7 @@ interface Props {
  * case. Every topic and difficulty resolves to a question, so a join never
  * dead-ends on an empty combination.
  */
-export function MatchPage({ onMatched }: Props) {
+export function MatchPage({ active, onMatched, onResume }: Props) {
   const [topic, setTopic] = useState('os');
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [waiting, setWaiting] = useState(false);
@@ -94,6 +97,30 @@ export function MatchPage({ onMatched }: Props) {
     clearTimeout(timer.current);
     setWaiting(false);
   };
+
+  // Joining while already matched hands back the same session rather than
+  // queueing — phase 3's idempotence guard, which is what stops one person
+  // being in two rooms. Saying so is the point: without this the button
+  // silently teleports you into a room you thought you had left.
+  if (active) {
+    return (
+      <>
+        <h2>You are already in a session</h2>
+        <p className="muted">
+          Working with {active.partnerUid}. Leaving the editor does not end it — the document is
+          still there, and so is your partner.
+        </p>
+        <div className="row">
+          <button className="primary" onClick={() => onResume(active)}>
+            Return to it
+          </button>
+        </div>
+        <p className="muted" style={{ marginTop: '0.75rem' }}>
+          To start a different one, end that session first.
+        </p>
+      </>
+    );
+  }
 
   return (
     <>

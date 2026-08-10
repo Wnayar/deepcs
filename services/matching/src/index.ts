@@ -210,6 +210,27 @@ app.get('/match/status', async (req, reply) => {
   return reply.send({ status: 'none' });
 });
 
+/**
+ * The session I am in right now, if any — e.g.
+ *   GET /match/session          (X-User-Id: bob)
+ * returns `{ session: {...} }` or `{ session: null }`.
+ *
+ * `/match/status` cannot answer this: it requires a topic and difficulty, and
+ * an app that has just loaded has neither. Without this route the UI has no
+ * way to know you are mid-session, so navigating away from the editor looks
+ * like leaving and pressing "find a partner" silently drops you back into the
+ * room you never actually left.
+ */
+app.get('/match/session', async (req, reply) => {
+  const uid = getUserId(req);
+  if (!uid) {
+    return reply.code(401).send({ error: 'unauthorized' });
+  }
+
+  const session = await findActiveSessionForUser(pool, uid);
+  return reply.send(session ? toResponse(session, uid) : { session: null });
+});
+
 const participantParams = z.object({ id: z.string().uuid() });
 
 /**

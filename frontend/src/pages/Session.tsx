@@ -4,6 +4,7 @@ import type * as Y from 'yjs';
 import { consentToReveal, endSession, revealState, type Question, type Session } from '../api';
 import { idToken } from '../auth';
 import { connectCollab, type CollabStatus } from '../collab';
+import { watchCursorStyles } from '../cursors';
 import { monaco } from '../monaco';
 import type { SessionSummary } from '../App';
 
@@ -76,6 +77,10 @@ export function SessionPage({ session, question, displayName, onEnded }: Props) 
 
       // Everyone in the room except us. Yjs awareness carries this for free,
       // and y-monaco draws the remote carets from the same data.
+      // y-monaco names a class per peer but ships no colours; this is what
+      // turns awareness state into a visible, attributable cursor.
+      const stopCursorStyles = watchCursorStyles(collab.awareness);
+
       const onAwareness = () => {
         if (!cancelled) setPeers(Math.max(0, collab.awareness.getStates().size - 1));
       };
@@ -83,6 +88,7 @@ export function SessionPage({ session, question, displayName, onEnded }: Props) 
 
       cleanup = () => {
         editorRef.current = null;
+        stopCursorStyles();
         collab.awareness.off('change', onAwareness);
         binding.destroy();
         editor.dispose();
