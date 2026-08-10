@@ -59,9 +59,9 @@ export async function getReferenceMd(pool: pg.Pool, id: string): Promise<string 
  * problems — reading and throwing away rows just to skip them, and
  * skipping or repeating a row if the bank changes mid-pagination.
  *
- * Search is a plain `ILIKE` on the title, not a full-text index — the bank
- * is only 15 rows, so a fancier index would solve a problem this dataset
- * doesn't have yet.
+ * Search matches the title or an exact tag, with a plain `ILIKE` rather than a
+ * full-text index — the bank is 27 rows, so a `tsvector` would solve a problem
+ * this dataset does not have.
  */
 export async function listQuestions(pool: pg.Pool, filters: ListFilters): Promise<ListResult> {
   const conditions: string[] = [];
@@ -79,7 +79,17 @@ export async function listQuestions(pool: pg.Pool, filters: ListFilters): Promis
   }
   if (filters.q) {
     params.push(`%${filters.q}%`);
-    conditions.push(`title ILIKE $${params.length}`);
+    params.push(filters.q.toLowerCase());
+    // Titles *or* tags. Searching titles alone made the finer tags
+    // ("fork", "deadlock", "mvcc") dead weight — carried on every row, indexed,
+    // and matched by nothing, since the only tag anything ever filtered on was
+    // the topic. Now typing "deadlock" finds the synchronisation lesson whose
+    // title never says it.
+    //
+    // `= ANY (tags)` and not `ILIKE`: tags are lowercase single words, so an
+    // exact element match is both right and index-friendly, where a wildcard
+    // over an array would force a scan.
+    conditions.push(`(title ILIKE $${params.length - 1} OR $${params.length} = ANY (tags))`);
   }
   if (filters.cursor) {
     params.push(filters.cursor);

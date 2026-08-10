@@ -97,10 +97,18 @@ export function App() {
               to the sign-in form, so this is the only route to it. Hiding it
               until you are signed in leaves a signed-out visitor with no way
               to sign in at all. */}
+          {/* Three states, not two. "Return to session" while you are already
+              looking at it is a button that does nothing, so being in the room
+              gets its own quiet green marker and only leaving it turns into a
+              blue call to go back. */}
           {active ? (
-            <button className="primary" onClick={() => void resume(active)}>
-              Return to session
-            </button>
+            view.name === 'session' ? (
+              <span className="live">In session</span>
+            ) : (
+              <button className="primary" onClick={() => void resume(active)}>
+                Return to session
+              </button>
+            )
           ) : (
             <button onClick={() => setView({ name: 'match' })}>
               {user ? 'Find a partner' : 'Sign in'}

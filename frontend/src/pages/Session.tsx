@@ -5,6 +5,7 @@ import { consentToReveal, endSession, revealState, type Question, type Session }
 import { idToken } from '../auth';
 import { connectCollab, type CollabStatus } from '../collab';
 import { monaco } from '../monaco';
+import { numberReference } from '../reference';
 import type { SessionSummary } from '../App';
 
 /** How often to ask whether the other person has agreed to reveal. Only runs
@@ -214,7 +215,7 @@ export function SessionPage({ session, question, onEnded }: Props) {
           <p className="muted" style={{ marginTop: '0.25rem' }}>
             Released because you both agreed — it was never in the shared document.
           </p>
-          <div className="reference">{reference}</div>
+          <div className="reference">{numberReference(reference, question.parts.length)}</div>
         </>
       )}
     </>

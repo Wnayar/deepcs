@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { listQuestions, questionReference, type Difficulty, type Question } from '../api';
+import { numberReference } from '../reference';
 
 const TOPICS = [
   'os',
@@ -209,7 +210,9 @@ function QuestionCard({ question, signedIn }: { question: Question; signedIn: bo
           </div>
 
           {error && <p className="error">{error}</p>}
-          {reference && <div className="reference">{reference}</div>}
+          {reference && (
+            <div className="reference">{numberReference(reference, question.parts.length)}</div>
+          )}
         </>
       )}
     </article>

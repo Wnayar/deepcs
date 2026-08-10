@@ -114,11 +114,17 @@ async function seedUpdate(questionsUrl: string, questionId: string): Promise<Uin
     throw new Error(`question ${questionId} not found`);
   }
 
+  // A numbered list of the questions, and room under each to answer it.
+  //
+  // Not markdown headings, and no "Our answer" or "Scratch" sections. The
+  // scaffold's whole job is to say which question you are on and give the two
+  // of you somewhere to type; separate answer and scratch areas meant deciding
+  // where a thought belonged before writing it down, and the numbering now
+  // matches how the questions read everywhere else in the app.
   const lines: string[] = [];
   question.parts.forEach((part, i) => {
-    lines.push(`## Part ${i + 1}`, '', part, '');
+    lines.push(`${i + 1}. ${part}`, '', '', '');
   });
-  lines.push('## Our answer', '', '## Scratch', '');
 
   const seed = new Y.Doc();
   seed.clientID = SEED_CLIENT_ID;

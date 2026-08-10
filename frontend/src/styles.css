@@ -149,6 +149,14 @@ select {
   overflow: auto;
 }
 
+.live {
+  font-size: 0.85rem;
+  color: var(--ok);
+  border: 1px solid var(--ok);
+  border-radius: 6px;
+  padding: 0.35rem 0.7rem;
+}
+
 .status {
   font-size: 0.85rem;
   color: var(--muted);

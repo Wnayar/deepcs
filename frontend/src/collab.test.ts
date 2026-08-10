@@ -112,7 +112,8 @@ describe.skipIf(!process.env.CI && process.env.VITE_GATEWAY_URL === undefined)(
         await until(() => textOf(a).length > 0 && textOf(b).length > 0);
         expect(statuses).toContain('connected');
         expect(textOf(a)).toBe(textOf(b));
-        expect(textOf(a)).toContain('## Our answer');
+        // The scaffold is a numbered list of the question's parts.
+        expect(textOf(a)).toMatch(/^1\. /);
 
         // An edit made after syncing is an incremental update parented to the
         // server's structs — the shape that only applies on a document that
