@@ -48,6 +48,21 @@ export async function findActiveSessionForUser(
   return rows[0] ? toSession(rows[0]) : null;
 }
 
+/**
+ * Finds a session by its id, regardless of who's asking — used by the
+ * participant-check route, which decides who's allowed to see it. Returns
+ * `null` if the id doesn't exist.
+ */
+export async function findSessionById(pool: pg.Pool, id: string): Promise<Session | null> {
+  const { rows } = await pool.query<SessionRow>(
+    `SELECT id, user_a_uid, user_b_uid, question_id, created_at
+     FROM matching.sessions
+     WHERE id = $1`,
+    [id],
+  );
+  return rows[0] ? toSession(rows[0]) : null;
+}
+
 interface SessionRow {
   id: string;
   user_a_uid: string;

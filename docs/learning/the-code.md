@@ -906,17 +906,32 @@ which service wrote it.
 Echo the id back on every response, so a browser or load test can correlate too.
 
 ```ts
-  app.get('/health/live',  async () => ({ status: 'ok', service: name }));
-  app.get('/health/ready', async () => ({ status: 'ok', service: name, checks: {} }));
+  app.get('/health/live', async () => ({ status: 'ok', service: name }));
+
+  app.get('/health/ready', async (_req, reply) => {
+    if (!ready) return { status: 'ok', service: name };
+    const checks = await ready();
+    // ... 503 if any dependency is unreachable
+  });
 ```
 
-Two routes, both returning objects.
+Two routes, and only one of them can say no.
 
 **Why two.** *Live* answers "is this process wedged — restart it." *Ready*
 answers "may traffic be routed here yet." A service still connecting to Postgres
 is live but not ready. Merge them and the orchestrator kills a healthy process
-that was merely still starting. At phase 0 there's nothing to check, so ready is
-trivially true.
+that was merely still starting.
+
+**Why `ready` is optional.** Readiness only means anything if it can fail, so
+each service passes the dependencies it genuinely cannot serve without and
+answers 503 when one is down. What counts differs per service, and the
+differences are the interesting part: Users and Questions gate on Postgres;
+Matching and Collab on Postgres *and* Redis, because the queue and the
+cross-instance relay are Redis. Questions deliberately does **not** gate on
+Redis — there it is a cache, so losing it is slower rather than broken. The
+Gateway passes nothing at all, because it fails *open* when Redis is down, and
+withdrawing an instance that is still happily serving would be the wrong
+answer.
 
 ```ts
   const start = async (): Promise<void> => {
@@ -964,13 +979,13 @@ The whole vocabulary is four functions and a couple of matchers.
 
 ## The shape
 
-From [`gateway/src/health.test.ts`](../../services/gateway/src/health.test.ts):
+From [`packages/shared/src/service.test.ts`](../../packages/shared/src/service.test.ts):
 
 ```ts
 import { describe, expect, it } from 'vitest';
 
-describe('gateway service', () => {
-  it('answers /health/live and /health/ready separately', async () => {
+describe('createService', () => {
+  it('propagates an inbound x-request-id instead of minting a new one', async () => {
     // ... the test
   });
 });
@@ -978,9 +993,9 @@ describe('gateway service', () => {
 
 `describe(name, fn)` — a group. Purely for organising output.
 
-`it(name, fn)` — one test. The name should read as a sentence: *it* answers
-`/health/live` and `/health/ready` separately. Written well, a failure tells you
-what broke without opening the file.
+`it(name, fn)` — one test. The name should read as a sentence: *it* propagates
+an inbound `x-request-id` instead of minting a new one. Written well, a failure
+tells you what broke without opening the file.
 
 `expect(actual)` — starts a check. What follows is the **matcher**.
 

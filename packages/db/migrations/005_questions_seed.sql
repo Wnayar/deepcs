@@ -2,18 +2,47 @@
 --
 -- Question authoring is out of scope for the whole project (DESIGN.md), so the
 -- bank is seeded once here rather than written through an API. Content is
--- adapted from a personal CS-fundamentals study repo: each entry below is one
--- day's worth of notes, and each day's notes already close with an
--- "Interview Questions Answered" section — that section's questions become
--- `parts`, and its answers (plus the day's "Quick Mental Models" where one
--- exists) become `reference_md`.
+-- adapted from a personal CS-fundamentals study repo. Each notes file closes
+-- with its questions already paired to answers — "Interview Questions
+-- Answered" in the day files, "High-Value Interview Questions to Drill" in the
+-- overviews — so the questions become `parts` and the answers (plus any
+-- "Quick Mental Models" section) become `reference_md`.
+--
+-- Nine topics. Five of them (OS, Networking, Databases, OOP, System Design)
+-- are three-day curricula, one row per day. The other four (Security,
+-- Debugging, AI Tooling, Behavioural) are single overview files, split into
+-- three rows each along the seams the notes already have.
+--
+-- `difficulty` is a row's position inside its own topic, not an absolute
+-- rating: first easy, second medium, third hard. The notes are a curriculum
+-- where the later material assumes the earlier, so that is what the source
+-- actually encodes, and it reads correctly to someone working through one
+-- topic. It does mean the labels are not comparable across topics.
+--
+-- It also has a property the product depends on. Matching pairs people by
+-- topic *and* difficulty, and refuses the match when no question fits, so a
+-- combination with nothing behind it is a pair of users who can never be
+-- matched — a dead end they meet only after choosing. Nine topics × three
+-- lands exactly on the grid, one question per cell. An earlier ad-hoc
+-- assignment left five of the then-fifteen cells empty.
+--
+-- Behavioural is shaped differently on purpose; see the note above its rows.
+
+-- Re-runnable, which the other migrations get from `IF NOT EXISTS` and this
+-- one cannot: an INSERT has nothing to be idempotent about on its own. Without
+-- a key to conflict on, re-running against a database whose bookkeeping table
+-- was wiped (or restored from a dump taken without it) silently doubles every
+-- question. Titles are unique within a seeded bank of fifteen, so they are the
+-- key; `DO UPDATE` additionally means editing the content above and re-running
+-- refreshes the row rather than being ignored.
+CREATE UNIQUE INDEX IF NOT EXISTS bank_title_key ON questions.bank (title);
 
 INSERT INTO questions.bank (title, difficulty, parts, reference_md, tags) VALUES
 
 -- ── OS — Day 1 ────────────────────────────────────────────────────────────
 (
   'Processes & Threads',
-  'medium',
+  'easy',
   $parts$["Process vs thread?", "What happens on fork()?", "Why are threads cheaper than processes?", "What is a zombie process?", "What is a race condition? Example?", "What is a context switch and why is it expensive?"]$parts$,
   $md$## Process vs thread?
 
@@ -52,7 +81,7 @@ $md$,
 -- ── OS — Day 2 ────────────────────────────────────────────────────────────
 (
   'Synchronization & Concurrency',
-  'hard',
+  'medium',
   $parts$["What is a mutex and how does it work?", "What is a deadlock? The four conditions?", "Mutex vs. semaphore?", "What is a condition variable? When?", "What is a race condition? Example?", "How do you prevent deadlock?", "Implement producer-consumer from memory"]$parts$,
   $md$## What is a mutex and how does it work?
 
@@ -222,7 +251,7 @@ $md$,
 -- ── Networking — Day 3 ───────────────────────────────────────────────────
 (
   'DNS, Load Balancing & API Design',
-  'medium',
+  'hard',
   $parts$["What happens when you type a URL and hit enter?", "Walk me through a DNS lookup", "What is TTL in DNS and why does it matter?", "L4 vs L7 load balancer — when each?", "REST vs gRPC — when pick gRPC?", "How do you version a REST API?", "What makes an API idempotent?", "How would you paginate a large API response?"]$parts$,
   $md$## What happens when you type a URL and hit enter?
 
@@ -266,7 +295,7 @@ $md$,
 -- ── Databases — Day 1 ────────────────────────────────────────────────────
 (
   'SQL Foundations & Indexing',
-  'medium',
+  'easy',
   $parts$["Clustered vs non-clustered index?", "Why does column order matter in a composite index?", "When would a query NOT use an index?", "What is a covering index?", "WHERE vs HAVING?", "Second highest salary — window function vs subquery"]$parts$,
   $md$## Clustered vs non-clustered index?
 
@@ -306,7 +335,7 @@ $md$,
 -- ── Databases — Day 2 ────────────────────────────────────────────────────
 (
   'Transactions, Concurrency & Internals',
-  'hard',
+  'medium',
   $parts$["What does ACID mean? Example of each.", "Dirty read vs phantom read?", "How does MVCC work?", "Optimistic vs pessimistic locking?", "How do you handle a deadlock?", "Postgres default isolation level?"]$parts$,
   $md$## What does ACID mean? Example of each.
 
@@ -338,7 +367,7 @@ $md$,
 -- ── Databases — Day 3 ────────────────────────────────────────────────────
 (
   'NoSQL, CAP Theorem & When to Use What',
-  'medium',
+  'hard',
   $parts$["MongoDB over Postgres?", "When Cassandra?", "Eventual consistency in practice?", "Redis vs a database?", "Hotspot in sharding, and prevention?", "CAP theorem, with examples?"]$parts$,
   $md$## MongoDB over Postgres?
 
@@ -430,7 +459,7 @@ $md$,
 -- ── OOP — Day 3 ───────────────────────────────────────────────────────────
 (
   'Behavioural Patterns + Composition vs Inheritance',
-  'medium',
+  'hard',
   $parts$["Observer vs pub/sub — same thing?", "Strategy — a real backend example?", "When use Command?", "Where does Proxy appear in backends?", "Factory vs Factory Method vs Abstract Factory?", "Design a parking lot — classes, relationships, patterns?"]$parts$,
   $md$## Observer vs pub/sub — same thing?
 
@@ -462,7 +491,7 @@ $md$,
 -- ── System Design — Day 1 ────────────────────────────────────────────────
 (
   'Foundations & Building Blocks',
-  'medium',
+  'easy',
   $parts$["Scale a system from 1 user to 10M?", "Horizontal vs vertical scaling?", "How does consistent hashing work and why use it?", "How does a CDN work?", "SQL vs NoSQL?"]$parts$,
   $md$## Scale a system from 1 user to 10M?
 
@@ -490,7 +519,7 @@ $md$,
 -- ── System Design — Day 2 ────────────────────────────────────────────────
 (
   'Classic HLD Problems',
-  'hard',
+  'medium',
   $parts$["Design a rate limiter?", "Fan-out on write vs read?", "Design a URL shortener?", "Design a key-value store — partitioning, replication, quorum?", "Design a notification system — why a queue?"]$parts$,
   $md$## Design a rate limiter?
 
@@ -541,4 +570,369 @@ Pick consistency (CP) when stale data costs money: payments, inventory ("1 left 
 Classes: `ParkingLot` (composes `Floor`), `Floor` (composes `ParkingSpot`), `ParkingSpot` (compact/large/handicapped/motorcycle; state Available/Reserved/Occupied), `Vehicle` (abstract → `Car`, `Truck`, `Motorcycle`), `Ticket` (associates a `Spot` and a `Vehicle`, tracks entry/exit time), `PaymentStrategy` (`CashPayment`, `CardPayment`). Patterns: Strategy for the payment method, Singleton for the lot manager, Factory Method to create spot types, Observer to notify admins when a floor fills. This is the same design as OOP Day 3's parking-lot question — LLD questions and OOP pattern questions converge on the same worked example for a reason: they're testing the same skill from two directions.
 $md$,
   ARRAY['system-design', 'chat-system', 'lld', 'trade-offs']
-);
+),
+
+-- ── Security — Part 1 ─────────────────────────────────────────────────────
+(
+  'Authentication, Authorization & Password Storage',
+  'easy',
+  $parts$["Authentication vs authorization?", "How do you store passwords?", "Why hash rather than encrypt?", "What is a salt, and which attack does it stop?", "Why does a password hash need to be slow?"]$parts$,
+  $md$## Authentication vs authorization?
+
+Authentication (authN) is *who are you* — proving identity, usually by logging in. Authorization (authZ) is *what are you allowed to do* — checking permissions once identity is established. They sound alike and are checked at different moments: a bouncer checking your ID at the door is authentication; whether your ticket admits you to the VIP area is authorization.
+
+## How do you store passwords?
+
+Never in plaintext, and never encrypted. Store a **salted, slow hash** — bcrypt, scrypt or Argon2 are the names to give. If the database is stolen, the attacker gets hashes rather than everyone's passwords.
+
+## Why hash rather than encrypt?
+
+Encryption is reversible by design: whoever holds the key can recover the original. A hash is one-way — cheap to compute forwards, impractical to invert. You never need to read a password back; you only need to check whether a submitted one matches, and hashing the submission and comparing does that.
+
+## What is a salt, and which attack does it stop?
+
+A random value mixed into each password before hashing, stored alongside the hash. It makes two users with the same password produce different hashes, which defeats precomputed lookup tables (rainbow tables) — the attacker cannot reuse one table across accounts, or even across two users in the same database.
+
+## Why does a password hash need to be slow?
+
+Because the attacker's cost scales with it. A fast hash lets someone who steals the database try billions of guesses per second offline. A deliberately slow, tunable one drops that to a rate where brute force stops being worth it, while costing a legitimate login a few milliseconds nobody notices.
+
+## Mental models
+
+- **Hashing is a blender.** You can turn fruit into a smoothie; you cannot turn the smoothie back into fruit.
+- **Salt is a per-user recipe tweak.** Same fruit, different smoothie, so one cheat sheet no longer works for everyone.
+$md$,
+  ARRAY['security', 'authentication', 'authorization', 'passwords', 'hashing']
+),
+
+-- ── Security — Part 2 ─────────────────────────────────────────────────────
+(
+  'Sessions, Tokens & HTTPS',
+  'medium',
+  $parts$["Session vs JWT trade-offs?", "Why mark a session cookie HttpOnly?", "What is OAuth, and is it authentication or authorization?", "How does HTTPS work, roughly?", "Encryption in transit vs at rest?"]$parts$,
+  $md$## Session vs JWT trade-offs?
+
+With a **session**, the server keeps the record ("user 42 is logged in") and hands the browser a session ID in a cookie. Revoking is trivial — delete the record — but the server has to store and look up state for every logged-in user.
+
+With a **JWT** (JSON Web Token), the server hands over a signed token it can verify later without storing anything. It scales well precisely because there is no server-side state, but that is also why it is hard to cancel early: nothing is stored, so nothing can be deleted. The usual mitigation is to keep them short-lived and refresh often.
+
+The trade-off in one line: sessions are easy to revoke and stateful; JWTs are stateless and hard to revoke.
+
+## Why mark a session cookie HttpOnly?
+
+`HttpOnly` tells the browser that page JavaScript may not read the cookie. It is sent on requests as normal, but `document.cookie` cannot see it — so an XSS bug that manages to run a script on your page still cannot lift the session ID out of it. It is defence in depth: it does not stop XSS, it limits what XSS can steal.
+
+## What is OAuth, and is it authentication or authorization?
+
+OAuth lets one application act on your behalf in another without ever seeing your password — delegated **authorization**. The common trap is calling it login: "Log in with Google" is **OpenID Connect (OIDC)**, an identity layer built on top of OAuth. OAuth grants access to something; OIDC tells you who the user is.
+
+## How does HTTPS work, roughly?
+
+HTTPS is HTTP carried over **TLS**. Client and server perform a handshake that agrees on a shared secret key, then everything after is encrypted with it. A **certificate** issued by a trusted authority proves the server really is the host it claims to be, which is what stops an impostor from sitting in the middle and completing the handshake in its place.
+
+## Encryption in transit vs at rest?
+
+In transit protects data while it moves across a network — that is TLS. At rest protects it while stored on a disk or in a database. They are separate concerns and you generally want both: TLS does nothing for a stolen backup, and disk encryption does nothing for a sniffed connection.
+$md$,
+  ARRAY['security', 'sessions', 'jwt', 'oauth', 'tls']
+),
+
+-- ── Security — Part 3 ─────────────────────────────────────────────────────
+(
+  'Common Attacks & Safe Defaults',
+  'hard',
+  $parts$["What is SQL injection and how do you stop it?", "What is XSS and how do you stop it?", "XSS vs CSRF?", "What is broken access control?", "How would you secure a REST API?", "Where do you keep API keys and secrets?"]$parts$,
+  $md$## What is SQL injection and how do you stop it?
+
+The application builds a query by gluing user input into a string, so input that contains SQL stops being data and becomes part of the command — enough to dump a table or bypass a login. The fix is **parameterized queries** (prepared statements): the query structure is sent separately from the values, so the database treats input strictly as data no matter what it contains. Never build SQL by concatenation, even when the input "obviously" cannot be hostile.
+
+## What is XSS and how do you stop it?
+
+Cross-Site Scripting: an attacker gets their script to execute inside another user's browser on your origin — typically by submitting it somewhere that is later rendered, like a comment box. Because it runs on your page, it can read the DOM and reachable cookies. The fix is to escape or sanitize anything user-supplied at the point you render it, plus a Content-Security-Policy as a second layer.
+
+## XSS vs CSRF?
+
+They are routinely confused and the distinction is clean. **XSS** runs the attacker's *script inside your page*. **CSRF** runs no script of yours at all — a malicious page simply causes the victim's browser to send a request to your site, which the browser helpfully attaches the existing login to. XSS is about code execution; CSRF is about riding an authenticated session. CSRF is countered with CSRF tokens and `SameSite` cookies, which make a request prove it originated from your own site.
+
+## What is broken access control?
+
+A logged-in user reaches data that is not theirs — the classic being changing `?id=42` to `?id=43` and seeing someone else's record. Authentication succeeded; authorization was never checked, or was checked only in the UI. The fix is to check permissions on the server for every request against the authenticated identity. Hiding a button is not access control.
+
+## How would you secure a REST API?
+
+Layered defaults rather than one trick: HTTPS everywhere; authenticate the caller; check authorization on every endpoint against that identity; validate and constrain input; rate-limit to blunt abuse and brute force; and keep internal details out of error messages, since a stack trace tells an attacker what to try next.
+
+## Where do you keep API keys and secrets?
+
+In environment variables or a secrets manager — never in source control, and never hardcoded. A key committed once lives in the history even after it is deleted, so the response to a leak is to rotate it, not to remove the line.
+
+## Safe-default habits worth saying unprompted
+
+- **Least privilege** — every user and service gets the minimum access it needs.
+- **Never trust user input** — validate on the server, always.
+- **Defense in depth** — several layers, so one failure is not total.
+- **Don't invent your own crypto** — use battle-tested libraries.
+$md$,
+  ARRAY['security', 'owasp', 'sql-injection', 'xss', 'csrf']
+),
+
+-- ── Debugging — Part 1 ────────────────────────────────────────────────────
+(
+  'A Systematic Debugging Method',
+  'easy',
+  $parts$["How do you approach a bug you have never seen before?", "What is a stack trace and how do you read one?", "What are breakpoints and stepping?", "Print statements or a debugger?"]$parts$,
+  $md$## How do you approach a bug you have never seen before?
+
+Six steps, and the value is that it is a method rather than luck:
+
+1. **Reproduce it.** A bug you cannot trigger on demand, you cannot fix or verify. Find the exact input or sequence, reliably.
+2. **Read the error.** The stack trace says what and where. Start at the most recent frame that is in *your* code and skip the library frames above it.
+3. **Form a hypothesis.** Specific and testable — "this value is empty by the time it reaches here", not "something's wrong with the parser".
+4. **Isolate by binary search.** Check the midpoint: is the bug before or after? Halve the search space repeatedly until you are on the line. Same idea as `git bisect` across commits.
+5. **Check your assumptions.** The bug is nearly always inside something you were certain of. Print the value you would not have bothered printing.
+6. **Fix, verify, and add a test.** Confirm against the repro, ask whether the same mistake exists elsewhere, and leave a test so it cannot come back.
+
+Compressed: reproduce, read the error, hypothesize, binary-search, check assumptions, fix and add a test.
+
+## What is a stack trace and how do you read one?
+
+The report a program prints when it crashes: the chain of calls that led there, with files and line numbers. Order differs by language — Python prints the most recent call last, Java and JavaScript print it first — so find the recency direction before reading. Then scan for the first frame in your own code, because that is usually where your mistake is, even when the exception was raised deeper in a library.
+
+## What are breakpoints and stepping?
+
+A **breakpoint** marks a line as "pause here"; when execution reaches it the program freezes and you can inspect everything in scope. **Stepping** then runs it one line at a time so you can watch values change and catch the exact moment state goes wrong — which is far more precise than inferring it from output after the fact.
+
+## Print statements or a debugger?
+
+Both, at different stages. Prints are fast, work anywhere including production, and need no setup, but they are noisy and require a re-run per guess. A debugger lets you inspect all state at once and step, which suits tricky local logic. The honest answer is the workflow: prints to narrow down roughly where it goes wrong, then a debugger to examine state once you are close.
+$md$,
+  ARRAY['debugging', 'method', 'stack-trace', 'breakpoints']
+),
+
+-- ── Debugging — Part 2 ────────────────────────────────────────────────────
+(
+  'Common Bug Types & Isolating Them',
+  'medium',
+  $parts$["What is an off-by-one error?", "What is an aliasing bug?", "Which edge cases should you always test?", "Why are race conditions especially hard to debug?", "How do you find a bug in a huge codebase?"]$parts$,
+  $md$## What is an off-by-one error?
+
+Being one out in a count or an index — `<` where you needed `<=`, starting at 1 where the collection starts at 0, or reading one past the end. It is the most common bug in coding interviews because loop bounds are exactly where attention lapses, and it often produces a plausible-looking answer rather than a crash, which is what makes it slip through.
+
+## What is an aliasing bug?
+
+Two names refer to the same underlying object, so mutating through one appears to change the other "by itself". It shows up constantly with lists, dictionaries and default arguments: copying the reference is not copying the value. The tell is a variable changing when nothing nearby touched it — at which point you look for who else holds a reference.
+
+## Which edge cases should you always test?
+
+Empty input, exactly one item, duplicates, negatives, and the maximum size. Most logic is written with the comfortable middle case in mind, and these five are where the assumptions break. Adding them costs a line each and catches a large share of real bugs.
+
+## Why are race conditions especially hard to debug?
+
+Because correctness depends on timing rather than input, so the same run can pass a hundred times and fail on the hundred-and-first. There is often no stable repro, which breaks step one of the method — and the act of observing (adding a print, attaching a debugger) changes the timing enough to hide it. Reasoning about the shared state and the interleaving usually beats trying to catch it live.
+
+## How do you find a bug in a huge codebase?
+
+Narrow the space rather than reading the code. The stack trace points at a file. Binary-search within the flow using prints or breakpoints. If it used to work, `git bisect` finds the commit that introduced it in a logarithmic number of steps, which is often faster than understanding the code at all. The theme is the same at every scale: halve the search area, do not scan it.
+$md$,
+  ARRAY['debugging', 'off-by-one', 'edge-cases', 'race-conditions', 'bisect']
+),
+
+-- ── Debugging — Part 3 ────────────────────────────────────────────────────
+(
+  'Debugging in Production',
+  'hard',
+  $parts$["You cannot reproduce the bug — now what?", "What do logs, metrics and distributed tracing each tell you?", "Walk me through a hard bug you fixed.", "Why add a test after fixing a bug?"]$parts$,
+  $md$## You cannot reproduce the bug — now what?
+
+Work on making it reproducible rather than guessing at fixes. Add logging that captures the state at the moment it happens, so the next occurrence hands you the inputs. Hunt for what is special about the cases that fail — a particular user, payload, or time of day. And consider the two classic causes of "works on my machine": timing (a race that only loses under production load) and environment (different config, data volume, versions, or clock). A fix you cannot verify against a repro is a guess you will be back to revisit.
+
+## What do logs, metrics and distributed tracing each tell you?
+
+Three different questions. **Logs** are the recorded detail of what happened, and are only useful for a specific request if they carry a request ID to correlate on. **Metrics** are aggregates — error rate, latency percentiles — and answer *when* something started and how bad it is, which is what you look at first. **Distributed tracing** follows one request across service boundaries and answers *which hop* is responsible, which is the question logs cannot answer once a request touches six services.
+
+Roughly: metrics tell you something is wrong, tracing tells you where, logs tell you what.
+
+## Walk me through a hard bug you fixed.
+
+This one is asked as a behavioural question, so answer in STAR shape and let the method show: what broke and what was at stake, how you isolated it (the binary search, the bisect, the log line that gave it away), what the root cause turned out to be, the fix, and the test you left behind. The signal being measured is that you were systematic rather than lucky — so narrate the narrowing, not just the answer. Having one real story ready serves double duty here and in the behavioural round.
+
+## Why add a test after fixing a bug?
+
+It converts a fix into a guarantee. Without it you have addressed today's symptom and nothing stops a later refactor from reintroducing it — and regressions are dispiriting precisely because someone already paid to find that bug once. The test also documents the edge case for whoever reads the code next, and writing it forces you to confirm you actually understood the cause rather than perturbing the code until the symptom left.
+$md$,
+  ARRAY['debugging', 'production', 'observability', 'tracing', 'logging']
+),
+
+-- ── AI Tooling — Part 1 ───────────────────────────────────────────────────
+(
+  'LLMs, Prompts & Context',
+  'easy',
+  $parts$["What is an LLM, in one sentence?", "What is a token, and what is a context window?", "What makes a good prompt?", "What does context engineering mean?"]$parts$,
+  $md$## What is an LLM, in one sentence?
+
+A large language model is a program that predicts the next piece of text given what came before — autocomplete taken far enough that, trained on enough text, it can write code, explain an error, or answer a question. An AI coding assistant is that model wired into an editor; you remain the one who reads the output and decides whether it is right.
+
+## What is a token, and what is a context window?
+
+A **token** is the unit a model chops text into, roughly three-quarters of a word. A **context window** is how much text it can hold at once, measured in tokens — effectively its short-term memory for this conversation. The practical consequence is that a window is a budget: filling it with material that is not relevant crowds out what is, and answer quality falls even though nothing has technically overflowed.
+
+## What makes a good prompt?
+
+Being specific about the outcome and showing an example of the shape you want. Vague instructions get plausible but generic output, because the model has nothing to narrow against. Stating the constraints that matter — the language, the interfaces it must fit, what it must not change — does more for the result than politeness or length.
+
+## What does context engineering mean?
+
+Being deliberate about the information you hand the model alongside the instruction: the relevant file rather than the whole repository, the actual error text, the rules it has to respect. The model can only be as good as its context, so curating that is most of the skill. It is the same discipline as writing a good bug report for a colleague — supply what is needed to decide, and leave out what is not.
+$md$,
+  ARRAY['ai-tooling', 'llm', 'prompting', 'context', 'tokens']
+),
+
+-- ── AI Tooling — Part 2 ───────────────────────────────────────────────────
+(
+  'Agents, RAG & Fine-tuning',
+  'medium',
+  $parts$["What is an AI agent?", "What is RAG and what problem does it solve?", "Prompting vs fine-tuning?", "What is orchestration?"]$parts$,
+  $md$## What is an AI agent?
+
+A model that works in a loop rather than answering once: it takes an action — read a file, run a command — looks at the result, and decides the next step, repeating until the task is done or it gives up. The distinction from a chatbot is the feedback loop; an agent can run your tests, see them fail, and try again, which is what makes multi-step work possible without a human between each step.
+
+## What is RAG and what problem does it solve?
+
+Retrieval-Augmented Generation: rather than pasting an entire corpus into the prompt, you first retrieve the handful of relevant passages and pass only those. It solves two things at once — a context window too small for the whole corpus, and quality degrading when the window is padded with irrelevant material. It also reduces hallucination, because the model is answering from supplied text instead of from memory.
+
+## Prompting vs fine-tuning?
+
+**Prompting** — asking well, with good context and retrieval — needs no training, costs nothing up front, and can be changed instantly. **Fine-tuning** retrains the model on your own data for a narrow task: expensive, slow to iterate on, and it fixes behaviour in place. Default to prompting and treat fine-tuning as the thing you reach for once prompting has genuinely been shown to be insufficient, not as the first step.
+
+## What is orchestration?
+
+Coordinating multiple steps or multiple agents into one workflow — deciding what runs in sequence, what runs in parallel, and what checks the output of something else. It matters because a single long prompt degrades on a complex task, whereas decomposing it into stages with defined inputs and outputs keeps each step small enough to be reliable.
+$md$,
+  ARRAY['ai-tooling', 'agents', 'rag', 'fine-tuning', 'orchestration']
+),
+
+-- ── AI Tooling — Part 3 ───────────────────────────────────────────────────
+(
+  'Hallucination & Responsible AI',
+  'hard',
+  $parts$["What is a hallucination and how do you handle it?", "What are the risks of AI-generated code?", "What does responsible AI mean day to day?", "How do you use AI tools in your own work?"]$parts$,
+  $md$## What is a hallucination and how do you handle it?
+
+When the model states something false with full confidence — inventing a function that does not exist, or a flag with a plausible name. Confidence is the dangerous part: there is no signal in the output distinguishing it from a correct answer. You handle it by verifying against something authoritative rather than by trusting tone: run it, check the documentation, let the type checker and the tests fail. Better context reduces the rate, but nothing removes the need to verify.
+
+## What are the risks of AI-generated code?
+
+Four worth naming: subtle bugs in code that reads fluently, which is harder to catch than obviously broken code; insecure patterns copied from the general shape of training data; invented APIs that fail at run time; and leaking secrets or customer data by pasting them into a prompt. The mitigations are unremarkable — review it as you would a colleague's pull request, test it, and never paste anything sensitive.
+
+## What does responsible AI mean day to day?
+
+Verify before you ship, because you own the code and the model does not. Never paste secrets, keys or customer data into a prompt. Keep a human in the loop on anything that matters, so the tool assists the decision rather than making it. And sanity-check outputs that affect people, since a model trained on internet text carries the biases of internet text. None of this is exotic; it is ordinary engineering care applied to a new tool.
+
+## How do you use AI tools in your own work?
+
+The strong version of this answer is concrete and bounded: what you use it for — boilerplate, tests, understanding unfamiliar code, debugging — followed by how you check the result. The single line worth having ready is *I drive, I verify*: it signals that you use the tool with judgment rather than either avoiding it or trusting it blindly, and that is what the question is actually measuring. Claiming less than you might is more credible than overselling.
+$md$,
+  ARRAY['ai-tooling', 'responsible-ai', 'hallucination', 'code-review']
+),
+
+-- ── Behavioural — Part 1 ──────────────────────────────────────────────────
+--
+-- The behavioural entries are shaped differently from every other topic here,
+-- deliberately. The source notes are a story *scaffold*: the answers are the
+-- author's own experiences, and the slots are blank on purpose. So `parts` are
+-- questions about the technique, and `reference_md` describes what a strong
+-- answer contains rather than supplying one. A fabricated story would be
+-- exactly the thing the notes warn against.
+(
+  'STAR & What Each Company Tests',
+  'easy',
+  $parts$["What is the STAR framework?", "How long should each part of a STAR answer take?", "What does Google's behavioural round evaluate?", "What does Meta's behavioural round evaluate?"]$parts$,
+  $md$## What is the STAR framework?
+
+A four-part shape for answering any "tell me about a time" question. **Situation** sets the scene — the project, what was at stake, what made it hard. **Task** is your specific responsibility, not the team's. **Action** is what you actually did, step by step, including the trade-offs you weighed; this is the bulk of it. **Result** is the outcome, quantified, plus what you learned or would do differently.
+
+The structure exists because unstructured answers drift into context and never reach the point. It also gives the interviewer somewhere to probe, which is what they are there to do.
+
+## How long should each part of a STAR answer take?
+
+Roughly: situation 20 seconds, task 10, action 90, result 30 — two to three minutes in total. The proportions carry the message. Most weak answers invert them, spending a minute on background and ten seconds on what the candidate personally did, which is the only part being assessed.
+
+## What does Google's behavioural round evaluate?
+
+Googleyness and Leadership: collaboration, comfort with ambiguity, integrity, ownership and impact. The whole loop scores four attributes — general cognitive ability, role-related knowledge, leadership, and Googleyness. The tone is conversational and they probe how you think, so the differentiator is being humble and self-aware and defaulting to collaboration. Taking all the credit, blaming others, or failing to own a mistake is the red flag.
+
+## What does Meta's behavioural round evaluate?
+
+The six core values: Move Fast, Focus on Long-Term Impact, Build Awesome Things, Live in the Future, Be Direct and Respect Your Colleagues, and Meta Metamates Me. Map each story to one. The tone is direct and outcome-focused, so lead with what changed and then explain how you got there. The red flag is a vague outcome — process narrated with no measurable result.
+$md$,
+  ARRAY['behavioural', 'star', 'google', 'meta', 'interviewing']
+),
+
+-- ── Behavioural — Part 2 ──────────────────────────────────────────────────
+(
+  'The Competencies You Will Be Asked About',
+  'medium',
+  $parts$["Tell me about a time you took ownership of something outside your role.", "Tell me about a technical decision you made with incomplete information.", "Tell me about a time you failed.", "Tell me about a disagreement with a teammate or manager.", "Tell me about a time you made the people around you more effective."]$parts$,
+  $md$These are the questions themselves — the answers are yours and cannot be supplied. What follows is what each one is probing and what a strong response has to contain, so you can check your own story against it.
+
+## Ownership / taking initiative
+
+Probing whether you extend past your assigned scope without being asked. A strong answer names something you picked up that was not your job, why you judged it worth doing, and what you decided autonomously — including the trade-offs, since "I did extra work" alone reads as busyness rather than judgment.
+
+## Technical trade-off under ambiguity
+
+Probing how you decide without complete information. Needs the options you weighed, the unknowns that made it hard, and — the part usually missing — *when you stopped researching and committed*. Interviewers are looking for someone who converges, not someone who investigates indefinitely.
+
+## Failure
+
+Probing self-awareness and whether you actually changed. It has to be a real failure: a spun non-failure ("I worked too hard") is transparent and costs more than the honest version. Say what went wrong, whether the cause was technical, process or judgment, how you course-corrected, and concretely what you do differently now. A vague lesson is worse than no story.
+
+## Disagreement / pushback
+
+Probing whether you can hold a position without damaging the relationship. Needs the other side stated fairly, how you raised it and on what evidence, and how it resolved — including whether you escalated or disagreed and committed. Being right is not the signal; handling it well is.
+
+## Collaboration / impact on the team
+
+Probing whether you make others more effective, which is what separates a good new grad from a great one. Needs someone specific who was stuck or missing context, what you did — pairing, reviewing, documenting, restructuring — and the outcome for them, not just for the project.
+
+## Two rules that apply to all five
+
+**Always have a number.** "Improved performance" loses to "cut p99 from 800ms to 120ms". Approximate is fine; absent is weak.
+
+**Use "I" for actions and "we" only for outcomes.** "We decided" surrenders the attribution the question exists to establish.
+$md$,
+  ARRAY['behavioural', 'competencies', 'ownership', 'failure', 'collaboration']
+),
+
+-- ── Behavioural — Part 3 ──────────────────────────────────────────────────
+(
+  'Delivering an Answer That Lands',
+  'hard',
+  $parts$["Why must every result have a number?", "Why use I for actions and we only for outcomes?", "What makes a failure story land instead of backfiring?", "What follow-ups should you expect, and how do you prepare for them?", "What should you ask the interviewer at the end?"]$parts$,
+  $md$## Why must every result have a number?
+
+Because without one the interviewer has no way to distinguish a real outcome from a confident description of effort. "Improved performance" is unfalsifiable; "cut p99 latency from 800ms to 120ms" is a claim with a shape, and it implies you measured before and after — which is itself the signal. Approximate figures are fine. Pages, users, latency, uptime, hours saved, percentage improvement: force one into every story.
+
+## Why use "I" for actions and "we" only for outcomes?
+
+The round exists to establish what *you* did. "We decided to shard the database" leaves the interviewer unable to tell whether you led it, argued against it, or watched. Use "we" for the shared result, which is honest and avoids sounding like you claim the team's work — the failure mode in the other direction, and a red flag at Google specifically.
+
+## What makes a failure story land instead of backfiring?
+
+Choosing something that genuinely failed, and showing the change. Interviewers hear spun non-failures constantly and read them as an unwillingness to be honest, which is worse than the failure would have been. The story lands when the cause is named plainly — including if it was your judgment — and ends with something concrete that changed in how you work. A vague lesson ("I learned to communicate better") is the most common way to waste a good story.
+
+## What follow-ups should you expect, and how do you prepare for them?
+
+Assume every section gets probed: "Why that approach?", "What would you do differently?", "What did others think?", "What was the hardest part?" This is why over-rehearsing hurts — a scripted answer collapses the moment it is pushed off its rails. Know the skeleton cold and improvise the wording, and make sure your preparation includes the depth behind each step, not just the narrative.
+
+## What should you ask the interviewer at the end?
+
+Have two or three ready; asking nothing reads as low interest. Good ones surface real information: what separates a good new grad from a great one on this team, the hardest problem the team is working on now, how the team resolves technical disagreements, what surprised them after joining. Skip anything you could have googled — perks, levels, the process — because it spends your remaining signal on something you could have looked up.
+$md$,
+  ARRAY['behavioural', 'delivery', 'star', 'follow-ups', 'interviewing']
+)
+ON CONFLICT (title) DO UPDATE SET
+  difficulty   = EXCLUDED.difficulty,
+  parts        = EXCLUDED.parts,
+  reference_md = EXCLUDED.reference_md,
+  tags         = EXCLUDED.tags;

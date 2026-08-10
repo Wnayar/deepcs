@@ -95,6 +95,13 @@ jobs:
       - run: pnpm lint
       - run: pnpm format:check
 
+      # The per-service matrix below only ever runs `--filter @deepcs/<service>`,
+      # so nothing in packages/ is covered by it. createService is compiled into
+      # all six images, which makes it the least acceptable place to have no
+      # tests. It needs no Postgres or Redis — it asserts on app.inject alone —
+      # so it belongs here rather than in the matrix job that provisions both.
+      - run: pnpm --filter @deepcs/shared test
+
   # ── Per-service: typecheck, test, build, and build the image ─────────────────
   service:
     needs: changes
@@ -203,11 +210,13 @@ jobs:
             # into the runner stage, so the emulator guard is also live here:
             # setting FIREBASE_AUTH_EMULATOR_HOST would make the Gateway refuse
             # to boot, exactly as intended.
-            # USERS_URL/QUESTIONS_URL only need to be non-empty here — Matching
-            # checks for their presence at boot (same fail-fast pattern as
-            # DATABASE_URL) but never dereferences them, since /health/ready
-            # doesn't call out to either service. Sibling services ignore the
-            # two vars entirely.
+            # USERS_URL/QUESTIONS_URL/MATCHING_URL only need to be non-empty
+            # here — Matching (Users, Questions) and Collab (Matching,
+            # Questions) check for their presence at boot (same fail-fast
+            # pattern as DATABASE_URL) but never dereference them, since
+            # /health/ready doesn't call out to another service. Sibling
+            # services ignore the vars entirely. Omitting any one of them makes
+            # that service's container exit 1 before it ever listens.
             docker run -d --name smoke --network host \
               -e PORT=8080 \
               -e DATABASE_URL="$DATABASE_URL" \
@@ -215,6 +224,7 @@ jobs:
               -e FIREBASE_PROJECT_ID=demo-deepcs \
               -e USERS_URL=http://localhost:8081 \
               -e QUESTIONS_URL=http://localhost:8082 \
+              -e MATCHING_URL=http://localhost:8083 \
               deepcs/${{ matrix.service }}:ci
             for i in $(seq 1 30); do
               if curl -fsS http://localhost:8080/health/ready; then ok=1; break; fi

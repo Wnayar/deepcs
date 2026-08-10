@@ -16,7 +16,7 @@ and how the pieces connect.
 ## 1. The pair claim is the same race as phase 1's rate limiter · ~10 min
 
 📄 [`queue.ts`](../../services/matching/src/queue.ts) · test at
-[`queue.test.ts:80`](../../services/matching/src/queue.test.ts#L80)
+[`queue.test.ts:84`](../../services/matching/src/queue.test.ts#L84)
 
 **The failure:** two users join the same topic+difficulty queue at the same
 instant, and it's empty. Both check "is anyone waiting?" at the same moment,
@@ -38,7 +38,7 @@ lives."*
 
 ## 2. External calls happen before anything is mutated · ~5 min
 
-📄 [`index.ts:88-120`](../../services/matching/src/index.ts#L88)
+📄 [`index.ts:89-114`](../../services/matching/src/index.ts#L89)
 
 **The failure:** join the queue first, *then* check whether the caller is a
 real user. If that check fails — Users is down, say — the caller is stuck in
@@ -56,8 +56,8 @@ that can't be undone."*
 
 ## 3. Joining twice is safe, on purpose · ~5 min
 
-📄 [`index.ts:79-82`](../../services/matching/src/index.ts#L79) ·
-[`repository.ts:26`](../../services/matching/src/repository.ts#L26)
+📄 [`index.ts:84-87`](../../services/matching/src/index.ts#L84) ·
+[`repository.ts:36`](../../services/matching/src/repository.ts#L36)
 
 **The failure:** a client's `POST /match/join` times out — maybe it actually
 succeeded on the server and the response just got lost. The client retries.
@@ -137,7 +137,7 @@ instead of inventing a second one.
 
 ## The script
 
-→ [`queue.ts:3-28`](../../services/matching/src/queue.ts#L3)
+→ [`queue.ts:3-30`](../../services/matching/src/queue.ts#L3)
 
 ```lua
 local uid = ARGV[1]
@@ -245,17 +245,27 @@ straight from Postgres), `waiting` (still in the Redis queue), or `none`
 # Part 5 — What this phase deliberately did not build
 
 - **No consent or reveal endpoint.** DESIGN.md says Matching "owns... the
-  consent state behind the reveal rule," but nothing calls that yet — Collab
-  doesn't exist until phase 4, and the reveal UI doesn't exist until phase 5.
-  Building it now would mean guessing at Collab's actual needs; it's cheaper
-  to add when there's a real caller.
+  consent state behind the reveal rule," but nothing calls that yet — the
+  reveal UI doesn't exist until phase 5. Building it now would mean guessing
+  at the caller's needs; it's cheaper to add when there is one. *(Still true
+  after phase 4: Collab shipped without needing it.)*
 - **Nothing subscribes to the match-event pub/sub channel.** `index.ts`
   publishes to `match:session:{id}` on every match, per DESIGN.md's design,
   but no consumer exists in this phase. It's there so Collab or a future
-  live-status channel has something to listen for without this route
-  changing later.
+  live-status channel has something to listen for without this route changing
+  later. *(Phase 4 update: Collab turned out not to need it — a client learns
+  its session id from `/match/join` and brings it to the socket. The channel
+  is now waiting on phase 5's live status instead.)*
 - **No session-ending flow.** Nothing sets a session to "ended," because
-  nothing needs to yet — nobody's editing anything until Collab exists.
+  nothing needs to yet. *(Phase 4 update: people can now edit, so this is the
+  first deferred item here with a real caller waiting — a session ends when
+  phase 5 gives someone a button to end it.)*
+- **A user queued for two topics at once can be matched twice.** The
+  idempotence guard is per queue, so joining `(os,hard)` and then `(db,easy)`
+  leaves you waiting in both, and two different people can each claim you. The
+  fix is a `match:queued:<uid>` marker checked inside the same Lua script; it
+  is not built because nothing in the product yet lets you join a second queue
+  without leaving the first.
 - **CI doesn't orchestrate Users + Questions for Matching's contract
   tests.** See Part 3 — they run and pass locally, not yet in the per-service
   CI matrix.
@@ -271,20 +281,29 @@ straight from Postgres), `waiting` (still in the Redis queue), or `none`
 docker compose up -d --build
 ```
 
-## Get tokens for two users
+## Get tokens for three users
+
+Three, not two: claim 2 needs somebody who has not already been matched.
 
 ```bash
-curl -s -X POST "http://localhost:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-api-key" \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"alice@example.com","password":"password123","returnSecureToken":true}'
-# repeat for bob@example.com — save each idToken as $TOKEN_A / $TOKEN_B
+sign_up() {
+  curl -s -X POST "http://localhost:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-api-key" \
+    -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$1\",\"password\":\"password123\",\"returnSecureToken\":true}" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["idToken"])'
+}
+TOKEN_A=$(sign_up alice@example.com)
+TOKEN_B=$(sign_up bob@example.com)
+TOKEN_C=$(sign_up carol@example.com)
 ```
 
-Register both first, same as phase 1's demo:
+Register all three first, same as phase 1's demo — `/match/join` checks the
+caller exists in Users before it touches the queue:
 
 ```bash
-curl -s -H "Authorization: Bearer $TOKEN_A" http://localhost:8080/users/me
-curl -s -H "Authorization: Bearer $TOKEN_B" http://localhost:8080/users/me
+for T in "$TOKEN_A" "$TOKEN_B" "$TOKEN_C"; do
+  curl -s -H "Authorization: Bearer $T" http://localhost:8080/users/me
+done
 ```
 
 ## Claim 1 — two users join, get matched, session exists

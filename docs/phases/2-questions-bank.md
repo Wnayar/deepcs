@@ -19,7 +19,7 @@ the whole thing.
 
 ## 1. `reference_md` is absent by construction, not by filtering · ~5 min
 
-📄 [`repository.ts:29`](../../services/questions/src/repository.ts#L29)
+📄 [`repository.ts:32`](../../services/questions/src/repository.ts#L32)
 
 **The failure:** a question's answer key sits in the same table row as its
 public fields. Some future endpoint does `SELECT *` for a quick feature, ships
@@ -30,14 +30,14 @@ through with a partner first.
 `id, title, difficulty, parts, tags, created_at` — and every query on the
 public read path uses it. `reference_md` is never in that list, so there is no
 row shape a route handler could accidentally forward it from. Tested at
-[`repository.test.ts:31`](../../services/questions/src/repository.test.ts#L31).
+[`repository.test.ts:41`](../../services/questions/src/repository.test.ts#L41).
 
 **Say it as:** *"The safe way to keep a column off the wire isn't to remember
 to strip it in the handler — it's to never select it in the first place."*
 
 ## 2. Cursor over offset · ~5 min
 
-📄 [`repository.ts:44`](../../services/questions/src/repository.ts#L44)
+📄 [`repository.ts:47`](../../services/questions/src/repository.ts#L47)
 
 **The failure:** `OFFSET 40 LIMIT 20` on a bank someone is actively paging
 through. Postgres reads and discards the first 40 rows every time — wasted
@@ -82,7 +82,7 @@ match the mechanism to the actual cost of being wrong."*
 | 2 | [`services/questions/src/repository.ts`](../../services/questions/src/repository.ts) | List/filter/search/paginate/get, and the column list that keeps `reference_md` off the wire. |
 | 3 | [`services/questions/src/cache.ts`](../../services/questions/src/cache.ts) | The read-through cache — ~25 lines, and the whole point is what happens when it fails. |
 | 4 | [`services/questions/src/index.ts`](../../services/questions/src/index.ts) | Routes: `GET /questions`, `GET /questions/:id`. |
-| 5 | [`packages/db/migrations/005_questions_seed.sql`](../../packages/db/migrations/005_questions_seed.sql) | The 15 seeded questions. Data, not logic — see Part 3 below for where it came from. |
+| 5 | [`packages/db/migrations/005_questions_seed.sql`](../../packages/db/migrations/005_questions_seed.sql) | The 27 seeded questions. Data, not logic — see Part 3 below for where it came from. |
 
 ---
 
@@ -106,9 +106,9 @@ CREATE INDEX IF NOT EXISTS bank_tags_idx ON questions.bank USING GIN (tags);
 
 **No `topic` column.** DESIGN.md's row shape is `parts[]`, `reference_md`,
 `tags text[]` (GIN-indexed), `difficulty` — filtering is entirely through
-`tags`. A question's topic is just its first, most general tag (`os`,
-`networking`, `databases`, `oop`, `system-design`). One mechanism instead of
-two overlapping ones.
+`tags`. A question's topic is just its first, most general tag — `os`,
+`networking`, `databases`, `oop`, `system-design`, `security`, `debugging`,
+`ai-tooling`, `behavioural`. One mechanism instead of two overlapping ones.
 
 **`parts` is `jsonb`, not `text[]`.** Each entry is a short prompt string —
 `"What is a mutex and how does it work?"` — and phase 4's Collab doc seeds one
@@ -129,7 +129,7 @@ back in phase 1's role array. No new grant needed; only a new table.
 
 ## The column list is the whole guarantee
 
-→ [`repository.ts:29`](../../services/questions/src/repository.ts#L29)
+→ [`repository.ts:32`](../../services/questions/src/repository.ts#L32)
 
 ```ts
 const SUMMARY_COLUMNS = 'id, title, difficulty, parts, tags, created_at';
@@ -140,13 +140,15 @@ selects exactly this list. `reference_md` isn't filtered out after the fact;
 it's never fetched from Postgres in the first place. DESIGN.md is explicit
 about why: the reference answer is released only to Matching, over the
 internal network, once Matching has verified both participants consented to
-reveal it (ADR-06) — and that consent flow doesn't exist yet (phase 3).
+reveal it (ADR-06) — and that consent flow still doesn't exist: phase 3
+owns the state and deferred it, and phase 4 shipped without needing it, so it
+arrives with the reveal UI in phase 5.
 Questions has no way to know who consented, so for now the only safe answer is
 *never*.
 
 ## Filter, search, paginate — one query
 
-→ [`repository.ts:44-79`](../../services/questions/src/repository.ts#L44)
+→ [`repository.ts:47-90`](../../services/questions/src/repository.ts#L47)
 
 ```sql
 SELECT id, title, difficulty, parts, tags, created_at
@@ -164,7 +166,7 @@ it's trimmed from the page. No separate `COUNT` query, no "is there a next
 page" flag to keep in sync by hand.
 
 **Why `ILIKE` and not a full-text index.** DESIGN.md doesn't specify the
-search mechanism, and the bank is 15 rows. A `tsvector` GIN index is the
+search mechanism, and the bank is 27 rows. A `tsvector` GIN index is the
 right answer at scale; at this scale it's solving a problem this dataset
 doesn't have. Worth revisiting if question authoring ever ships and the bank
 grows past a few hundred rows.
@@ -180,17 +182,66 @@ endpoint that writes a row into `questions.bank`, ever. So the bank has to be
 seeded once, by hand, the same way the schema itself is: a numbered migration
 file, applied forward, never edited in place after it's run anywhere.
 
-The content is adapted from a personal CS-fundamentals study repo — 5 topics
-(OS, Networking, Databases, OOP, System Design) × 3 days each, 15 day-files
-total. Each day-file already closed with an "Interview Questions Answered"
-section pairing a handful of question headers with full-paragraph answers —
-which maps directly onto this bank's shape: **the questions become `parts[]`,
-the answers become `reference_md`.** One day-file → one bank row.
+The content is adapted from a personal CS-fundamentals study repo, which comes
+in two shapes. Five topics (OS, Networking, Databases, OOP, System Design) are
+three-day curricula — 15 day-files, one bank row each. Four more (Security,
+Debugging, AI Tooling, Behavioural) are single overview files, split into three
+rows apiece along seams the notes already have.
+
+Both shapes end the same way: a section pairing question headers with
+full-paragraph answers — "Interview Questions Answered" in the day files,
+"High-Value Interview Questions to Drill" in the overviews. That maps directly
+onto this bank's shape: **the questions become `parts[]`, the answers become
+`reference_md`.** 27 rows across 9 topics.
 
 This is why every seeded question is multi-part rather than a single Q&A
 pair: DESIGN.md's domain is "a bank of multi-part CS fundamentals
 questions," and phase 4's Collab doc is seeded from `parts[]` — a
 single-question row would give Collab nothing to scaffold.
+
+**`difficulty` is the day's position within its own topic, not an absolute
+rating** — day 1 easy, day 2 medium, day 3 hard. The notes are a curriculum
+where day 3 assumes days 1 and 2, so that is what the source actually encodes,
+and it reads correctly to someone working through a single topic. It does mean
+the labels are not comparable *across* topics: databases' "hard" (NoSQL and
+CAP) is not claimed to be harder than its own "medium" (transactions and MVCC)
+in any absolute sense, only later in the sequence.
+
+The reason it matters is downstream. Matching pairs people by topic **and**
+difficulty and refuses the match when nothing fits, so a combination with no
+question behind it is a pair of users who can never be matched — a dead end
+they meet only after choosing. Nine topics × three lands exactly on the grid,
+one question per cell:
+
+| | easy | medium | hard |
+|---|---|---|---|
+| ai-tooling | LLMs, prompts & context | agents, RAG & fine-tuning | hallucination & responsible AI |
+| behavioural | STAR & what each company tests | the competencies | delivering an answer |
+| databases | SQL foundations | transactions & MVCC | NoSQL & CAP |
+| debugging | a systematic method | common bug types | debugging in production |
+| networking | the stack & TCP/IP | HTTP | DNS, LB & API design |
+| oop | the 4 pillars | SOLID & patterns | behavioural patterns |
+| os | processes & threads | synchronization | memory & I/O |
+| security | authN, authZ & passwords | sessions, tokens & HTTPS | attacks & safe defaults |
+| system-design | foundations | classic HLD | LLD & trade-offs |
+
+An earlier ad-hoc assignment of difficulties left five cells empty. It is
+asserted now rather than assumed, in
+[`clients.test.ts`](../../services/matching/src/clients.test.ts) — the test
+walks all twenty-seven combinations, because the failure is invisible until a
+user picks the one that isn't there.
+
+**Behavioural is shaped differently, on purpose.** The other eight topics have
+a reference answer because the source notes have one. Behavioural is a *story
+scaffold*: the answers are the author's own experiences and the slots are
+deliberately blank, so there is nothing to import and inventing one would be
+exactly what those notes warn against. Its `parts[]` are therefore real
+questions to expect ("tell me about a time you failed") and its `reference_md`
+describes what a strong answer has to contain rather than supplying one. That
+still works for the product — two people take turns answering, and the
+reference is the rubric they check each other against — but it is a different
+contract from the rest of the bank, and the migration says so where the rows
+are defined.
 
 ---
 
@@ -250,7 +301,7 @@ phase 1's Part 7.
 - **No write path.** Question authoring is out of scope for the whole
   project; the bank is migration-seeded, full stop.
 - **No full-text search index.** See Part 2 — `ILIKE` is the honest answer at
-  15 rows.
+  27 rows.
 
 ---
 
@@ -266,7 +317,7 @@ alongside phase 1's migrations, same as always — nothing new to run by hand.
 ## Claim 1 — browse, filter, search, paginate, get by id
 
 ```bash
-curl -s http://localhost:8080/questions | jq '.items | length'          # 15 by default (limit=20)
+curl -s http://localhost:8080/questions | jq '.items | length'          # 20 — the default limit, of 27
 curl -s "http://localhost:8080/questions?tags=os" | jq '.items[].title'  # the 3 OS days
 curl -s "http://localhost:8080/questions?difficulty=hard" | jq '.items[].title'
 curl -s "http://localhost:8080/questions?q=memory" | jq '.items[].title' # title search

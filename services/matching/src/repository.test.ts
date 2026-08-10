@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPool } from '@deepcs/shared/db';
-import { createSession, findActiveSessionForUser } from './repository.js';
+import { createSession, findActiveSessionForUser, findSessionById } from './repository.js';
 
 /**
  * Real Postgres, not a mock (§8) — schema isolation is a database property, a
@@ -55,6 +55,17 @@ describe.skipIf(!process.env.CI && process.env.DATABASE_URL === undefined)('sess
   it('returns null for a uid with no session', async () => {
     if (!reachable) return;
     expect(await findActiveSessionForUser(pool, uid())).toBeNull();
+  });
+
+  it('finds a session by id', async () => {
+    if (!reachable) return;
+    const created = await createSession(pool, uid(), uid(), randomUUID());
+    expect((await findSessionById(pool, created.id))?.id).toBe(created.id);
+  });
+
+  it('returns null for an id with no session', async () => {
+    if (!reachable) return;
+    expect(await findSessionById(pool, randomUUID())).toBeNull();
   });
 });
 

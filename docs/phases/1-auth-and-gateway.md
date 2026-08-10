@@ -37,7 +37,7 @@ With a shared key set you need both, and `aud` is the one people forget."*
 
 ## 2. The lost update · ~15 min — the one worth the most in an interview
 
-📄 [`rate-limit.ts:31-95`](../../services/gateway/src/rate-limit.ts#L31) ·
+📄 [`rate-limit.ts:31-85`](../../services/gateway/src/rate-limit.ts#L31) ·
 test at [`rate-limit.test.ts:90`](../../services/gateway/src/rate-limit.test.ts#L90)
 
 **The failure:** a user's rate-limit bucket has one token left. Two Gateway
@@ -104,9 +104,9 @@ Roughly 700 lines total, and the first three files are 80% of the ideas.
 
 | # | File | Lines | What it is |
 |---|---|---|---|
-| 1 | [`services/gateway/src/auth.ts`](../../services/gateway/src/auth.ts) | 192 | Token verification. Start here. |
+| 1 | [`services/gateway/src/auth.ts`](../../services/gateway/src/auth.ts) | 207 | Token verification. Start here. |
 | 2 | [`services/gateway/src/rate-limit.ts`](../../services/gateway/src/rate-limit.ts) | 155 | The Lua token bucket — ADR-08's whole reason to exist. |
-| 3 | [`services/gateway/src/index.ts`](../../services/gateway/src/index.ts) | 192 | Wires both into hooks, then proxies. |
+| 3 | [`services/gateway/src/index.ts`](../../services/gateway/src/index.ts) | 256 | Wires both into hooks, then proxies. |
 | 4 | [`services/users/src/repository.ts`](../../services/users/src/repository.ts) | 104 | The lazy upsert and why `RETURNING` matters. |
 | 5 | [`packages/db/migrations/002_service_roles.sql`](../../packages/db/migrations/002_service_roles.sql) | 75 | The schema boundary, as literal SQL. |
 | 6 | [`packages/shared/src/headers.ts`](../../packages/shared/src/headers.ts) | 43 | Why "absent" is a state, not a gap. |
@@ -214,7 +214,7 @@ validly-signed token issued for someone *else's* project therefore passes
 signature, `exp`, and an `iss`-shaped check. Without an audience check the
 Gateway would accept it and hand the request a stranger's UID. This is the
 classic mistake in Firebase verification, and it is tested explicitly at
-[`auth.test.ts:66`](../../services/gateway/src/auth.test.ts#L66).
+[`auth.test.ts:86`](../../services/gateway/src/auth.test.ts#L86).
 
 **The UID comes from `sub`, not `user_id`** →
 [`auth.ts:148`](../../services/gateway/src/auth.ts#L148). Firebase puts the same
@@ -223,14 +223,14 @@ is what keeps ADR-04's "migration is a re-registration flow, not a rewrite" true
 
 **Failure reasons are logged, not returned** →
 [`auth.ts:160`](../../services/gateway/src/auth.ts#L160) maps jose's error codes,
-and [`index.ts:85-86`](../../services/gateway/src/index.ts#L85) logs the reason
+and [`index.ts:117-118`](../../services/gateway/src/index.ts#L117) logs the reason
 while replying with a flat 401. Telling a caller whether a token was expired,
 forged, or issued for another project is free information about what to try next.
 
 ## The three cases, and the one people miss
 
 → [`auth.ts:187`](../../services/gateway/src/auth.ts#L187) (`bearerToken`) ·
-[`index.ts:58-90`](../../services/gateway/src/index.ts#L58) (the hook)
+[`index.ts:88-122`](../../services/gateway/src/index.ts#L88) (the hook)
 
 | Request | Result |
 |---|---|
@@ -245,7 +245,7 @@ and the verifier throws for the second — that is the whole distinction.
 
 ## The header-forgery line
 
-→ [`index.ts:69`](../../services/gateway/src/index.ts#L69)
+→ [`index.ts:99`](../../services/gateway/src/index.ts#L99)
 
 ```ts
 delete req.headers[USER_ID_HEADER];
@@ -293,7 +293,7 @@ accepting forged identities. Refusing to start.
 
 A crash on boot is loud. A Gateway that started with signature checking disabled
 would look completely healthy while accepting anything. Tested at
-[`auth.test.ts:90`](../../services/gateway/src/auth.test.ts#L90).
+[`auth.test.ts:119`](../../services/gateway/src/auth.test.ts#L119).
 
 **One consequence worth stating plainly:** in emulator mode, tampering with the
 *signature* is undetectable, because there is no signature. Only payload and
@@ -346,7 +346,7 @@ pass. Without atomicity, more would.
 
 ## Why a Lua script and not `INCR`
 
-→ [`rate-limit.ts:31-95`](../../services/gateway/src/rate-limit.ts#L31) — the
+→ [`rate-limit.ts:31-85`](../../services/gateway/src/rate-limit.ts#L31) — the
 script, with the reasoning inline
 
 A fixed-window counter needs only `INCR`, which is already atomic — that is how
@@ -376,7 +376,7 @@ buckets are an unbounded key space, and Upstash caps both storage and commands
 per month (§7).
 
 **The limiter fails open** →
-[`index.ts:106-120`](../../services/gateway/src/index.ts#L106). A Redis outage
+[`index.ts:151-165`](../../services/gateway/src/index.ts#L151). A Redis outage
 logs an error and allows the request. Failing closed would turn a cache outage
 into a total outage. This is a deliberate availability-over-enforcement choice,
 defensible only because the thing being protected is request volume rather than
@@ -387,8 +387,27 @@ money or data — `--max-instances` still caps what the traffic can cost.
 tokens refilling at 1/s; per-user 120 at 2/s. Per-user is larger because an IP
 can be an entire university NAT while a user is one person. Which bucket a
 request draws on is decided at
-[`index.ts:101`](../../services/gateway/src/index.ts#L101), *after* auth — because
+[`index.ts:146`](../../services/gateway/src/index.ts#L146), *after* auth — because
 the answer depends on whether the request turned out to be authenticated.
+
+**Two things the per-IP bucket quietly depends on**, both added later once it
+became clear the limiter did not actually work without them:
+
+- **`trustProxy: 1`** in
+  [`createService`](../../packages/shared/src/service.ts). Fastify's `req.ip`
+  is the socket's peer address, which behind Cloud Run is Google's front end
+  rather than the caller — so *every* anonymous request would share one bucket
+  and one client could lock out everyone. It reads `X-Forwarded-For` instead.
+  `1` and not `true`: whatever sits in front appends to any header the caller
+  supplied, so only the rightmost entry is trustworthy, and trusting the whole
+  chain would let a client mint a fresh bucket per forged header. Both
+  behaviours are pinned by tests in
+  [`service.test.ts`](../../packages/shared/src/service.test.ts).
+- **`/health*` is exempt** ([`index.ts:144`](../../services/gateway/src/index.ts#L144)).
+  Registering the health routes before this hook exists does not exempt them —
+  Fastify binds hooks to every route at boot — so an uptime probe was drawing
+  from the same anonymous bucket as real traffic, and at more than one probe a
+  second it exhausts capacity 60 on its own.
 
 **Script registration** →
 [`rate-limit.ts:126`](../../services/gateway/src/rate-limit.ts#L126).
@@ -578,7 +597,7 @@ The second is the one worth pausing on: it is the difference between an
 authentication system and a suggestion.
 
 For expired and wrong-project tokens, the unit tests
-([`auth.test.ts:44`](../../services/gateway/src/auth.test.ts#L44)) are faster than
+([`auth.test.ts:73`](../../services/gateway/src/auth.test.ts#L73)) are faster than
 constructing them by hand.
 
 ## Claim 3 — the row appears once
@@ -640,8 +659,11 @@ Stated so a green demo does not imply more than it covers.
   ([`index.ts:45`](../../services/users/src/index.ts#L45)). Phase 7 puts it behind
   the `EventLog` interface. It is logged now so the once-per-user property is
   observable before there is a consumer to prove it.
-- **No per-user rate limit on `/match/*`** — §6 asks for a tighter bucket there.
-  Phase 3, when the routes exist.
+- **No tighter rate-limit bucket on `/match/*`** — §6 asks for one. Per-user
+  limiting itself exists (`BUCKETS.user`); what is missing is a *stricter*
+  allowance on the matching routes specifically. Phases 3 and 4 both shipped
+  without it, so this is now a known gap rather than a scheduled one — the
+  routes are cheap enough that the general per-user bucket has been sufficient.
 - **Signature verification is not exercised locally.** The emulator issues
   unsigned tokens; that path runs only against real Firebase.
 - **`GET /users/me` does not accept a profile update yet.** `display_name` and

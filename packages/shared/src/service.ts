@@ -11,9 +11,37 @@ import type { ServiceName } from './services';
  * server and must never import Fastify — is what forced the subpath exports.
  */
 
+/** What a readiness probe reports: one entry per dependency this service
+ * cannot serve without. */
+export type ReadinessChecks = Record<string, 'ok' | 'unreachable'>;
+
+/**
+ * Turns a dependency ping into the word a health endpoint wants — e.g.
+ *   { postgres: await probe(pingDb(pool)) }
+ * Swallowing the error is the point: a health route reports a dependency
+ * being down, it does not itself fail because one is.
+ */
+export async function probe(check: Promise<unknown>): Promise<'ok' | 'unreachable'> {
+  try {
+    await check;
+    return 'ok';
+  } catch {
+    return 'unreachable';
+  }
+}
+
 export interface ServiceOptions {
   name: ServiceName;
   port: number;
+  /**
+   * Dependencies that must be reachable for this service to answer requests
+   * at all. Omit it when there are none — that is a real answer, not a gap.
+   * The Gateway omits it on purpose: it fails *open* when Redis is down
+   * (see its rate-limit hook), so a Redis outage is not a reason to take it
+   * out of rotation. Questions omits Redis for the same reason — the cache
+   * being down makes it slower, not broken.
+   */
+  ready?: () => Promise<ReadinessChecks>;
 }
 
 /**
@@ -42,11 +70,29 @@ class DeepcsLogController extends LogController {
  *   3. `/health/live` and `/health/ready` as separate endpoints.
  *   4. Graceful shutdown on SIGTERM.
  */
-export function createService({ name, port }: ServiceOptions): {
+export function createService({ name, port, ready }: ServiceOptions): {
   app: FastifyInstance;
   start: () => Promise<void>;
 } {
   const app = Fastify({
+    /**
+     * Without this, `req.ip` is the socket's peer address — which behind Cloud
+     * Run is Google's front end, not the caller. Every anonymous request would
+     * then share one `rl:ip:` bucket and the per-IP limiter in §6 would be a
+     * per-*deployment* limiter: one client spending 60 tokens locks out
+     * everyone. It looks correct locally only because compose publishes the
+     * port directly, so the peer really is the client.
+     *
+     * `1`, not `true`. Cloud Run *appends* the caller's address to any
+     * inbound X-Forwarded-For rather than replacing it, so the rightmost entry
+     * is the one Google vouches for and everything left of it is caller-
+     * supplied. `true` trusts the whole chain and takes the leftmost — which a
+     * client sets themselves, handing them a fresh bucket per forged header
+     * and removing the limit entirely. `1` trusts exactly the one hop in front
+     * of us. Re-check this number in phase 6 against whatever actually sits in
+     * front of the service; it is a property of the deployment, not of Fastify.
+     */
+    trustProxy: 1,
     requestIdHeader: 'x-request-id',
     // An instance, not the class — Fastify validates this at boot.
     logController: new DeepcsLogController(),
@@ -74,11 +120,31 @@ export function createService({ name, port }: ServiceOptions): {
    * not connected is *live* but not *ready* — conflating them means the
    * orchestrator kills a healthy process that is merely still starting up.
    *
-   * At phase 0 there are no dependencies to check, so readiness is trivially
-   * true. Phase 1 gives it real work.
+   * Readiness only means something if it can say *no*, which is what the
+   * optional `ready` probe is for. A service that passes one and cannot reach
+   * a dependency answers 503 here, so it stops receiving traffic it would only
+   * fail. A service that passes none answers 200 unconditionally — and says so
+   * by omitting `checks` rather than returning an empty object that looks like
+   * a check that ran and found nothing.
    */
   app.get('/health/live', async () => ({ status: 'ok', service: name }));
-  app.get('/health/ready', async () => ({ status: 'ok', service: name, checks: {} }));
+
+  app.get('/health/ready', async (_req, reply) => {
+    if (!ready) return { status: 'ok', service: name };
+
+    let checks: ReadinessChecks;
+    try {
+      checks = await ready();
+    } catch (err) {
+      app.log.error({ err }, 'readiness probe threw');
+      return reply.code(503).send({ status: 'degraded', service: name });
+    }
+
+    if (Object.values(checks).some((state) => state !== 'ok')) {
+      return reply.code(503).send({ status: 'degraded', service: name, checks });
+    }
+    return { status: 'ok', service: name, checks };
+  });
 
   const start = async (): Promise<void> => {
     /**

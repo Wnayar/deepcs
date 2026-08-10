@@ -1,15 +1,22 @@
 import { z } from 'zod';
-import { createService } from '@deepcs/shared/service';
+import { createService, probe } from '@deepcs/shared/service';
 import { createPool, pingDb } from '@deepcs/shared/db';
 import { createRedis, pingRedis } from '@deepcs/shared/redis';
 import { SERVICES } from '@deepcs/shared/services';
 import { getQuestion, listQuestions } from './repository.js';
 import { cached } from './cache.js';
 
-const { app, start } = createService({ name: 'questions', port: SERVICES.questions.port });
-
 const pool = createPool();
 const redis = createRedis();
+
+const { app, start } = createService({
+  name: 'questions',
+  port: SERVICES.questions.port,
+  // Postgres only. Redis here is a read-through cache in front of a bank that
+  // barely changes — losing it makes this service slower, not wrong, so it is
+  // reported by /health/deps but must not take the instance out of rotation.
+  ready: async () => ({ postgres: await probe(pingDb(pool)) }),
+});
 
 /** How long a cached list/search result is reused before asking Postgres
  * again. Short, because the bank barely changes, but long enough that repeat
@@ -19,11 +26,8 @@ const LIST_CACHE_TTL_SECONDS = 60;
 app.get('/', async () => ({ service: 'questions', phase: 2 }));
 
 app.get('/health/deps', async () => {
-  const [db, rd] = await Promise.allSettled([pingDb(pool), pingRedis(redis)]);
-  return {
-    postgres: db.status === 'fulfilled' ? 'ok' : 'unreachable',
-    redis: rd.status === 'fulfilled' ? 'ok' : 'unreachable',
-  };
+  const [postgres, redisState] = await Promise.all([probe(pingDb(pool)), probe(pingRedis(redis))]);
+  return { postgres, redis: redisState };
 });
 
 const listQuery = z.object({

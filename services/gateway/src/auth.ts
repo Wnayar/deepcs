@@ -190,3 +190,18 @@ export function bearerToken(header: string | undefined): string | null {
   if (scheme?.toLowerCase() !== 'bearer' || !value) return null;
   return value;
 }
+
+/**
+ * Pull the token out of a `?token=` query param, e.g.
+ *   wss://gateway/collab/connect?sessionId=...&token=<firebase-id-token>
+ *
+ * A browser's native WebSocket constructor cannot set an Authorization
+ * header, so a WS upgrade is the one request type that authenticates this
+ * way instead — see the onRequest hook in index.ts, which only consults this
+ * for requests carrying an `Upgrade: websocket` header.
+ */
+export function queryToken(query: unknown): string | null {
+  if (typeof query !== 'object' || query === null) return null;
+  const value = (query as Record<string, unknown>).token;
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
