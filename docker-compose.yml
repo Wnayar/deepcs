@@ -136,6 +136,10 @@ services:
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       NODE_ENV: development
+      # Stats is two containers from one image: `stats` is the job and
+      # `stats-api` is the read server. The Gateway wants the server, and
+      # its default of http://<service>:<port> would find the job.
+      STATS_URL: http://stats-api:8085
       REDIS_URL: redis://redis:6379
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-demo-deepcs}
       FIREBASE_AUTH_EMULATOR_HOST: firebase-auth:9099
@@ -252,6 +256,31 @@ services:
   # failure — it is the whole point (DESIGN.md §5). In production Cloud
   # Scheduler invokes it every 5 minutes; locally, run it on demand with
   #   docker compose run --rm stats
+  # The read side of Stats: same image, different command. `stats` below is the
+  # job, which is the image's default entrypoint and what Cloud Run runs on a
+  # schedule; this serves `GET /stats` and a session's summary, which nothing
+  # else can, because only `stats_svc` may read the `stats` schema (ADR-09).
+  stats-api:
+    <<: *service
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+      args:
+        SERVICE: stats
+    command: ['pnpm', '--filter', '@deepcs/stats', 'serve']
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      NODE_ENV: development
+      PORT: 8085
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://stats_svc:stats_svc@postgres:5432/deepcs
+    ports:
+      - '8085:8085'
+    volumes:
+      - ./packages/shared/src:/app/packages/shared/src:ro
+      - ./services/stats/src:/app/services/stats/src:ro
+
   stats:
     <<: *service
     build:

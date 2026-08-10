@@ -213,6 +213,11 @@ const ROUTES = [
   { prefix: '/steps', service: 'questions', websocket: false },
   { prefix: '/match', service: 'matching', websocket: false },
   { prefix: '/collab', service: 'collab', websocket: true },
+  // Both reach the Stats read server. `/stats` is public aggregates; a
+  // session's summary is under `/sessions` because it is about one session and
+  // not about the whole system, and the two would read wrong sharing a prefix.
+  { prefix: '/stats', service: 'stats', websocket: false },
+  { prefix: '/sessions', service: 'stats', websocket: false },
 ] as const;
 
 /**

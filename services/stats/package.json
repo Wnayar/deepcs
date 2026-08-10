@@ -5,16 +5,20 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
+    "serve": "tsx src/server.ts",
     "build": "tsup",
     "start": "node dist/index.js",
+    "start:serve": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@deepcs/shared": "workspace:*",
+    "fastify": "catalog:",
     "ioredis": "catalog:",
     "pg": "catalog:",
-    "pino": "catalog:"
+    "pino": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

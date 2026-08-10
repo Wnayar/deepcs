@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPool } from '@deepcs/shared/db';
 import type { DomainEvent } from '@deepcs/shared/events';
 import { applyBatch } from './consumer.js';
+import { readSummary } from './repository.js';
 
 /**
  * Real Postgres, because what is under test is what the database does with a
@@ -152,5 +153,37 @@ describe('applying a batch twice', () => {
     expect(
       await count('SELECT count(*) AS n FROM stats.session_summaries WHERE session_id = $1', good),
     ).toBe(0);
+  });
+});
+
+describe('the read side', () => {
+  it('shows a summary to a participant and hides it from everyone else', async (ctx) => {
+    if (!reachable) return ctx.skip();
+    const session = sessionId(4);
+    await applyBatch(pool, [
+      matchCreated(session, { participants: `alice-${suffix},bob-${suffix}` }),
+    ]);
+
+    expect((await readSummary(pool, session, `alice-${suffix}`))?.topic).toBe('os');
+    expect((await readSummary(pool, session, `bob-${suffix}`))?.topic).toBe('os');
+
+    // Not an error, and not a 403 either: the route turns this into a 404,
+    // because 403 would confirm the session exists to somebody with no
+    // business knowing that.
+    expect(await readSummary(pool, session, `carol-${suffix}`)).toBeNull();
+  });
+
+  it('never returns the other participant', async (ctx) => {
+    if (!reachable) return ctx.skip();
+    const session = sessionId(5);
+    await applyBatch(pool, [
+      matchCreated(session, { participants: `alice-${suffix},bob-${suffix}` }),
+    ]);
+
+    // The uids are in the table, because membership cannot be checked without
+    // them. They must not come back out: a session is anonymous everywhere
+    // else, and a summary is not the place that stops being true.
+    const summary = await readSummary(pool, session, `alice-${suffix}`);
+    expect(JSON.stringify(summary)).not.toContain(`bob-${suffix}`);
   });
 });

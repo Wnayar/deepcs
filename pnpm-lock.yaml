@@ -393,6 +393,9 @@ importers:
       '@deepcs/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      fastify:
+        specifier: 'catalog:'
+        version: 5.11.0
       ioredis:
         specifier: 'catalog:'
         version: 5.11.1
@@ -402,6 +405,9 @@ importers:
       pino:
         specifier: 'catalog:'
         version: 9.14.0
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
