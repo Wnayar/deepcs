@@ -109,7 +109,14 @@ services:
     environment:
       DATABASE_URL: postgresql://deepcs:deepcs@postgres:5432/deepcs
     volumes:
-      - ./packages/db:/app/packages/db:ro
+      # The migrations and the runner, not the whole package. Mounting
+      # `./packages/db` overlays the image's `node_modules` with the host's, and
+      # pnpm then decides the workspace needs reinstalling before it will run a
+      # script — into a read-only mount, so it exits 1 and every service waiting
+      # on `service_completed_successfully` never starts. Every other service
+      # here mounts only `src` for the same reason.
+      - ./packages/db/migrations:/app/packages/db/migrations:ro
+      - ./packages/db/migrate.mjs:/app/packages/db/migrate.mjs:ro
     depends_on:
       postgres:
         condition: service_healthy
