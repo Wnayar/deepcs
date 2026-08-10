@@ -296,28 +296,58 @@ for, or has been reloaded since, still finds its way back. A test in
 `reveal.test.ts` pins that contract by matching two users where one of them
 never polls at all.
 
-That watcher then had to be paid for. Polling from the shell means it runs while
-the reader is doing something else, and the first version ran whenever anyone was
-signed in without a session, forever. At four seconds that is 21,600 requests for
-a tab left open overnight, but the request count is not the problem: Neon
-suspends idle compute and Cloud Run scales to zero, and a request every four
-seconds stops both. One idle tab was an always-on database and two always-on
-services, billed all month, for nobody.
+That watcher then had to be paid for, and the first two attempts were both
+wrong in instructive ways.
 
-`frontend/src/queue.ts` holds the three rules that bound it. Ask only while
-actually queued, which is a flag in storage rather than React state because
-navigating away is exactly the case that broke. Ask only while the tab is in
-front of a reader. And widen the gap as the wait goes on, because a match is most
-likely in the first moments and a fixed interval keeps paying the first price for
-the last odds, then give up after fifteen minutes. A whole wait now costs about
-eighty requests instead of 450, and an idle reader costs none instead of 900 an
-hour.
+**Polling from the shell.** It ran whenever anyone was signed in without a
+session. At four seconds that is 21,600 requests for a tab left open overnight,
+but the request count is the small half: Neon suspends idle compute and Cloud Run
+scales to zero, and a request every four seconds stops both. One idle reader was
+an always-on database and two always-on services, billed all month, for nobody.
 
-The one thing that deliberately does *not* clear the flag is the "stop waiting"
-button, and that is worth reading `Match.tsx` for. There is no leave-the-queue
-endpoint, so pressing it stops this screen asking without taking you out of the
-queue: a partner can still arrive. Clearing the flag would stop the shell
-watching too and put the original bug straight back.
+**Polling, but bounded.** Ask only while queued, only while the tab is in front
+of a reader, and on a widening gap that gives up after fifteen minutes. That
+fixed the cost and bought it with lateness: six minutes into a wait, a partner's
+arrival surfaced up to twenty seconds after it happened, with the partner sitting
+alone in an editor for those twenty seconds. Both halves of the trade were bad,
+which is usually the sign the mechanism is wrong rather than the constants.
+
+**Being told.** `GET /match/events` is one ordinary HTTP response that Matching
+declines to finish. When a join publishes to that user's Redis channel, Matching
+writes a `data:` line into the still-open response. Nothing is spent while
+nothing happens, and delivery is immediate: 23 ms end to end through the Gateway.
+Both halves of the earlier trade disappear, which is what a right mechanism looks
+like.
+
+Three details in it are worth reading the code for.
+
+**The offline queue goes back on for the subscriber.** `@deepcs/shared/redis`
+sets `enableOfflineQueue: false` so a user-facing request fails fast instead of
+hanging, which is right for a request and wrong for a long-lived listener:
+subscribing before the freshly duplicated socket has connected threw, the route
+opened anyway, heartbeats streamed, and events silently never arrived. Collab's
+room subscriber had already solved this and the reasoning was already written
+down next to it.
+
+**The current session is sent on connect.** A partner can arrive between the
+join response and the stream being opened, and that message is published to
+nobody. Sending current state on connect means the answer can be repeated but
+never missed, and a repeat is harmless because the client acts on a session id.
+
+**Its failure mode is silence, so the test is a clock.** Anything in the path
+that buffers turns the stream into one long pause followed by everything at once,
+with no error anywhere: the request succeeds and the headers are correct. Reading
+the code cannot tell you whether that is happening. `matchEvents.test.ts` asserts
+through the Gateway that the event arrives within three seconds, and putting the
+subscriber bug back makes it fail.
+
+One poll survives, and it is not for matches. The pair claim lives in Redis and
+the session row in Postgres with no transaction spanning them, so a crash between
+the two leaves somebody claimed with no session and no event ever published.
+`GET /match/status` answering `none` is the documented recovery from phase 3 and
+nothing else detects it, so the match screen checks once a minute while it is
+open. A crash window is not a race, and one request a minute is not worth
+optimising.
 
 The header then has three states rather than two, and the third is the one worth
 having. "Return to session" is right for someone who stepped out of a room they

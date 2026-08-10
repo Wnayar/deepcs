@@ -120,3 +120,11 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - **Colours live in `:root` custom properties only.** No component names a
   colour, so light and dark are two lists of variables rather than two
   stylesheets.
+- **The browser is told, not asked.** A client that needs to know about an event
+  another user caused subscribes to `GET /match/events` rather than polling.
+  Polling kept Neon's compute awake and every service warm for people who were
+  only waiting, and slowing it down enough to afford made the news late. The one
+  remaining timer is the crash-recovery check in `Match.tsx`, which detects a
+  lost pair claim, not a match.
+- **Deploy is phase 9, not phase 6.** Kubernetes runs locally at phase 6 and
+  costs nothing; the cloud deploy is last. DESIGN.md §10 records why.

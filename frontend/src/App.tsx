@@ -3,7 +3,8 @@ import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'rea
 import { currentSession, ensureProfile, type Question, type Session } from './api';
 import { signOutUser, watchUser, type User } from './auth';
 import { useTheme } from './theme';
-import { clearQueued, nextDelayMs, readQueued } from './queue';
+import { clearQueued, readQueued } from './queue';
+import { watchForMatch } from './matchEvents';
 import { RoadmapPage } from './pages/Roadmap';
 import { StepPage } from './pages/Step';
 import { LoginPage } from './pages/Login';
@@ -71,67 +72,26 @@ export function App() {
   /**
    * Watch for a partner, from wherever the reader happens to be.
    *
-   * Being matched is something that happens *to* you: whoever queues first is
-   * matched by the second person's request. The match screen notices that, but
-   * only while it is on screen, so somebody who queued and went to read a
-   * lesson was put into a session nobody told them about.
+   * Being matched is caused by somebody else's request: whoever queues first is
+   * matched when the second person joins. The match screen could watch for
+   * that, but only while it is on screen, so somebody who queued and went to
+   * read a lesson was put into a session nobody told them about. Watching from
+   * the shell means it is noticed from any page.
    *
-   * Three conditions guard it, and each one is a cost decision as much as a
-   * correctness one:
-   *
-   *   - **Only while queued.** Watching whenever someone is signed in and has
-   *     no session meant every reader polled forever. Neon suspends idle
-   *     compute and Cloud Run scales to zero, and neither can happen while a
-   *     request arrives every few seconds, so an idle tab was an always-on
-   *     database and two always-on services billed all month.
-   *   - **Only while the tab is in front.** A backgrounded tab has nobody to
-   *     tell.
-   *   - **Not forever, and not at a fixed rate.** A match is most likely in the
-   *     first moments; after that the cost of asking is unchanged and the odds
-   *     are not, so the gap widens and eventually it gives up.
+   * It is a stream rather than a timer, and the guard is narrower than it used
+   * to be. What is left of it still matters: a held-open connection occupies a
+   * concurrency slot and keeps a service alive, so it is opened only by someone
+   * actually waiting, and given up once the queue flag expires.
    */
   useEffect(() => {
     if (!user || active) return;
+    if (!readQueued()) return;
 
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let stopped = false;
-
-    const tick = async () => {
-      if (stopped) return;
-
-      const queued = readQueued();
-      if (!queued) return; // nothing to wait for, or waited long enough
-
-      if (!document.hidden) {
-        try {
-          const session = await currentSession();
-          if (session && !stopped) {
-            clearQueued();
-            setActive(session);
-            setArrived(true);
-            return;
-          }
-        } catch {
-          /* transient, and the next tick tries again */
-        }
-      }
-
-      if (!stopped) timer = setTimeout(() => void tick(), nextDelayMs(Date.now() - queued.since));
-    };
-
-    // An immediate check on returning to the tab, so someone who switches back
-    // is not left staring at a stale header until the next gap elapses.
-    const onVisible = () => {
-      if (!document.hidden) void tick();
-    };
-
-    void tick();
-    document.addEventListener('visibilitychange', onVisible);
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
+    return watchForMatch((session) => {
+      clearQueued();
+      setActive(session);
+      setArrived(true);
+    });
   }, [user, active, queuedAt]);
 
   if (!ready) return <main className="muted">Loading…</main>;

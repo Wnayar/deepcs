@@ -70,6 +70,21 @@ function sessionChannel(sessionId: string): string {
   return `match:session:${sessionId}`;
 }
 
+/** Where a single user is told things that happened to them. Keyed by uid
+ * rather than by session, because the whole point is to reach somebody who does
+ * not know a session exists yet. */
+function userChannel(uid: string): string {
+  return `match:user:${uid}`;
+}
+
+/** How often to write a comment line into an idle stream.
+ *
+ * Nothing reads it. It exists because an HTTP response with no bytes flowing
+ * looks abandoned to anything sitting in the middle, and proxies and load
+ * balancers close idle connections on their own schedule. It is also what lets
+ * the browser tell a working-but-quiet stream from a broken one. */
+const SSE_HEARTBEAT_MS = 20_000;
+
 /**
  * Announces something that happened to a session. Fire-and-forget on purpose:
  * a Redis hiccup must not fail the request that caused it, because the durable
@@ -172,7 +187,103 @@ app.post('/match/join', async (req, reply) => {
     users: [uid, partnerUid],
   });
 
+  // And to each participant by name. This is what replaced polling: the person
+  // who queued first is matched by *this* request, so without a message aimed
+  // at them they have no way to find out except by asking again and again.
+  // Both sides get one, because the joiner's own response can still be lost.
+  const announcement = JSON.stringify({ type: 'matched', ...toResponse(session).session });
+  await Promise.all(
+    [uid, partnerUid].map((who) =>
+      redis
+        .publish(userChannel(who), announcement)
+        .catch((err: unknown) => req.log.warn({ err, user_id: who }, 'user event publish failed')),
+    ),
+  );
+
   return reply.code(201).send(toResponse(session));
+});
+
+/**
+ * A stream of things that happen to the caller, e.g.
+ *   GET /match/events        (X-User-Id: alice)
+ * holds the response open and writes `data: {"type":"matched",...}` when a
+ * partner arrives.
+ *
+ * Server-sent events, which is an ordinary HTTP response the server declines to
+ * finish. That is the whole mechanism: no upgrade handshake, no second
+ * protocol, so the Gateway proxies it, `X-User-Id` reaches here, and logging
+ * works, all exactly as they do for every other route.
+ *
+ * It replaced polling. Being matched is caused by somebody else's request, and
+ * HTTP gives a server no way to speak first, so a client that wants to know had
+ * to keep asking. Asking every few seconds kept Neon's compute awake and every
+ * service warm for people who were doing nothing, and slowing it down to fix
+ * that meant learning about your partner up to twenty seconds late while they
+ * sat alone in the editor. Neither problem exists here: nothing is spent while
+ * nothing happens, and the message arrives when it arrives.
+ */
+app.get('/match/events', async (req, reply) => {
+  const uid = getUserId(req);
+  if (!uid) {
+    return reply.code(401).send({ error: 'unauthorized' });
+  }
+
+  // Fastify must not try to send a reply of its own: this handler owns the
+  // socket from here and writes to it directly until the client goes away.
+  reply.hijack();
+  reply.raw.writeHead(200, {
+    'content-type': 'text/event-stream',
+    // `no-transform` is the load-bearing half. Anything that buffers or
+    // compresses this response turns a stream into one silent pause followed
+    // by everything at once, which is the failure mode of every SSE endpoint
+    // that has ever quietly not worked.
+    'cache-control': 'no-cache, no-transform',
+    connection: 'keep-alive',
+    'x-accel-buffering': 'no',
+  });
+  reply.raw.write(': open\n\n');
+
+  // Its own connection, because a subscribed ioredis client cannot run ordinary
+  // commands and this one is shared with the queue and every other route.
+  //
+  // The offline queue goes back on for it, exactly as Collab does for its room
+  // subscriber. @deepcs/shared/redis turns it off so that a user-facing request
+  // fails fast rather than hanging, which is right for a request; this is a
+  // long-lived listener, and subscribing before the freshly duplicated socket
+  // has finished connecting should wait rather than throw. Without it this
+  // route opened, streamed its heartbeats, and silently delivered nothing.
+  const subscriber = redis.duplicate({ enableOfflineQueue: true });
+  const send = (payload: string) => reply.raw.write(`data: ${payload}\n\n`);
+
+  try {
+    await subscriber.subscribe(userChannel(uid));
+  } catch (err) {
+    req.log.error({ err, user_id: uid }, 'could not subscribe to user events');
+    // duplicate() has already opened a socket, so it has to be closed or it
+    // reconnects for the life of the process, once per failed stream.
+    subscriber.disconnect();
+    reply.raw.end();
+    return;
+  }
+  subscriber.on('message', (_channel, payload) => send(payload));
+
+  // The race this closes: a partner can arrive between the join response and
+  // this stream being opened, and that message is published to nobody. Sending
+  // the current state on connect means the answer is never missed, only ever
+  // repeated, and a repeat is harmless because the client acts on a session id.
+  try {
+    const existing = await findActiveSessionForUser(pool, uid);
+    if (existing) send(JSON.stringify({ type: 'matched', ...toResponse(existing).session }));
+  } catch (err) {
+    req.log.warn({ err, user_id: uid }, 'could not send current session on connect');
+  }
+
+  const heartbeat = setInterval(() => reply.raw.write(': ping\n\n'), SSE_HEARTBEAT_MS);
+
+  req.raw.on('close', () => {
+    clearInterval(heartbeat);
+    subscriber.disconnect();
+  });
 });
 
 const statusQuery = z.object({

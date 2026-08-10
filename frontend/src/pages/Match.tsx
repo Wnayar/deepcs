@@ -1,11 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { clearQueued, markQueued, nextDelayMs, readQueued } from '../queue';
+import { clearQueued, markQueued } from '../queue';
 import { getRoadmap, joinQueue, matchStatus, type Difficulty, type Session } from '../api';
 
-/** How soon to ask the first time. Everything after that widens, and the
- * schedule lives in `queue.ts` alongside the reason it exists. */
-const FIRST_POLL_MS = 2_000;
+/**
+ * How often to check that the claim still exists.
+ *
+ * This is not how a match is noticed. That arrives on the stream the shell
+ * holds open, immediately and without asking. This covers the one case a
+ * message cannot: the pair claim lives in Redis and the session row in
+ * Postgres with no transaction spanning them, so a crash between the two
+ * leaves somebody claimed with no session and no event ever published. Phase 3
+ * documented `GET /match/status` answering `none` as the recovery, and nothing
+ * else detects it.
+ *
+ * A minute apart, because it is a crash window rather than a race, and one
+ * request a minute while somebody watches a waiting screen is not worth
+ * optimising.
+ */
+const CLAIM_CHECK_MS = 60_000;
 
 interface Props {
   /** A session already in progress, if there is one. */
@@ -87,9 +100,11 @@ export function MatchPage({ active, onJoined, onQueueChanged }: Props) {
     }
   };
 
-  const poll = async () => {
+  /** Not a poll for a partner. See CLAIM_CHECK_MS: this only catches a claim
+   * that was lost to a crash, which no message can announce. */
+  const checkClaim = async () => {
     if (document.hidden) {
-      timer.current = setTimeout(() => void poll(), FIRST_POLL_MS);
+      timer.current = setTimeout(() => void checkClaim(), CLAIM_CHECK_MS);
       return;
     }
     try {
@@ -101,14 +116,7 @@ export function MatchPage({ active, onJoined, onQueueChanged }: Props) {
         const rejoined = await joinQueue(topic, difficulty);
         if (rejoined.status === 'matched') return void enter(rejoined.session);
       }
-      // Widening, and only while this tab is in front of somebody. A match
-      // screen left open in a background tab has nobody to tell, and the
-      // request still costs a warm service and a woken database.
-      const queued = readQueued();
-      timer.current = setTimeout(
-        () => void poll(),
-        queued ? nextDelayMs(Date.now() - queued.since) : FIRST_POLL_MS,
-      );
+      timer.current = setTimeout(() => void checkClaim(), CLAIM_CHECK_MS);
     } catch (err) {
       setWaiting(false);
       setError(err instanceof Error ? err.message : 'lost contact with matching');
@@ -121,10 +129,11 @@ export function MatchPage({ active, onJoined, onQueueChanged }: Props) {
     try {
       const result = await joinQueue(topic, difficulty);
       if (result.status === 'matched') return void enter(result.session);
-      // Remembered, so the shell keeps watching after this screen is left.
+      // Remembered, so the shell opens its stream and keeps watching after this
+      // screen is navigated away from.
       markQueued(topic, difficulty);
       onQueueChanged();
-      timer.current = setTimeout(() => void poll(), FIRST_POLL_MS);
+      timer.current = setTimeout(() => void checkClaim(), CLAIM_CHECK_MS);
     } catch (err) {
       setWaiting(false);
       setError(err instanceof Error ? err.message : 'could not join the queue');
