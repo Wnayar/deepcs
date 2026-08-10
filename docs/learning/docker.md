@@ -20,7 +20,7 @@ of it is lookup material. Pick the path that matches why you're here:
 | debug a container that won't start | Part 7 | as needed |
 | understand *why* the Dockerfile is shaped like that | Part 3 | 10 min |
 | decode one specific line you're stuck on | Part 2 (instructions) or Part 5 (line-by-line) | lookup |
-| know what phase 9 adds | Part 8 | 5 min |
+| know what phase 10 adds | Part 8 | 5 min |
 
 Part 1 and the interview section are the only two that are worth reading straight
 through. They're written to stand alone — Part 1 gives you the model, the
@@ -116,7 +116,7 @@ and Redis.
 Cloud.** Google never reads your Dockerfile, never runs `pnpm install`, never sees
 your TypeScript.
 
-The intended chain, once phase 9 exists:
+The intended chain, once phase 10 exists:
 
 1. You push code. **CI builds** the six images on GitHub's runners.
 2. CI **pushes** them to **Artifact Registry**. Storage; nothing executes there.
@@ -133,7 +133,7 @@ because containers from one image share nothing.
 The Dockerfile has several **stages**, and local and production use different
 ones:
 
-| | Local development | Production (phase 9) |
+| | Local development | Production (phase 10) |
 |---|---|---|
 | Started by | `docker compose up` | Cloud Run |
 | Dockerfile stage | `dev` | `runner` |
@@ -151,7 +151,7 @@ compiler and keeps just the output.
 
 CI builds all six images and smoke-tests that each starts and answers
 `/health/ready` — or for Stats, that it exits 0. Then it stops. **Nothing is
-pushed anywhere and nothing is deployed yet**; steps 2 and 3 above are phase 9,
+pushed anywhere and nothing is deployed yet**; steps 2 and 3 above are phase 10,
 deferred until there's a GCP project with a tested billing guard in front of it.
 Today you're looking at the "build it and prove it boots" half only.
 
@@ -497,7 +497,7 @@ want to type by hand.
 
 Compose is for local development here. Nothing in
 [`docker-compose.yml`](../../docker-compose.yml) runs in production — Cloud Run
-takes that role in phase 9.
+takes that role in phase 10.
 
 ## `services:` — each key is one container
 
@@ -913,7 +913,7 @@ x-service: &service
 The block all six services merge in. Every hostname here — `postgres`, `redis`,
 `firebase-auth` — is a service key resolved by Compose's DNS. Credentials are
 hardcoded because this database only ever exists on your laptop; the real ones
-arrive as Cloud Run secrets in phase 9.
+arrive as Cloud Run secrets in phase 10.
 
 ```yaml
   postgres:
@@ -1245,7 +1245,7 @@ That's the invalidation rule from Part 3, visible.
 # Part 8 — What's coming
 
 **The big picture.** None of this is in the repo yet. It exists so that when
-phase 9 adds the deploy step, you recognise the shape. The key thing to
+phase 10 adds the deploy step, you recognise the shape. The key thing to
 understand now is the split: **images are built once, in CI, and merely started
 on Google Cloud.** Google Cloud never reads your Dockerfile.
 

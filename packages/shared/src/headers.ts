@@ -20,7 +20,7 @@ export const REQUEST_ID_HEADER = 'x-request-id';
  *
  * The header is trustworthy *only* because the Gateway strips any inbound copy
  * before setting its own, and because Cloud Run's internal ingress means these
- * services are unreachable from the public internet (phase 9). Both halves are
+ * services are unreachable from the public internet (phase 10). Both halves are
  * required — either one alone leaves the header forgeable.
  */
 export function getUserId(req: FastifyRequest): string | null {

@@ -291,11 +291,11 @@ bundle and inherent to the editor DESIGN.md chose.
 - **`reveal.consented` and `session.ended` are log lines**, the last two of
   DESIGN.md's six events. Phase 6 puts them behind the real `EventLog`.
 - **No frontend container.** It runs with `pnpm --filter @deepcs/web dev` rather
-  than `docker compose up`, because in phase 6 it is a static bundle on a CDN
+  than `docker compose up`, because in phase 10 it is a static bundle on a CDN
   and the shared Dockerfile builds Node servers out of `services/`.
 - **CSP is a meta tag, injected on build only.** The dev server needs inline
   scripts for hot reload, and a policy loose enough to permit those is not worth
-  shipping. Phase 6 moves it to a CDN response header, where it can also express
+  shipping. Phase 10 moves it to a CDN response header, where it can also express
   `frame-ancestors`.
 - **No component tests.** The one suite that exists tests the protocol client,
   which is the part with a contract to break. The pages are thin enough that a

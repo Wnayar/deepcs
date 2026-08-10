@@ -175,7 +175,7 @@ needs either — live yes, ready no. If you only have liveness, the orchestrator
 routes traffic into a service that 500s. If you only have readiness, a process
 that has wedged permanently is never restarted, because nothing distinguishes
 "still starting" from "hung". Cloud Run only consumes readiness; the split still
-matters because phase 9 puts these same containers on Kubernetes, which uses
+matters because phase 8 puts these same containers on Kubernetes, which uses
 both, and because a readiness probe that checks dependencies can take a whole
 instance out of rotation when its database blips.
 

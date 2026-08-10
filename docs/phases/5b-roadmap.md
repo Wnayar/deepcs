@@ -1,9 +1,9 @@
 # Phase 5b — The roadmap, and fixing content at the source
 
-*Numbered 5b, not 6. This extends phase 5's frontend rather than following it,
-and phase 6 in DESIGN.md §10 is the Cloud Run deploy. Renaming the deploy would
-have been the wrong fix: the phase table is the plan, and a doc written after
-the fact does not get to renumber it.*
+*Numbered 5b because it extends phase 5's frontend rather than following it. The
+numbered phases in DESIGN.md §10 have since been reordered, but this stays 5b:
+the letter says "more of phase 5", which is what it is, and that remains true
+whatever the numbers after it do.*
 
 Phases 1 to 5 built a question bank and a way to solve one with a stranger.
 What they did not build was a reason to be there before you could already
@@ -278,7 +278,7 @@ The general rule the routes are held to: **a URL is a promise that the page can
 be rebuilt from it.** The summary screen cannot keep that promise, so it does
 not get one.
 
-One deployment consequence for phase 6: a static host must rewrite unknown paths
+One deployment consequence for phase 10: a static host must rewrite unknown paths
 to `index.html`, or `/step/<id>` returns a 404 from the CDN before the app ever
 loads. Vite's dev server and `vite preview` both do this already.
 

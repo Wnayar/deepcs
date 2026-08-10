@@ -332,7 +332,7 @@ here were wrong at some point:
 # Part 6 — What this phase deliberately did not build
 
 - **No `/metrics` or WebSocket connection count.** DESIGN.md scopes that to
-  phase 6 alongside Grafana for every service.
+  phase 10 alongside Grafana for every service.
 - **No frontend and no real Yjs client.** `y-monaco` and the editor are phase
   5. The tests drive the wire protocol directly, which is enough to prove the
   server side.

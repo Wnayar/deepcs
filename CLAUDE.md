@@ -126,11 +126,13 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
   only waiting, and slowing it down enough to afford made the news late. The one
   remaining timer is the crash-recovery check in `Match.tsx`, which detects a
   lost pair claim, not a match.
-- **Phase order: 6 event pipeline, 7 Kubernetes locally, 8 Kafka, 9 deploy, 10
-  Terraform.** The deploy is last because keeping a live URL inside a cost
-  ceiling was buying attention on billing rather than on the system, and the
-  event pipeline is first because it is the piece already described to people
-  outside the repo. DESIGN.md §10 records both.
-- **The k6 baseline belongs to no phase.** It needs only Collab, so it can run
-  against docker compose whenever a number is needed; phases 7 and 9 re-run the
-  same script for different claims.
+- **Phase order: 6 event pipeline, 7 load and soak, 8 Kubernetes locally, 9
+  Kafka, 10 deploy, 11 Terraform.** The deploy is last because keeping a live
+  URL inside a cost ceiling was buying attention on billing rather than on the
+  system, and the event pipeline is first because it is the piece already
+  described to people outside the repo. DESIGN.md §10 records both.
+- **The k6 script is written once, in phase 7, and re-run twice.** Phase 8 runs
+  it during a rolling update and a pod kill; phase 10 runs it smaller against
+  Cloud Run. Only phase 10 may make a capacity claim, because a local run
+  measures a laptop. A local run can still claim zero dropped requests during a
+  deploy, which is hardware-independent.

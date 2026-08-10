@@ -651,7 +651,7 @@ would only prove it agrees with itself.
 Stated so a green demo does not imply more than it covers.
 
 - **Internal ingress and invoker IAM** are listed in §10's phase 1 row but are
-  Cloud Run settings, and nothing is deployed until phase 6. They land there.
+  Cloud Run settings, and nothing is deployed until phase 10. They land there.
   Until then, the "downstream services are unreachable directly" half of the
   header-forgery guarantee is **not** in force — locally, ports 8081–8084 are
   open on your machine.
@@ -669,4 +669,4 @@ Stated so a green demo does not imply more than it covers.
 - **`GET /users/me` does not accept a profile update yet.** `display_name` and
   `preferred_topics` are columns with no write path until the frontend needs one.
 - **`/metrics` is not implemented.** §6 wants Prometheus-format metrics on every
-  service; that lands with observability in phase 6.
+  service; that lands with observability in phase 10.
