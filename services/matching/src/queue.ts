@@ -12,11 +12,19 @@ if redis.call('ZSCORE', KEYS[1], uid) then
 end
 
 -- Someone else is already waiting: claim the oldest one as a partner.
-local waiting = redis.call('ZRANGE', KEYS[1], 0, 0)
+-- WITHSCORES because the score is when they joined, and that number is gone
+-- the instant the claim removes them. It is the only place the wait can be
+-- measured, so it leaves with the answer.
+local waiting = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
 if #waiting > 0 then
   local partner = waiting[1]
+  local joined = tonumber(waiting[2])
   redis.call('ZREM', KEYS[1], partner)
-  return partner
+  local t = redis.call('TIME')
+  local now = tonumber(t[1]) + tonumber(t[2]) / 1000000
+  -- A string, not a number: Redis converts Lua numbers to integers on the way
+  -- out and a sub-second wait would arrive as 0.
+  return { partner, tostring(now - joined) }
 end
 
 -- Nobody waiting yet — add the caller to the queue. The score is Redis'
@@ -33,12 +41,18 @@ function queueKey(topic: string, difficulty: string): string {
   return `match:queue:${topic}:${difficulty}`;
 }
 
+export interface Claim {
+  partnerUid: string;
+  /** How long the partner waited before this call claimed them. */
+  waitedSeconds: number;
+}
+
 export interface Queue {
   /**
    * Tries to pair `uid` with whoever has been waiting longest for the same
    * topic and difficulty. For example, `join('alice', 'os', 'hard')` returns
-   * the uid of a waiting partner if one exists, or `null` if there wasn't
-   * one — in which case `alice` is now in the queue herself, waiting.
+   * the claimed partner and how long they waited, or `null` if nobody was
+   * waiting — in which case `alice` is now in the queue herself.
    *
    * If two people call this for the same topic+difficulty at the exact same
    * moment, only one of them can end up claiming the other — Redis runs the
@@ -47,7 +61,7 @@ export interface Queue {
    * them. It's the same fix as the Gateway's rate limiter, for the same
    * shape of race.
    */
-  join(uid: string, topic: string, difficulty: string): Promise<string | null>;
+  join(uid: string, topic: string, difficulty: string): Promise<Claim | null>;
 
   /** True if `uid` is currently sitting in this topic+difficulty queue. */
   isWaiting(uid: string, topic: string, difficulty: string): Promise<boolean>;
@@ -58,11 +72,14 @@ export function createQueue(redis: Redis): Queue {
 
   return {
     async join(uid, topic, difficulty) {
-      return (
+      const claimed = await (
         redis as unknown as {
-          matchJoin(key: string, uid: string): Promise<string | null>;
+          matchJoin(key: string, uid: string): Promise<[string, string] | null>;
         }
       ).matchJoin(queueKey(topic, difficulty), uid);
+
+      if (!claimed) return null;
+      return { partnerUid: claimed[0], waitedSeconds: Number(claimed[1]) };
     },
 
     async isWaiting(uid, topic, difficulty) {

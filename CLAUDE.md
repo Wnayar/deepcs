@@ -84,6 +84,7 @@ and Redis rather than mocks.
 - [docs/phases/4-collab.md](./docs/phases/4-collab.md) — collab: why two instances have to agree on a document's *identity* and not just its text, the pre-await frame queue, and snapshot/reconnect
 - [docs/phases/5-frontend.md](./docs/phases/5-frontend.md) — the React app, and the reveal rule: why the answer and the authority to release it live in different services
 - [docs/phases/5b-roadmap.md](./docs/phases/5b-roadmap.md) — the roadmap that replaced Learn and the bank, and the standing rule it came from: fix content in the seed, never at render time
+- [docs/phases/6-events.md](./docs/phases/6-events.md) — the event log: why acking after the commit is the whole safety argument, and the two different ways an event is made safe to reprocess
 
 ### Comment style
 
@@ -160,6 +161,11 @@ and Redis rather than mocks.
   only waiting, and slowing it down enough to afford made the news late. The one
   remaining timer is the crash-recovery check in `Match.tsx`, which detects a
   lost pair claim, not a match.
+- **Events go through `@deepcs/shared/events`, never a log line.** Six types,
+  one Redis stream, appended fire-and-forget so a statistics pipeline can never
+  fail a user's request. Adding a seventh means adding it to `EventType`, to the
+  `switch` in `services/stats/src/consumer.ts`, and to a table keyed so that
+  reprocessing it changes nothing.
 - **Phase order: 6 event pipeline, 7 load and soak, 8 Kubernetes locally, 9
   Kafka, 10 deploy, 11 Terraform.** The deploy is last because keeping a live
   URL inside a cost ceiling was buying attention on billing rather than on the

@@ -169,10 +169,11 @@ or Redis.
 | 3 | **Questions** | question bank, tags, full-text index, `reference_md` | Read-heavy and cacheable in a way nothing else is; also the only service holding answer keys, so a narrower blast radius is worth something. |
 | 4 | **Matching** | queue state, pair claim, session rows, consent | A hard concurrency problem of its own: two users joining at the same instant race for the same partner, so the pair claim has to be atomic (ADR-03). |
 | 5 | **Collab** | live Yjs docs, snapshots | **Different scaling trigger and different failure mode.** One WebSocket occupies a concurrency slot for 20 minutes; Cloud Run needs opposite `--concurrency`/`--timeout` values from every other service, and those are per-service flags (§7). This boundary is forced by the platform, not chosen. |
-| 6 | **Stats** | summaries, aggregates | **Trigger.** Time-driven, not request-driven — and a scaled-to-zero service has no running process for a timer to fire in, so it can't be a server at all. It's a job. |
+| 6 | **Stats** | summaries, aggregates | **Trigger.** Time-driven, not request-driven — and a scaled-to-zero service has no running process for a timer to fire in, so *draining the log* can't be a server. It's a job. **Corrected in phase 6:** an earlier version of this row ended "so it can't be a server at all", which does not follow. Serving `GET /stats` and a session's summary is request-driven like any other read, and nothing else may serve them, because those rows are in the `stats` schema and only `stats_svc` can read it (ADR-09). Stats is one image with two entrypoints, deployed as one job and one service. |
 
 **Two of these six are not really "splits."** The Gateway is a *position* and
-Stats is a *job* — judging either by scaling profiles would be a category error.
+Stats is a *job plus the read surface for what the job wrote* — judging either
+by scaling profiles would be a category error.
 The other four are ordinary services, one per capability.
 
 *Why one service per capability rather than grouping them?* Honestly: by a strict
@@ -428,7 +429,18 @@ sequenceDiagram
   so every write is idempotent (§6).
 - Outputs: on `session.ended`, a summary row behind `GET /sessions/:id/summary`;
   plus aggregates (sessions per day, median match wait, popular topics) behind
-  `GET /stats`.
+  `GET /stats`. Both are served by the read entrypoint of the Stats image, not
+  by the job.
+- **Idempotency is per event, and there are two ways to get it.** A *natural
+  key* where the event names something that exists once, so `ON CONFLICT` writes
+  the same row again: a session id, a user id. The *log's entry id* where it
+  does not, because a user may join the queue, give up and join again and both
+  are real, so there is nothing in the payload to key on. No counters anywhere:
+  `count = count + 1` run twice is wrong and no care at the call site fixes it,
+  which is why `/stats` groups over rows on read.
+- **Acknowledge after the commit, never before.** An acked entry is never
+  redelivered, so acking first turns a crash into silent loss instead of a
+  repeat, and a repeat is the thing every write above is built to survive.
 - Cloud Scheduler **[bought]** triggers it as a Cloud Run job every 5 minutes; it
   drains the backlog and exits. Worst case a summary lands ~5 minutes after the
   session ends. The retained log is what makes reprocessing possible: rewind the

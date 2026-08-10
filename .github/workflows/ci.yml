@@ -235,7 +235,26 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ matrix.service }}" = "stats" ]; then
-            docker run --rm deepcs/stats:ci
+            # The default entrypoint is the job: it drains and exits 0. The same
+            # image also serves reads under a different command, so both are
+            # checked, because "the image builds" would not have caught either
+            # of them failing to start.
+            docker run --rm --network host \
+              -e DATABASE_URL=postgresql://deepcs:deepcs@127.0.0.1:5432/deepcs \
+              -e REDIS_URL=redis://127.0.0.1:6379 \
+              deepcs/stats:ci
+
+            # And the read server, which is the same image under a different
+            # command and so is not covered by the run above.
+            id=$(docker run -d --network host \
+              -e DATABASE_URL=postgresql://deepcs:deepcs@127.0.0.1:5432/deepcs \
+              -e PORT=8085 \
+              deepcs/stats:ci node services/stats/dist/server.js)
+            for _ in $(seq 1 30); do
+              curl -fsS http://127.0.0.1:8085/health/ready && break || sleep 1
+            done
+            curl -fsS http://127.0.0.1:8085/health/ready
+            docker rm -f "$id" > /dev/null
           else
             # --network host, not -p: the image has to reach the Postgres and
             # Redis *service containers*, and inside a bridged container

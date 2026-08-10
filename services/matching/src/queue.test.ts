@@ -43,7 +43,7 @@ describe.skipIf(!process.env.CI && process.env.REDIS_URL === undefined)('queue',
     expect(await queue.join(alice, t, 'easy')).toBeNull();
     expect(await queue.isWaiting(alice, t, 'easy')).toBe(true);
 
-    expect(await queue.join(bob, t, 'easy')).toBe(alice);
+    expect((await queue.join(bob, t, 'easy'))?.partnerUid).toBe(alice);
     expect(await queue.isWaiting(alice, t, 'easy')).toBe(false);
   });
 
@@ -70,7 +70,7 @@ describe.skipIf(!process.env.CI && process.env.REDIS_URL === undefined)('queue',
 
     // A third join still matches alice exactly once, proving the retry
     // never added a second queue entry for her.
-    expect(await queue.join(bob, t, 'medium')).toBe(alice);
+    expect((await queue.join(bob, t, 'medium'))?.partnerUid).toBe(alice);
   });
 
   /**
@@ -88,12 +88,12 @@ describe.skipIf(!process.env.CI && process.env.REDIS_URL === undefined)('queue',
 
     const results = await Promise.all(uids.map((u) => queue.join(u, t, 'hard')));
 
-    const claimed = results.filter((r): r is string => r !== null);
+    const claimed = results.filter((r) => r !== null).map((r) => r.partnerUid);
     expect(claimed.length).toBe(10);
     expect(new Set(claimed).size).toBe(10); // no partner claimed twice
 
     results.forEach((result, i) => {
-      expect(result).not.toBe(uids[i]); // nobody claims themselves
+      expect(result?.partnerUid).not.toBe(uids[i]); // nobody claims themselves
     });
     for (const partner of claimed) {
       expect(uids).toContain(partner); // every claim is one of our own callers

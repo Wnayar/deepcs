@@ -10,7 +10,8 @@
     "./services": "./src/services.ts",
     "./db": "./src/db.ts",
     "./redis": "./src/redis.ts",
-    "./headers": "./src/headers.ts"
+    "./headers": "./src/headers.ts",
+    "./events": "./src/events.ts"
   },
   "scripts": {
     "build": "echo 'consumed from source; bundled into each service by tsup' && exit 0",
