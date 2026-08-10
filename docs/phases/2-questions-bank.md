@@ -194,6 +194,40 @@ pair: DESIGN.md's domain is "a bank of multi-part CS fundamentals
 questions," and phase 4's Collab doc is seeded from `parts[]` — a
 single-question row would give Collab nothing to scaffold.
 
+**`difficulty` is the day's position within its own topic, not an absolute
+rating** — day 1 easy, day 2 medium, day 3 hard. The notes are a curriculum
+where day 3 assumes days 1 and 2, so that is what the source actually encodes,
+and it reads correctly to someone working through a single topic. It does mean
+the labels are not comparable *across* topics: databases' "hard" (NoSQL and
+CAP) is not claimed to be harder than its own "medium" (transactions and MVCC)
+in any absolute sense, only later in the sequence.
+
+The reason it matters is downstream. Matching pairs people by topic **and**
+difficulty and refuses the match when nothing fits, so a combination with no
+question behind it is a pair of users who can never be matched — a dead end
+they meet only after choosing. Five topics × three days lands exactly on the
+five-by-three grid, one question per cell:
+
+| | easy | medium | hard |
+|---|---|---|---|
+| databases | SQL foundations | transactions & MVCC | NoSQL & CAP |
+| networking | the stack & TCP/IP | HTTP | DNS, LB & API design |
+| oop | the 4 pillars | SOLID & patterns | behavioural patterns |
+| os | processes & threads | synchronization | memory & I/O |
+| system-design | foundations | classic HLD | LLD & trade-offs |
+
+An earlier ad-hoc assignment of difficulties left five of those cells empty.
+It is asserted now rather than assumed, in
+[`clients.test.ts`](../../services/matching/src/clients.test.ts) — the test
+walks all fifteen combinations, because the failure is invisible until a user
+picks the one that isn't there.
+
+**Not every topic in the source made it in.** The study repo also has
+security, debugging, behavioural and AI-tooling material, but those are
+overview files with no "Interview Questions Answered" section, so they have no
+`parts[]` to become. Importing them would mean authoring questions, which
+DESIGN.md puts out of scope — they are left out rather than half-imported.
+
 ---
 
 # Part 4 — The cache

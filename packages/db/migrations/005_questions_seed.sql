@@ -7,13 +7,34 @@
 -- "Interview Questions Answered" section — that section's questions become
 -- `parts`, and its answers (plus the day's "Quick Mental Models" where one
 -- exists) become `reference_md`.
+--
+-- `difficulty` is the day's position inside its own topic, not an absolute
+-- rating: day 1 is easy, day 2 medium, day 3 hard. The notes are a curriculum
+-- — day 3 assumes days 1 and 2 — so this is what the source material actually
+-- encodes, and it reads correctly to someone working through one topic.
+--
+-- It also has a property the product depends on. Matching pairs people by
+-- topic *and* difficulty, and refuses the match when no question fits. Five
+-- topics × three days lands exactly on the five-by-three grid, one question
+-- per cell, so every combination a user can pick has something behind it. The
+-- earlier ad-hoc ratings left five of those fifteen cells empty, and each
+-- empty cell was a pair of users who could never be matched.
+
+-- Re-runnable, which the other migrations get from `IF NOT EXISTS` and this
+-- one cannot: an INSERT has nothing to be idempotent about on its own. Without
+-- a key to conflict on, re-running against a database whose bookkeeping table
+-- was wiped (or restored from a dump taken without it) silently doubles every
+-- question. Titles are unique within a seeded bank of fifteen, so they are the
+-- key; `DO UPDATE` additionally means editing the content above and re-running
+-- refreshes the row rather than being ignored.
+CREATE UNIQUE INDEX IF NOT EXISTS bank_title_key ON questions.bank (title);
 
 INSERT INTO questions.bank (title, difficulty, parts, reference_md, tags) VALUES
 
 -- ── OS — Day 1 ────────────────────────────────────────────────────────────
 (
   'Processes & Threads',
-  'medium',
+  'easy',
   $parts$["Process vs thread?", "What happens on fork()?", "Why are threads cheaper than processes?", "What is a zombie process?", "What is a race condition? Example?", "What is a context switch and why is it expensive?"]$parts$,
   $md$## Process vs thread?
 
@@ -52,7 +73,7 @@ $md$,
 -- ── OS — Day 2 ────────────────────────────────────────────────────────────
 (
   'Synchronization & Concurrency',
-  'hard',
+  'medium',
   $parts$["What is a mutex and how does it work?", "What is a deadlock? The four conditions?", "Mutex vs. semaphore?", "What is a condition variable? When?", "What is a race condition? Example?", "How do you prevent deadlock?", "Implement producer-consumer from memory"]$parts$,
   $md$## What is a mutex and how does it work?
 
@@ -222,7 +243,7 @@ $md$,
 -- ── Networking — Day 3 ───────────────────────────────────────────────────
 (
   'DNS, Load Balancing & API Design',
-  'medium',
+  'hard',
   $parts$["What happens when you type a URL and hit enter?", "Walk me through a DNS lookup", "What is TTL in DNS and why does it matter?", "L4 vs L7 load balancer — when each?", "REST vs gRPC — when pick gRPC?", "How do you version a REST API?", "What makes an API idempotent?", "How would you paginate a large API response?"]$parts$,
   $md$## What happens when you type a URL and hit enter?
 
@@ -266,7 +287,7 @@ $md$,
 -- ── Databases — Day 1 ────────────────────────────────────────────────────
 (
   'SQL Foundations & Indexing',
-  'medium',
+  'easy',
   $parts$["Clustered vs non-clustered index?", "Why does column order matter in a composite index?", "When would a query NOT use an index?", "What is a covering index?", "WHERE vs HAVING?", "Second highest salary — window function vs subquery"]$parts$,
   $md$## Clustered vs non-clustered index?
 
@@ -306,7 +327,7 @@ $md$,
 -- ── Databases — Day 2 ────────────────────────────────────────────────────
 (
   'Transactions, Concurrency & Internals',
-  'hard',
+  'medium',
   $parts$["What does ACID mean? Example of each.", "Dirty read vs phantom read?", "How does MVCC work?", "Optimistic vs pessimistic locking?", "How do you handle a deadlock?", "Postgres default isolation level?"]$parts$,
   $md$## What does ACID mean? Example of each.
 
@@ -338,7 +359,7 @@ $md$,
 -- ── Databases — Day 3 ────────────────────────────────────────────────────
 (
   'NoSQL, CAP Theorem & When to Use What',
-  'medium',
+  'hard',
   $parts$["MongoDB over Postgres?", "When Cassandra?", "Eventual consistency in practice?", "Redis vs a database?", "Hotspot in sharding, and prevention?", "CAP theorem, with examples?"]$parts$,
   $md$## MongoDB over Postgres?
 
@@ -430,7 +451,7 @@ $md$,
 -- ── OOP — Day 3 ───────────────────────────────────────────────────────────
 (
   'Behavioural Patterns + Composition vs Inheritance',
-  'medium',
+  'hard',
   $parts$["Observer vs pub/sub — same thing?", "Strategy — a real backend example?", "When use Command?", "Where does Proxy appear in backends?", "Factory vs Factory Method vs Abstract Factory?", "Design a parking lot — classes, relationships, patterns?"]$parts$,
   $md$## Observer vs pub/sub — same thing?
 
@@ -462,7 +483,7 @@ $md$,
 -- ── System Design — Day 1 ────────────────────────────────────────────────
 (
   'Foundations & Building Blocks',
-  'medium',
+  'easy',
   $parts$["Scale a system from 1 user to 10M?", "Horizontal vs vertical scaling?", "How does consistent hashing work and why use it?", "How does a CDN work?", "SQL vs NoSQL?"]$parts$,
   $md$## Scale a system from 1 user to 10M?
 
@@ -490,7 +511,7 @@ $md$,
 -- ── System Design — Day 2 ────────────────────────────────────────────────
 (
   'Classic HLD Problems',
-  'hard',
+  'medium',
   $parts$["Design a rate limiter?", "Fan-out on write vs read?", "Design a URL shortener?", "Design a key-value store — partitioning, replication, quorum?", "Design a notification system — why a queue?"]$parts$,
   $md$## Design a rate limiter?
 
@@ -541,4 +562,9 @@ Pick consistency (CP) when stale data costs money: payments, inventory ("1 left 
 Classes: `ParkingLot` (composes `Floor`), `Floor` (composes `ParkingSpot`), `ParkingSpot` (compact/large/handicapped/motorcycle; state Available/Reserved/Occupied), `Vehicle` (abstract → `Car`, `Truck`, `Motorcycle`), `Ticket` (associates a `Spot` and a `Vehicle`, tracks entry/exit time), `PaymentStrategy` (`CashPayment`, `CardPayment`). Patterns: Strategy for the payment method, Singleton for the lot manager, Factory Method to create spot types, Observer to notify admins when a floor fills. This is the same design as OOP Day 3's parking-lot question — LLD questions and OOP pattern questions converge on the same worked example for a reason: they're testing the same skill from two directions.
 $md$,
   ARRAY['system-design', 'chat-system', 'lld', 'trade-offs']
-);
+)
+ON CONFLICT (title) DO UPDATE SET
+  difficulty   = EXCLUDED.difficulty,
+  parts        = EXCLUDED.parts,
+  reference_md = EXCLUDED.reference_md,
+  tags         = EXCLUDED.tags;
