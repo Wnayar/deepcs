@@ -20,6 +20,7 @@ interface Props {
 
 export function SessionPage({ session, question, displayName, onEnded }: Props) {
   const editorHost = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<ReturnType<typeof monaco.editor.create> | null>(null);
   const [status, setStatus] = useState<CollabStatus>('connecting');
   const [peers, setPeers] = useState(0);
   const [consented, setConsented] = useState<string[]>([]);
@@ -60,6 +61,7 @@ export function SessionPage({ session, question, displayName, onEnded }: Props) 
         wordWrap: 'on',
         scrollBeyondLastLine: false,
       });
+      editorRef.current = editor;
 
       // `"content"` is not a name chosen here — it is the field the Collab
       // service seeds the scaffold into, so binding to anything else produces
@@ -80,6 +82,7 @@ export function SessionPage({ session, question, displayName, onEnded }: Props) 
       collab.awareness.on('change', onAwareness);
 
       cleanup = () => {
+        editorRef.current = null;
         collab.awareness.off('change', onAwareness);
         binding.destroy();
         editor.dispose();
@@ -92,6 +95,15 @@ export function SessionPage({ session, question, displayName, onEnded }: Props) 
       cleanup();
     };
   }, [session.id, displayName]);
+
+  /**
+   * The partner pressed End. The socket is already closed by the server, so
+   * nothing typed from here could reach anyone — making the editor read-only
+   * is what stops it looking like it still works.
+   */
+  useEffect(() => {
+    if (status === 'ended') editorRef.current?.updateOptions({ readOnly: true });
+  }, [status]);
 
   /** Poll only while we have agreed and the answer has not arrived — not a
    * background timer for the whole session. */
@@ -155,14 +167,43 @@ export function SessionPage({ session, question, displayName, onEnded }: Props) 
           This session is closed to you — it may have already been ended by your partner.
         </p>
       )}
+      {status === 'ended' && (
+        <div className="card">
+          <strong>Your partner ended this session.</strong>
+          <p className="muted" style={{ margin: '0.35rem 0 0.75rem' }}>
+            The document below is final and can no longer be edited. Anything revealed stays
+            visible.
+          </p>
+          <button
+            className="primary"
+            onClick={() =>
+              onEnded({
+                question,
+                partnerUid: session.partnerUid,
+                startedAt: session.createdAt,
+                // The moment we were told, which is within milliseconds of the
+                // real end — the summary rounds to minutes.
+                endedAt: new Date().toISOString(),
+                revealed: reference !== null,
+              })
+            }
+          >
+            See the summary
+          </button>
+        </div>
+      )}
 
       <div className="editor" ref={editorHost} />
 
       <div className="row" style={{ marginTop: '1rem' }}>
-        <button className="primary" onClick={() => void agree()} disabled={Boolean(reference)}>
+        <button
+          className="primary"
+          onClick={() => void agree()}
+          disabled={Boolean(reference) || status === 'ended'}
+        >
           {reference ? 'Answer revealed' : 'Reveal the answer'}
         </button>
-        <button onClick={() => void finish()} disabled={ending}>
+        <button onClick={() => void finish()} disabled={ending || status === 'ended'}>
           {ending ? 'Ending…' : 'End session'}
         </button>
         {iAgreed && <span className="status">Waiting for your partner to agree…</span>}
@@ -193,6 +234,8 @@ function statusLabel(status: CollabStatus): string {
       return 'not signed in';
     case 'refused':
       return 'session closed';
+    case 'ended':
+      return 'ended';
     case 'closed':
       return 'disconnected';
   }

@@ -31,7 +31,21 @@ const MESSAGE_AWARENESS = 1;
  * arrives as a socket that opens and then closes having delivered nothing.
  * Those are different messages to show, so they are different states.
  */
-export type CollabStatus = 'connecting' | 'connected' | 'unauthorized' | 'refused' | 'closed';
+export type CollabStatus =
+  'connecting' | 'connected' | 'unauthorized' | 'refused' | 'ended' | 'closed';
+
+/**
+ * The code Collab closes a socket with when the session was ended by the other
+ * participant. Matches `SESSION_ENDED_CODE` in services/collab/src/rooms.ts —
+ * duplicated rather than shared because the alternative is importing from
+ * @deepcs/shared, whose other subpaths drag Fastify and pg into a browser
+ * bundle.
+ *
+ * Without a distinct code this is indistinguishable from a dropped
+ * connection, and the client below would reconnect forever against a session
+ * that will never accept it again.
+ */
+const SESSION_ENDED_CODE = 4001;
 
 export interface CollabHandle {
   doc: Y.Doc;
@@ -140,8 +154,12 @@ export function connectCollab({
       }
     });
 
-    ws.addEventListener('close', () => {
+    ws.addEventListener('close', (event: CloseEvent) => {
       if (closedByUs) return onStatus('closed');
+
+      // The partner pressed End. Terminal, and not an error — the document on
+      // screen is the final one, so the UI keeps showing it read-only.
+      if (event.code === SESSION_ENDED_CODE) return onStatus('ended');
 
       if (!opened) {
         // Never upgraded: the Gateway rejected the token before Collab was

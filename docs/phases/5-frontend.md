@@ -65,16 +65,29 @@ control — not being routable is."*
 reopen the document and keep editing, because Collab has never heard of ending
 and its authorization does not mention it.
 
-**The mechanism:** `POST /match/sessions/:id/end` sets `ended_at`, and the
-*participant* route then reports `participant: false`. That route is the single
-check Collab runs before allowing any socket — so an ended session stops
-accepting connections with **no change to Collab at all**. The enforcement
-lives at the authorization boundary rather than in the service that owns the
-document.
+**The first mechanism:** `POST /match/sessions/:id/end` sets `ended_at`, and
+the *participant* route then reports `participant: false`. That route is the
+single check Collab runs before allowing any socket, so an ended session stops
+accepting **new** connections with no change to Collab at all.
 
-**Say it as:** *"Find the one check everything already goes through, and put
-the new rule there. The alternative is teaching every service a concept only
-one of them owns."*
+**Which was not enough, and manual testing is what found it.** A socket
+already open never re-checks anything. It kept accepting edits, and the 30s
+snapshot kept saving them — so the "final" document went on changing after the
+session was over, and phase 7's summary would have read whatever it drifted to.
+The person who did not press the button also got no indication at all; their
+editor simply carried on working.
+
+**So Matching now publishes `session.ended`** on the `match:session:{id}`
+channel that phases 3 and 4 both reserved for exactly this. Collab subscribes
+per room, takes a final snapshot, tears the room down and closes each socket
+with code **4001** — a code in the application range, so the browser can tell
+"this is over" from "the connection dropped" and does not reconnect forever
+against a session that will never accept it. The other person's editor goes
+read-only under a banner rather than going blank.
+
+**Say it as:** *"Authorization checks run once, at the door. A rule that has to
+hold for the whole life of a connection cannot live only there — something has
+to reach in and close what is already open."*
 
 ## 4. A column that arrived with a bug attached · ~5 min
 
@@ -339,7 +352,9 @@ curl -s -X POST "http://localhost:8083/match/sessions/$SID/end" -H "x-user-id: $
 # {"endedAt":"..."}
 
 curl -s "http://localhost:8083/match/sessions/$SID/participant" -H "x-user-id: $A"
-# {"participant":false}   — which is what makes Collab refuse the socket
+# {"participant":false}   — which is what makes Collab refuse a *new* socket.
+# An already-open one is closed by the session.ended event, with code 4001;
+# sync.test.ts asserts both the code and that post-end edits never persist.
 
 curl -s -X POST http://localhost:8083/match/join -H 'Content-Type: application/json' \
   -H "x-user-id: $A" -d '{"topic":"os","difficulty":"hard"}'

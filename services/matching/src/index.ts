@@ -58,6 +58,31 @@ function toResponse(session: Session, callerUid: string) {
   };
 }
 
+/** The channel both session lifecycle events go out on. Collab subscribes to
+ * it per room; see services/collab/src/rooms.ts. */
+function sessionChannel(sessionId: string): string {
+  return `match:session:${sessionId}`;
+}
+
+/**
+ * Announces something that happened to a session. Fire-and-forget on purpose:
+ * a Redis hiccup must not fail the request that caused it, because the durable
+ * record is the Postgres row either way. The consequence of a dropped
+ * `session.ended` is a room that stays open until its last socket leaves,
+ * which is the behaviour that existed before this channel was consumed at all.
+ */
+async function publishSessionEvent(
+  req: FastifyRequest,
+  sessionId: string,
+  event: Record<string, unknown>,
+): Promise<void> {
+  await redis
+    .publish(sessionChannel(sessionId), JSON.stringify(event))
+    .catch((err: unknown) =>
+      req.log.warn({ err, session_id: sessionId }, 'session event publish failed'),
+    );
+}
+
 const joinBody = z.object({
   // A Questions tag, e.g. "os" — matched exactly against the queue for that
   // tag and difficulty. See repository.ts / queue.ts for how the pairing works.
@@ -130,15 +155,16 @@ app.post('/match/join', async (req, reply) => {
   const session = await createSession(pool, uid, partnerUid, questionId);
   req.log.info({ session_id: session.id, users: [uid, partnerUid] }, 'match.created');
 
-  // Nothing subscribes to this yet — it's here so Collab (phase 4) or a
-  // future live status channel has something to listen for without this
-  // route needing to change.
-  await redis
-    .publish(
-      `match:session:${session.id}`,
-      JSON.stringify({ sessionId: session.id, questionId, users: [uid, partnerUid] }),
-    )
-    .catch((err: unknown) => req.log.warn({ err }, 'match event publish failed'));
+  // Collab does not consume this one — a client learns its session id from
+  // this very response. It stays for a future live-status channel, and it is
+  // now tagged with a type so a subscriber can tell it apart from the
+  // `session.ended` published below on the same channel.
+  await publishSessionEvent(req, session.id, {
+    type: 'match.created',
+    sessionId: session.id,
+    questionId,
+    users: [uid, partnerUid],
+  });
 
   return reply.code(201).send(toResponse(session, uid));
 });
@@ -356,6 +382,17 @@ app.post('/match/sessions/:id/end', async (req, reply) => {
     return reply.code(404).send({ error: 'not found' });
   }
   req.log.info({ session_id: session.id, user_id: getUserId(req) }, 'session.ended');
+
+  // This is what actually closes the live document. Setting `ended_at` only
+  // stops *new* sockets — the participant check refuses them — but a socket
+  // already open keeps accepting edits, and the 30s snapshot keeps saving
+  // them, so the "final" document would carry on changing after the session
+  // was over. Collab listens for this and closes the room.
+  await publishSessionEvent(req, session.id, {
+    type: 'session.ended',
+    sessionId: session.id,
+    endedAt: session.endedAt.toISOString(),
+  });
 
   return reply.send({ endedAt: session.endedAt.toISOString() });
 });

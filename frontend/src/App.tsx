@@ -57,14 +57,18 @@ export function App() {
         <h1>deepcs</h1>
         <nav>
           <button onClick={() => setView({ name: 'questions' })}>Questions</button>
-          {user && <button onClick={() => setView({ name: 'match' })}>Find a partner</button>}
-          {user ? (
+          {/* Shown signed out too, and it has to be: the match view falls back
+              to the sign-in form, so this is the only route to it. Hiding it
+              until you are signed in leaves a signed-out visitor with no way
+              to sign in at all. */}
+          <button onClick={() => setView({ name: 'match' })}>
+            {user ? 'Find a partner' : 'Sign in'}
+          </button>
+          {user && (
             <>
               <span className="muted">{user.email}</span>
               <button onClick={() => void signOutUser()}>Sign out</button>
             </>
-          ) : (
-            <span className="muted">signed out</span>
           )}
         </nav>
       </header>
