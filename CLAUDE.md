@@ -72,6 +72,19 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - [docs/phases/0-repo-tour.md](./docs/phases/0-repo-tour.md) — what every file in the repo is for
 - [docs/phases/0-prebuild-decisions.md](./docs/phases/0-prebuild-decisions.md) — decisions already made, with the reasoning, before re-litigating one
 - [docs/phases/1-auth-and-gateway.md](./docs/phases/1-auth-and-gateway.md) — how auth, the rate limiter and the schema boundary work, and how to demonstrate each
+- [docs/phases/2-questions-bank.md](./docs/phases/2-questions-bank.md) — the question bank: cursor pagination, the read-through cache, and why `reference_md` never reaches a browser
+
+### Comment style
+
+- Plain sentences, not `->`/`→` arrow-chain shorthand. Write "cursor is the
+  last id seen, so this returns rows after it," not "cursor=abc → rows after abc."
+- API routes and other non-obvious logic (a query, an algorithm) get a short
+  comment directly above with a concrete example — e.g. one example request
+  above a route handler — so reading the code teaches how to call it. A line
+  or two, not a paragraph.
+- Skip inline citations (DESIGN.md section numbers, ADR numbers) in comments
+  that explain *what to do* or *how to call something*. Save citations for
+  comments whose whole point is *why* a decision was made.
 
 ### Working conventions established in phase 1
 
