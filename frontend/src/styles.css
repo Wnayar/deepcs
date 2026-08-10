@@ -326,3 +326,23 @@ nav button[aria-current='page'] {
 .signal.bad {
   color: var(--danger);
 }
+
+/* A question card's header, which is the whole toggle. Laid out as a column so
+ * the three lines stack the way they read: what it is, what it is called, and
+ * what clicking does. */
+.card-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: none;
+  text-align: left;
+}
+
+.card-title {
+  font-size: 1rem;
+  font-weight: 600;
+}

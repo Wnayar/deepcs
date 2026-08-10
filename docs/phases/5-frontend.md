@@ -333,16 +333,19 @@ curl -s "http://localhost:8082/internal/questions/$QID/reference" | head -c 60
 ```bash
 # A and B matched into $SID (see the reveal tests for the full setup)
 curl -s -X POST "http://localhost:8083/match/sessions/$SID/reveal" -H "x-user-id: $A"
-# {"consented":["A"],"revealed":false}          — no referenceMd field at all
+# {"you":true,"partner":false,"revealed":false}   — no referenceMd field at all
 
 curl -s -X POST "http://localhost:8083/match/sessions/$SID/reveal" -H "x-user-id: $A"
-# {"consented":["A"],"revealed":false}          — pressing twice is still one
+# {"you":true,"partner":false,"revealed":false}   — pressing twice is still one
 
 curl -s -X POST "http://localhost:8083/match/sessions/$SID/reveal" -H "x-user-id: $C"
 # 403 — a third party cannot consent on anyone's behalf
 
+curl -s -X GET  "http://localhost:8083/match/sessions/$SID/reveal" -H "x-user-id: $B"
+# {"you":false,"partner":true,"revealed":false}   — the same state, B's side of it
+
 curl -s -X POST "http://localhost:8083/match/sessions/$SID/reveal" -H "x-user-id: $B"
-# {"consented":["A","B"],"revealed":true,"referenceMd":"## ..."}
+# {"you":true,"partner":true,"revealed":true,"referenceMd":"## ..."}
 ```
 
 ## Claim 4 — ending really ends it
@@ -360,6 +363,34 @@ curl -s -X POST http://localhost:8083/match/join -H 'Content-Type: application/j
   -H "x-user-id: $A" -d '{"topic":"os","difficulty":"hard"}'
 # {"status":"waiting"}    — A can be matched again, which is the bug in thing 4
 ```
+
+## Claim 5 — a session names nobody
+
+The strongest form of this is not reading the code. It is being one participant,
+touching every route a browser can reach, and searching the bytes that come back
+for anything belonging to the other one — HTTP bodies, every WebSocket frame,
+and the Yjs document state:
+
+```bash
+pnpm --filter @deepcs/matching test -t "never names the other participant"
+```
+
+That test asserts on serialised response bodies rather than on named fields, so
+a uid reintroduced under any name at any depth fails it. Two payloads had to be
+changed to make it pass, and both are worth knowing about because neither looked
+like an identity leak:
+
+- `partnerUid` rode on every session response. Only the match page used it, to
+  print one line. Collab parsed it and dropped it.
+- `reveal` returned `consented`, the list of uids that had agreed — so the moment
+  your partner agreed you held their id. It also could not answer what the UI was
+  actually asking. `{you, partner}` can, and names no one.
+
+The reason this matters more than it looks: everything else about a session is
+already anonymous — awareness carries no identity, and the remote caret is drawn
+in one colour precisely so that no name is needed to key it. A single field in a
+JSON body undoes all of that, silently, because nothing has to render it for the
+browser to have been handed it.
 
 ## Running the tests yourself
 

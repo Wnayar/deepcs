@@ -76,6 +76,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - [docs/phases/3-matching.md](./docs/phases/3-matching.md) — the atomic pair claim, why external calls run before any mutation, and idempotent join/retry
 - [docs/phases/4-collab.md](./docs/phases/4-collab.md) — collab: why two instances have to agree on a document's *identity* and not just its text, the pre-await frame queue, and snapshot/reconnect
 - [docs/phases/5-frontend.md](./docs/phases/5-frontend.md) — the React app, and the reveal rule: why the answer and the authority to release it live in different services
+- [docs/phases/6-learn.md](./docs/phases/6-learn.md) — the Learn section: how the lessons were cut out of the same notes the answers came from, and the test that proves the cut was in the right place
 
 ### Comment style
 

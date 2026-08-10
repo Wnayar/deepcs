@@ -7,18 +7,7 @@ import {
   type Question,
   type Session,
 } from '../api';
-
-const TOPICS = [
-  'os',
-  'networking',
-  'databases',
-  'oop',
-  'system-design',
-  'security',
-  'debugging',
-  'ai-tooling',
-  'behavioural',
-];
+import { TOPICS } from '../topics';
 
 /** How often to ask whether a partner turned up. */
 const POLL_MS = 2_000;

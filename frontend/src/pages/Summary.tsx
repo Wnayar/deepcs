@@ -46,7 +46,7 @@ export function SummaryPage({ summary, onDone }: { summary: SessionSummary; onDo
       </p>
 
       <button className="primary" onClick={onDone}>
-        Back to the question bank
+        Back to the lessons
       </button>
     </>
   );

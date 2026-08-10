@@ -1,18 +1,7 @@
 import { useEffect, useState } from 'react';
 import { listQuestions, questionReference, type Difficulty, type Question } from '../api';
 import { numberReference } from '../reference';
-
-const TOPICS = [
-  'os',
-  'networking',
-  'databases',
-  'oop',
-  'system-design',
-  'security',
-  'debugging',
-  'ai-tooling',
-  'behavioural',
-];
+import { TOPICS } from '../topics';
 
 /**
  * Browse the bank. Public — this is the screen that makes the deployed site
@@ -119,7 +108,7 @@ export function QuestionsPage({ signedIn }: { signedIn: boolean }) {
 
         <input
           type="search"
-          placeholder="Search titles…"
+          placeholder="Search title or tag…"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
@@ -176,17 +165,22 @@ function QuestionCard({ question, signedIn }: { question: Question; signedIn: bo
 
   return (
     <article className="card">
-      <button
-        onClick={() => setOpen((was) => !was)}
-        style={{ border: 0, padding: 0, background: 'none', textAlign: 'left', width: '100%' }}
-      >
-        <div className="muted" style={{ fontSize: '0.8rem' }}>
+      {/* A `<button>` may only contain phrasing content, so the title is a
+          styled span rather than the `<h3>` that was here: React builds this
+          through the DOM so nothing visibly broke, but a heading inside a
+          button is invalid markup and assistive tech reads it inconsistently.
+          The card is still one big click target — nothing about a question is
+          worth reading in a header you have to aim at. */}
+      <button className="card-toggle" aria-expanded={open} onClick={() => setOpen((was) => !was)}>
+        <span className="muted" style={{ fontSize: '0.8rem' }}>
           {question.tags[0]} · {question.difficulty}
-        </div>
-        <h3 style={{ margin: '0.15rem 0' }}>{question.title}</h3>
-        <div className="muted" style={{ fontSize: '0.8rem' }}>
-          {question.parts.length} questions {open ? '▾' : '▸'}
-        </div>
+        </span>
+        <span className="card-title">{question.title}</span>
+        {/* Says which way the click goes, rather than only which state you are
+            in. A lone ▾ leaves "how do I put this back" to be guessed at. */}
+        <span className="muted" style={{ fontSize: '0.8rem' }}>
+          {question.parts.length} questions · {open ? 'hide ▾' : 'show ▸'}
+        </span>
       </button>
 
       {open && (
