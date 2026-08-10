@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "firebase": "catalog:",
+    "marked": "catalog:",
     "lib0": "catalog:",
     "monaco-editor": "catalog:",
     "react": "catalog:",

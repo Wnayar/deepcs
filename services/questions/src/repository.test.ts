@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPool } from '@deepcs/shared/db';
-import { getQuestion, listQuestions } from './repository.js';
+import { getLesson, getQuestion, listLessons, listQuestions } from './repository.js';
 
 /**
  * Real Postgres, not a mock (§8). The properties under test — cursor
@@ -164,3 +164,59 @@ describe.skipIf(!process.env.CI && process.env.DATABASE_URL === undefined)(
     });
   },
 );
+
+describe('lessons', () => {
+  it('has one lesson per topic in the bank, each with a body', async (ctx) => {
+    if (!reachable) return ctx.skip();
+
+    const lessons = await listLessons(pool);
+    const { rows } = await pool.query<{ topic: string }>(
+      'SELECT DISTINCT tags[1] AS topic FROM questions.bank',
+    );
+
+    // A lesson with no drills, or drills with no lesson, is the failure this
+    // guards: the two are joined by `topic` alone, so a typo in either seed
+    // produces a page that loads and lists nothing.
+    expect(lessons.map((l) => l.topic).sort()).toEqual(rows.map((r) => r.topic).sort());
+    expect(lessons.every((l) => l.title.length > 0)).toBe(true);
+  });
+
+  it('returns a body for a real topic and null for an unknown one', async (ctx) => {
+    if (!reachable) return ctx.skip();
+
+    const lesson = await getLesson(pool, 'os');
+    expect(lesson?.bodyMd.length ?? 0).toBeGreaterThan(1_000);
+    expect(await getLesson(pool, 'not-a-topic')).toBeNull();
+  });
+
+  it('contains no reference answer text', async (ctx) => {
+    if (!reachable) return ctx.skip();
+
+    // The reason this test exists. Lessons are extracted from the same notes
+    // the question bank came from, and those notes end with the answers — so
+    // an extraction that cuts in the wrong place publishes, on a route with no
+    // auth at all, the exact text the reveal rule exists to withhold. It has
+    // already happened once: the day files head their drills "Part 6 — The
+    // Interview Questions, Answered", which a cut anchored to the start of a
+    // heading does not match.
+    //
+    // Slices of each answer are searched for in that topic's lesson. Code
+    // examples are excluded because the notes legitimately teach the same
+    // snippet they later reference.
+    const { rows } = await pool.query<{ topic: string; title: string; hits: string }>(`
+      SELECT b.tags[1] AS topic, b.title, count(*) AS hits
+      FROM questions.bank b
+      JOIN LATERAL (
+        SELECT substring(b.reference_md from (length(b.reference_md) * g / 8)::int for 70) AS slice
+        FROM generate_series(1, 6) g
+      ) s ON true
+      JOIN questions.lessons l ON l.topic = b.tags[1]
+      WHERE length(s.slice) = 70
+        AND s.slice !~ '[;{}()=]'
+        AND position(s.slice in l.body_md) > 0
+      GROUP BY 1, 2
+    `);
+
+    expect(rows).toEqual([]);
+  });
+});

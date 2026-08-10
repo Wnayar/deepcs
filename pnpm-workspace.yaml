@@ -76,5 +76,10 @@ catalog:
   vite: ^8.2.1
   '@vitejs/plugin-react': ^6.0.5
   firebase: ^12.17.1
+  # Lessons are markdown; `marked` turns them into HTML. It is not a
+  # sanitizer and does not need to be: the bodies are seeded by a migration
+  # from our own notes, never user input, and the page's CSP forbids inline
+  # script regardless of what any renderer emits.
+  marked: ^18.0.9
   monaco-editor: ^0.56.0
   y-monaco: ^0.1.6

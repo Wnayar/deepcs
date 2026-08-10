@@ -4,7 +4,13 @@ import { createPool, pingDb } from '@deepcs/shared/db';
 import { createRedis, pingRedis } from '@deepcs/shared/redis';
 import { getUserId } from '@deepcs/shared/headers';
 import { SERVICES } from '@deepcs/shared/services';
-import { getQuestion, getReferenceMd, listQuestions } from './repository.js';
+import {
+  getLesson,
+  getQuestion,
+  getReferenceMd,
+  listLessons,
+  listQuestions,
+} from './repository.js';
 import { cached } from './cache.js';
 
 const pool = createPool();
@@ -80,6 +86,50 @@ app.get('/questions', async (req, reply) => {
   return reply.send(result);
 });
 
+/**
+ * The topics you can learn, e.g.
+ *   GET /lessons
+ * returns `[{ topic: "os", title: "Operating Systems" }, ...]` — nine of them,
+ * without their bodies.
+ *
+ * Public, like the question list. A lesson is teaching material; there is
+ * nothing here to gate.
+ */
+app.get('/lessons', async (_req, reply) => {
+  const { value, hit } = await cached(redis, 'questions:lessons', LIST_CACHE_TTL_SECONDS, () =>
+    listLessons(pool),
+  );
+  reply.header('x-cache', hit ? 'HIT' : 'MISS');
+  return reply.send({ items: value });
+});
+
+// A topic slug as seeded: lowercase words joined by hyphens, e.g. "system-design".
+const topicParams = z.object({ topic: z.string().regex(/^[a-z][a-z-]{0,62}[a-z]$/) });
+
+/**
+ * One lesson in full, e.g.
+ *   GET /lessons/os
+ * returns `{ topic, title, bodyMd }` where `bodyMd` is the markdown the Learn
+ * page renders, or 404 for a topic with no lesson.
+ *
+ * Not cached. The bodies run to 40KB and are read once per visit, so caching
+ * them buys a Postgres primary-key lookup at the cost of holding the entire
+ * corpus in Redis.
+ */
+app.get('/lessons/:topic', async (req, reply) => {
+  const parsed = topicParams.safeParse(req.params);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid topic' });
+  }
+
+  const lesson = await getLesson(pool, parsed.data.topic);
+  if (!lesson) {
+    return reply.code(404).send({ error: 'not found' });
+  }
+
+  return reply.send(lesson);
+});
+
 const idParams = z.object({ id: z.string().uuid() });
 
 /**
@@ -145,11 +195,12 @@ app.get('/questions/:id/reference', async (req, reply) => {
  * it has already checked both participants consented, which is a question this
  * service cannot ask.
  *
- * The `/internal` prefix is what keeps it that way. The Gateway proxies
- * exactly four prefixes — `/users`, `/questions`, `/match`, `/collab` — with
- * no filtering on what follows, so anything under `/questions/` is reachable
- * from a browser and has to carry its own check. Nothing proxies `/internal`,
- * so this route is callable only from inside the network.
+ * The `/internal` prefix is what keeps it that way. The Gateway proxies a
+ * fixed list of prefixes — `/users`, `/questions`, `/lessons`, `/match`,
+ * `/collab` — with no filtering on what follows, so anything under
+ * `/questions/` is reachable from a browser and has to carry its own check.
+ * Nothing proxies `/internal`, so this route is callable only from inside the
+ * network.
  *
  * Deliberately not cached: `cached()` wraps list queries, and putting answer
  * text into a shared Redis key is a second copy of the thing this service

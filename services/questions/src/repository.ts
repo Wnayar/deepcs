@@ -120,6 +120,50 @@ export async function listQuestions(pool: pg.Pool, filters: ListFilters): Promis
   };
 }
 
+export interface LessonSummary {
+  topic: string;
+  title: string;
+}
+
+export interface Lesson extends LessonSummary {
+  bodyMd: string;
+}
+
+/**
+ * The nine lessons, without their bodies — e.g.
+ *   listLessons(pool)
+ * returns `[{ topic: 'ai-tooling', title: 'AI Tooling' }, ...]`.
+ *
+ * `body_md` is left out because it is the whole weight of the table: the nine
+ * bodies together are about 160KB, and the index page needs none of it. This
+ * is the same reason `SUMMARY_COLUMNS` exists, for a different reason — there
+ * it is secrecy, here it is size.
+ */
+export async function listLessons(pool: pg.Pool): Promise<LessonSummary[]> {
+  const { rows } = await pool.query<LessonSummary>(
+    'SELECT topic, title FROM questions.lessons ORDER BY title',
+  );
+  return rows;
+}
+
+/**
+ * Reads one lesson in full — e.g.
+ *   getLesson(pool, 'os')
+ * returns `{ topic, title, bodyMd }`, or `null` if no lesson has that topic.
+ *
+ * `topic` is the primary key and the same string the bank carries in `tags[1]`,
+ * which is what lets a lesson page list the questions that drill it without a
+ * join table.
+ */
+export async function getLesson(pool: pg.Pool, topic: string): Promise<Lesson | null> {
+  const { rows } = await pool.query<{ topic: string; title: string; body_md: string }>(
+    'SELECT topic, title, body_md FROM questions.lessons WHERE topic = $1',
+    [topic],
+  );
+  const row = rows[0];
+  return row ? { topic: row.topic, title: row.title, bodyMd: row.body_md } : null;
+}
+
 /** Fetches one question by id, or `null` if no row has that id. */
 export async function getQuestion(pool: pg.Pool, id: string): Promise<QuestionSummary | null> {
   const { rows } = await pool.query<QuestionRow>(

@@ -193,6 +193,13 @@ app.get('/', async () => ({ service: 'gateway', phase: 1 }));
 /**
  * Routing (§5). One registration per downstream service.
  *
+ * Two prefixes reach Questions: `/questions` is the bank, `/lessons` is the
+ * teaching material behind it. They are one service and could have been one
+ * prefix, but `/questions/lessons` would sit under a route whose next segment
+ * is a uuid everywhere else, and the answer routes live under `/questions/:id`
+ * — a prefix that means "read the material" should not be nested inside one
+ * that means "read a question".
+ *
  * `websocket: true` on collab is needed from phase 4, and is set now because
  * every WebSocket is proxied through here — the tradeoff §5 names explicitly:
  * one collab connection occupies a concurrency slot on the Gateway *and* one on
@@ -202,6 +209,7 @@ app.get('/', async () => ({ service: 'gateway', phase: 1 }));
 const ROUTES = [
   { prefix: '/users', service: 'users', websocket: false },
   { prefix: '/questions', service: 'questions', websocket: false },
+  { prefix: '/lessons', service: 'questions', websocket: false },
   { prefix: '/match', service: 'matching', websocket: false },
   { prefix: '/collab', service: 'collab', websocket: true },
 ] as const;

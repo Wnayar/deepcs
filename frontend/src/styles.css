@@ -190,3 +190,139 @@ form.auth {
   gap: 0.6rem;
   max-width: 20rem;
 }
+
+/* The wordmark, which is a button because it navigates. */
+.wordmark {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* The tab you are on. Driven by `aria-current`, which App.tsx sets, so the
+ * visible highlight and the announced one are the same fact. */
+nav button[aria-current='page'] {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.75rem;
+}
+
+/* A topic on the Learn index: a card that is also a button. */
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tile:hover {
+  border-color: var(--accent);
+}
+
+.tile .muted {
+  font-size: 0.8rem;
+}
+
+/* Rendered lesson markdown. The notes are long and heading-dense, so this is
+ * mostly about giving headings room and stopping wide tables and code blocks
+ * from pushing the page sideways. */
+.prose {
+  line-height: 1.65;
+  max-width: 44rem;
+}
+
+.prose h2 {
+  margin: 2rem 0 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  font-size: 1.25rem;
+}
+
+.prose h3 {
+  margin: 1.4rem 0 0.4rem;
+  font-size: 1.05rem;
+}
+
+.prose h4 {
+  margin: 1rem 0 0.3rem;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.prose code {
+  background: #f4f4f5;
+  border-radius: 4px;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.9em;
+}
+
+.prose pre {
+  background: #f4f4f5;
+  border-radius: 6px;
+  padding: 0.8rem;
+  overflow-x: auto;
+}
+
+.prose pre code {
+  background: none;
+  padding: 0;
+}
+
+.prose table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+}
+
+.prose th,
+.prose td {
+  border: 1px solid var(--line);
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+}
+
+.prose blockquote {
+  margin: 1rem 0;
+  padding-left: 0.9rem;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+}
+
+/* Session status: two independent signals, each a coloured dot plus what it
+ * actually means. Colour is never the only carrier — the text says the same
+ * thing, because a dot alone is unreadable to anyone who cannot distinguish
+ * the hues, and green/amber/red is the pair most commonly affected. */
+.signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-right: 1rem;
+}
+
+.signal .dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.signal.ok {
+  color: var(--ok);
+}
+
+.signal.wait {
+  color: #b45309;
+}
+
+.signal.bad {
+  color: var(--danger);
+}
