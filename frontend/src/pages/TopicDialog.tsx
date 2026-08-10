@@ -29,7 +29,13 @@ export function TopicDialog({ topic, onOpenStep, onClose }: Props) {
   }, [onClose]);
 
   return (
-    <div className="scrim" onClick={onClose}>
+    <div
+      className="scrim"
+      onClick={onClose}
+      // The map is behind this and drags from anywhere, so a press that lands
+      // on the backdrop must not also start a pan.
+      onPointerDown={(event) => event.stopPropagation()}
+    >
       <div
         ref={panel}
         className="dialog"

@@ -1,3 +1,4 @@
+import { Navigate, useLocation, useNavigate } from 'react-router';
 import type { SessionSummary } from '../App';
 
 /**
@@ -8,7 +9,16 @@ import type { SessionSummary } from '../App';
  * (how many sessions, popular topics) is fed by the event log, and that is
  * phase 7's job.
  */
-export function SummaryPage({ summary, onDone }: { summary: SessionSummary; onDone: () => void }) {
+export function SummaryPage() {
+  const navigate = useNavigate();
+  // Carried in history state, not in the URL. Every other screen can be rebuilt
+  // from its address; this one is assembled from what the session page happened
+  // to know when you pressed End, and no endpoint returns it. Rather than
+  // pretend otherwise with a URL that renders an empty page on refresh, a
+  // summary with nothing behind it sends you to the roadmap.
+  const summary = (useLocation().state as { summary?: SessionSummary } | null)?.summary;
+  if (!summary) return <Navigate to="/" replace />;
+
   const minutes = Math.max(
     1,
     Math.round(
@@ -45,7 +55,7 @@ export function SummaryPage({ summary, onDone }: { summary: SessionSummary; onDo
         The document is saved. Ending closed it to further edits for both of you.
       </p>
 
-      <button className="primary" onClick={onDone}>
+      <button className="primary" onClick={() => void navigate('/')}>
         Back to the lessons
       </button>
     </>

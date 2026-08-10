@@ -1,13 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import {
-  getQuestion,
-  getRoadmap,
-  joinQueue,
-  matchStatus,
-  type Difficulty,
-  type Question,
-  type Session,
-} from '../api';
+import { useNavigate, useSearchParams } from 'react-router';
+import { getRoadmap, joinQueue, matchStatus, type Difficulty, type Session } from '../api';
 
 /** How often to ask whether a partner turned up. */
 const POLL_MS = 2_000;
@@ -15,12 +8,23 @@ const POLL_MS = 2_000;
 interface Props {
   /** A session already in progress, if there is one. */
   active: Session | null;
-  /** Arrived here from a lesson's "find a partner" button, which already
-   * chose the topic and difficulty — so the form opens on them rather than
-   * making you re-pick what you just clicked. */
-  preset?: { topic: string; difficulty: Difficulty };
-  onMatched: (session: Session, question: Question) => void;
-  onResume: (session: Session) => void;
+  /** Told to the shell so the header can offer the way back into the room. */
+  onJoined: (session: Session) => void;
+}
+
+const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard'];
+
+/** A lesson's "find a partner" button arrives as /match?topic=os&difficulty=easy,
+ * so the form opens on what was just clicked rather than making you pick it
+ * again. In the URL and not in a prop, because the choice should survive a
+ * refresh and a shared link like everything else here. */
+function usePreset(): { topic: string | null; difficulty: Difficulty | null } {
+  const [params] = useSearchParams();
+  const difficulty = params.get('difficulty');
+  return {
+    topic: params.get('topic'),
+    difficulty: DIFFICULTIES.includes(difficulty as Difficulty) ? (difficulty as Difficulty) : null,
+  };
 }
 
 /**
@@ -53,10 +57,12 @@ function useTopics(): { topic: string; title: string }[] {
   return topics;
 }
 
-export function MatchPage({ active, preset, onMatched, onResume }: Props) {
+export function MatchPage({ active, onJoined }: Props) {
   const topics = useTopics();
-  const [topic, setTopic] = useState(preset?.topic ?? 'os');
-  const [difficulty, setDifficulty] = useState<Difficulty>(preset?.difficulty ?? 'medium');
+  const navigate = useNavigate();
+  const preset = usePreset();
+  const [topic, setTopic] = useState(preset.topic ?? 'os');
+  const [difficulty, setDifficulty] = useState<Difficulty>(preset.difficulty ?? 'medium');
   const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -67,9 +73,10 @@ export function MatchPage({ active, preset, onMatched, onResume }: Props) {
     setWaiting(false);
     clearTimeout(timer.current);
     try {
-      onMatched(session, await getQuestion(session.questionId));
+      onJoined(session);
+      await navigate(`/session/${session.id}`);
     } catch {
-      setError('matched, but the question could not be loaded');
+      setError('Matched, but the session could not be opened. Try refreshing the page.');
     }
   };
 
@@ -123,7 +130,7 @@ export function MatchPage({ active, preset, onMatched, onResume }: Props) {
           Leaving the editor does not end it — the document is still there, and so is your partner.
         </p>
         <div className="row">
-          <button className="primary" onClick={() => onResume(active)}>
+          <button className="primary" onClick={() => void navigate(`/session/${active.id}`)}>
             Return to it
           </button>
         </div>

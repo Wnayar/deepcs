@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router';
 import { getRoadmap, type RoadmapTopic } from '../api';
+import { TopicDialog } from './TopicDialog';
 import {
   BOX_H,
   BOX_W,
@@ -37,7 +39,14 @@ const DRAG_THRESHOLD_PX = 4;
  *   3. Text selection is off in the stylesheet. Dragging across a label
  *      otherwise turns into a highlight halfway through.
  */
-export function RoadmapPage({ onOpenTopic }: { onOpenTopic: (topic: RoadmapTopic) => void }) {
+export function RoadmapPage() {
+  const navigate = useNavigate();
+  // Present when the URL is /topic/:topic, absent at /. The panel is part of
+  // this screen rather than a separate one, so opening it does not unmount the
+  // map and closing it does not have to rebuild it.
+  const { topic: openSlug } = useParams();
+  const onOpenTopic = (topic: RoadmapTopic) => void navigate(`/topic/${topic.topic}`);
+
   const [topics, setTopics] = useState<RoadmapTopic[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 });
@@ -137,6 +146,7 @@ export function RoadmapPage({ onOpenTopic }: { onOpenTopic: (topic: RoadmapTopic
   if (!topics) return <p className="muted">Loading the roadmap…</p>;
 
   const byName = new Map(topics.map((t) => [t.topic, t]));
+  const open = openSlug ? byName.get(openSlug) : undefined;
 
   return (
     <div
@@ -196,6 +206,14 @@ export function RoadmapPage({ onOpenTopic }: { onOpenTopic: (topic: RoadmapTopic
           ⛶
         </button>
       </div>
+
+      {open && (
+        <TopicDialog
+          topic={open}
+          onOpenStep={(stepId) => void navigate(`/step/${stepId}`)}
+          onClose={() => void navigate('/')}
+        />
+      )}
     </div>
   );
 }

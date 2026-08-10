@@ -268,14 +268,48 @@ button.quiet:hover:not(:disabled) {
 }
 
 .wordmark {
-  border: 0;
-  background: none;
-  padding: 0;
   font: inherit;
   font-weight: 700;
+  text-decoration: none;
+  color: inherit;
   cursor: pointer;
 }
 
+/* A navigation link wearing the same clothes as the buttons beside it.
+   NavLink sets aria-current itself, so the highlight is driven by the route
+   that is actually rendered rather than by a second copy of that knowledge. */
+.navlink {
+  display: inline-block;
+  font: inherit;
+  text-decoration: none;
+  color: var(--fg);
+  padding: 0.42rem 0.85rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  transition:
+    border-color 0.12s,
+    color 0.12s;
+}
+
+.navlink:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.navlink.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 550;
+}
+
+.navlink.primary:hover {
+  color: var(--accent-fg);
+  filter: brightness(1.08);
+}
+
+.navlink[aria-current='page'],
 nav button[aria-current='page'] {
   border-color: var(--accent);
   color: var(--accent);

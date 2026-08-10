@@ -81,5 +81,13 @@ catalog:
   # from our own notes, never user input, and the page's CSP forbids inline
   # script regardless of what any renderer emits.
   marked: ^18.0.9
+  # URLs for the screens. The app navigated with a `useState` switch until now,
+  # which meant one history entry for the whole site: the browser Back button
+  # left it entirely, refreshing lost your place, and no lesson could be linked
+  # to. Hand-rolling this on the History API is about sixty lines, but a router
+  # is load-bearing rather than a leaf, and its failure modes (double history
+  # entries, state out of step with the URL, back landing on a screen whose data
+  # was never fetched) are the tedious kind to find.
+  react-router: ^8.3.0
   monaco-editor: ^0.56.0
   y-monaco: ^0.1.6

@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { MonacoBinding } from 'y-monaco';
 import type * as Y from 'yjs';
-import { consentToReveal, endSession, revealState, type Question, type Session } from '../api';
+import { Navigate, useNavigate, useParams } from 'react-router';
+import {
+  consentToReveal,
+  currentSession,
+  endSession,
+  getQuestion,
+  revealState,
+  type Question,
+  type Session,
+} from '../api';
 import { idToken } from '../auth';
 import { connectCollab, type CollabStatus } from '../collab';
 import { monaco } from '../monaco';
@@ -11,6 +20,61 @@ import type { SessionSummary } from '../App';
 /** How often to ask whether the other person has agreed to reveal. Only runs
  * in the gap between one consent and the other, which is usually seconds. */
 const REVEAL_POLL_MS = 2_500;
+
+/**
+ * Rebuilds the session from its URL, then renders it.
+ *
+ * This is what a URL for a session has to buy to be worth having: the page was
+ * previously handed a session object by whatever navigated to it, so reloading
+ * mid-session dropped you out of the room. Asking the server which session you
+ * are in makes a refresh, a bookmark and the Back button all land you back in
+ * the same document.
+ *
+ * The id in the path is checked against the answer rather than trusted. A stale
+ * link to a session that has ended, or to someone else's, is not an error worth
+ * a screen of its own: the roadmap is where you would go next anyway.
+ */
+export function SessionRoute({ onEnded }: { onEnded: () => void }) {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [loaded, setLoaded] = useState<{ session: Session; question: Question } | null>(null);
+  const [gone, setGone] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const session = await currentSession();
+        if (!session || session.id !== id) throw new Error('not in this session');
+        const question = await getQuestion(session.questionId);
+        if (!cancelled) setLoaded({ session, question });
+      } catch {
+        if (!cancelled) setGone(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  if (gone) return <Navigate to="/" replace />;
+  if (!loaded) return <p className="muted">Rejoining…</p>;
+
+  return (
+    <SessionPage
+      session={loaded.session}
+      question={loaded.question}
+      onEnded={(summary) => {
+        onEnded();
+        // The summary is built from what this page already knows and there is
+        // no endpoint that could rebuild it, so it travels in history state
+        // rather than in the URL. A refresh on /summary therefore has nothing
+        // to show, and that route sends you to the roadmap.
+        void navigate('/summary', { replace: true, state: { summary } });
+      }}
+    />
+  );
+}
 
 interface Props {
   session: Session;

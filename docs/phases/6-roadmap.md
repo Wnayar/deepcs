@@ -148,6 +148,7 @@ cycle.
 | `frontend/src/roadmap-layout.ts` | The geometry, kept out of the component so it can be tested. |
 | `frontend/src/pages/Roadmap.tsx` | Pan, zoom, and why a press is not captured on pointerdown. |
 | `frontend/src/pages/Step.tsx` | Questions, then lesson, then the answer. |
+| `frontend/src/App.tsx` | The route table, and why nav entries are links. |
 | `frontend/src/styles.css` | The tokens both themes are built from. |
 | `services/questions/src/repository.test.ts` | The guards for all of the above. |
 
@@ -227,7 +228,58 @@ arrow reads as travelling downward even when two topics are far apart sideways.
 
 ---
 
-# Part 3 — Themes as tokens
+# Part 3 — URLs, and what a URL promises
+
+The app navigated with a `useState` switch until this phase. That was fine at
+three screens and stopped being fine at six, and the symptom was one people
+notice immediately: the whole site lived at a single address, so the browser
+held one history entry for it and **Back left the site entirely**. Refreshing
+lost your place, reloading mid-session dropped you out of the room, and no
+lesson could be linked to.
+
+React Router rather than about sixty lines on the History API, and the
+comparison with the pan and zoom on this same page is the reason. That was
+arithmetic with no edge cases and nothing else depending on it, so hand-writing
+it cost a dependency and bought full control. A router is not a leaf: it touches
+every screen, and its failure modes are the tedious kind to find, such as double
+history entries, state drifting out of step with the URL, and Back landing on a
+screen whose data was never fetched.
+
+The routes:
+
+| Path | Screen |
+|---|---|
+| `/` | the roadmap |
+| `/topic/:topic` | the roadmap with a topic panel open |
+| `/step/:id` | a lesson and its questions |
+| `/match`, `/match?topic=os&difficulty=easy` | find a partner, optionally preset |
+| `/session/:id` | the shared editor |
+| `/signin` | the sign-in form |
+
+Two of those are worth explaining.
+
+**An open topic panel has its own URL.** The panel sits over the map and is part
+of the same screen, so it could have been component state. Giving it an address
+means Back closes the panel instead of leaving the site, which is the behaviour
+anyone on a phone will reach for.
+
+**A session rebuilds itself from its id.** `SessionRoute` asks the server which
+session the caller is in and checks it against the path, rather than trusting
+either the id or a session object handed to it by whatever navigated there. That
+is what makes a refresh rejoin the same document, and it makes a stale link to
+an ended session land on the roadmap instead of on a broken page.
+
+The general rule the routes are held to: **a URL is a promise that the page can
+be rebuilt from it.** The summary screen cannot keep that promise, so it does
+not get one.
+
+One deployment consequence for phase 6: a static host must rewrite unknown paths
+to `index.html`, or `/step/<id>` returns a 404 from the CDN before the app ever
+loads. Vite's dev server and `vite preview` both do this already.
+
+---
+
+# Part 4 — Themes as tokens
 
 Every colour is a custom property defined once on `:root` and redefined once
 under `[data-theme='dark']`. No component names a colour, so a theme is a list
@@ -242,13 +294,16 @@ preference between visits is a smaller problem than the page failing to render.
 
 ---
 
-# Part 4 — What this phase deliberately did not build
+# Part 5 — What this phase deliberately did not build
 
 - **No progress tracking.** There is no completed state and nothing to store it
   in. It needs a table, a route, and an opinion about what finishing means.
-- **No deep links.** The app is still a `useState` switch, so a step has no URL
-  of its own and cannot be shared or bookmarked. This is the first change that
-  makes a router worth its weight, and the first thing to add if the app grows.
+- **No summary URL.** Every other screen can be rebuilt from its address; the
+  summary is assembled from what the session page happened to know when End was
+  pressed, and no endpoint returns it. It travels in history state instead, and
+  a refresh on `/summary` goes to the roadmap. Giving it a real URL means
+  building a summary endpoint, which is the same work as the session history
+  question below.
 - **No search.** Nine topics fit on one screen.
 - **No history of your own past sessions.** The data exists in
   `matching.sessions` and `collab.snapshots`, but nothing reads it back, and a
@@ -257,7 +312,7 @@ preference between visits is a smaller problem than the page failing to render.
 
 ---
 
-# Part 5 — Demonstrating the claims
+# Part 6 — Demonstrating the claims
 
 ## Claim 1 — no answer text sits in a lesson
 

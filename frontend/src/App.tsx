@@ -1,37 +1,14 @@
 import { useEffect, useState } from 'react';
-import {
-  currentSession,
-  ensureProfile,
-  getQuestion,
-  type Difficulty,
-  type Question,
-  type RoadmapTopic,
-  type Session,
-} from './api';
+import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router';
+import { currentSession, ensureProfile, type Question, type Session } from './api';
 import { signOutUser, watchUser, type User } from './auth';
 import { useTheme } from './theme';
 import { RoadmapPage } from './pages/Roadmap';
-import { TopicDialog } from './pages/TopicDialog';
 import { StepPage } from './pages/Step';
 import { LoginPage } from './pages/Login';
 import { MatchPage } from './pages/Match';
-import { SessionPage } from './pages/Session';
+import { SessionRoute } from './pages/Session';
 import { SummaryPage } from './pages/Summary';
-
-/**
- * A `useState` switch rather than a router. There are six screens and no
- * deep-linking requirement in this phase, so react-router would be a
- * dependency and a concept for nothing. The one place it costs something is
- * noted on the session screen: a refresh mid-session drops you back to the
- * roadmap rather than rejoining.
- */
-export type View =
-  | { name: 'roadmap' }
-  | { name: 'step'; stepId: string }
-  | { name: 'signin' }
-  | { name: 'match'; preset?: { topic: string; difficulty: Difficulty } }
-  | { name: 'session'; session: Session; question: Question }
-  | { name: 'summary'; summary: SessionSummary };
 
 export interface SessionSummary {
   question: Question;
@@ -40,11 +17,22 @@ export interface SessionSummary {
   revealed: boolean;
 }
 
+/**
+ * The shell: the header, and which screen is on the page.
+ *
+ * Screens are URLs rather than a `useState` switch. That switch was fine at
+ * three screens and stopped being fine at six: the whole site lived at one
+ * address, so the browser held a single history entry for it, Back left the
+ * site entirely, refreshing lost your place, and no lesson could be linked to.
+ *
+ * A URL is a promise that the page can be rebuilt from it, and every route here
+ * keeps that promise by refetching rather than relying on state it was handed.
+ * The one exception is the summary, which is why it has no URL of its own.
+ */
 export function App() {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
-  const [view, setView] = useState<View>({ name: 'roadmap' });
-  const [openTopic, setOpenTopic] = useState<RoadmapTopic | null>(null);
+  const [active, setActive] = useState<Session | null>(null);
   const [theme, toggleTheme] = useTheme();
 
   useEffect(
@@ -56,23 +44,14 @@ export function App() {
     [],
   );
 
-  const [active, setActive] = useState<Session | null>(null);
-
   // Users creates the profile row lazily on this call, and `/match/join`
   // refuses a uid it has never seen, so this has to happen once per sign-in
   // before the user can reach anything that matters.
   //
   // Asking for the active session in the same pass is what stops the app lying
   // about where you are: navigating away from the editor closes the socket but
-  // does not end anything, so without this the nav would keep offering to
+  // does not end anything, so without this the header would keep offering to
   // find a partner while you were still in a room.
-  // Signing in from the sign-in screen leaves you looking at a form you have
-  // already used. There is nothing on that page for someone with an account,
-  // so arriving in one moves you on.
-  useEffect(() => {
-    if (user) setView((current) => (current.name === 'signin' ? { name: 'roadmap' } : current));
-  }, [user]);
-
   useEffect(() => {
     if (!user) return setActive(null);
     void ensureProfile().catch(() => {});
@@ -81,78 +60,52 @@ export function App() {
       .catch(() => setActive(null));
   }, [user]);
 
-  /** Back into a session already in progress. The room is rebuilt from its
-   * snapshot on the server, so this resumes rather than restarts. */
-  const resume = async (session: Session) => {
-    try {
-      setView({ name: 'session', session, question: await getQuestion(session.questionId) });
-    } catch {
-      /* the nav entry stays, and trying again is harmless */
-    }
-  };
-
-  const openStep = (stepId: string) => {
-    setOpenTopic(null);
-    setView({ name: 'step', stepId });
-  };
-
   if (!ready) return <main className="muted">Loading…</main>;
-
-  const onRoadmap = view.name === 'roadmap' || view.name === 'step';
 
   return (
     <>
       <header>
         <h1>
-          <button className="wordmark" onClick={() => setView({ name: 'roadmap' })}>
+          <Link className="wordmark" to="/">
             deepcs
-          </button>
+          </Link>
         </h1>
 
         <nav>
-          <button
-            aria-current={onRoadmap ? 'page' : undefined}
-            onClick={() => setView({ name: 'roadmap' })}
-          >
+          {/* Links, not buttons that navigate. A `<button>` inside an `<a>` is
+              invalid markup and behaves unpredictably, and a link is what these
+              actually are: middle-click and open-in-new-tab work for free.
+              `.navlink` gives them the look of the buttons beside them, and
+              NavLink marks the current route itself so the highlight cannot
+              drift out of step with what is on screen. */}
+          <NavLink className="navlink" to="/">
             Roadmap
-          </button>
+          </NavLink>
 
           {/* Three states, not two. "Return to session" while you are already
-              looking at it is a button that does nothing, so being in the room
-              gets its own quiet marker and only leaving it turns into a call
-              to go back. */}
+              looking at it is a link that goes nowhere, so being in the room
+              gets its own quiet marker and only leaving it turns into a call to
+              go back. */}
           {active ? (
-            view.name === 'session' ? (
-              <span className="live">In session</span>
-            ) : (
-              <button className="primary" onClick={() => void resume(active)}>
-                Return to session
-              </button>
-            )
+            <SessionNavEntry sessionId={active.id} />
           ) : (
-            <button
-              aria-current={view.name === 'match' ? 'page' : undefined}
-              onClick={() => setView({ name: 'match' })}
-            >
+            <NavLink className="navlink" to="/match">
               Find a partner
-            </button>
+            </NavLink>
           )}
 
           {/* Always present, signed in or out. Signed out it is the way in;
               signed in it is where you go to leave, and hiding it would mean
-              the only account control appears and disappears depending on
-              state the visitor cannot see. */}
+              the only account control appears and disappears depending on state
+              the visitor cannot see. */}
           {user ? (
             <button className="quiet" onClick={() => void signOutUser()} title={user.email ?? ''}>
               Sign out
             </button>
           ) : (
-            <button
-              aria-current={view.name === 'signin' ? 'page' : undefined}
-              onClick={() => setView({ name: 'signin' })}
-            >
+            <NavLink className="navlink" to="/signin">
               Sign in
-            </button>
+            </NavLink>
           )}
 
           <button
@@ -166,59 +119,68 @@ export function App() {
         </nav>
       </header>
 
-      <main className={view.name === 'roadmap' ? 'wide' : undefined}>
-        {view.name === 'roadmap' && <RoadmapPage onOpenTopic={setOpenTopic} />}
+      <Routes>
+        {/* The roadmap and an open topic are the same screen: the panel sits
+            over the map, so giving it its own URL is what makes Back close it
+            rather than leave the site. */}
+        <Route path="/" element={<Wide />}>
+          <Route index element={<RoadmapPage />} />
+          <Route path="topic/:topic" element={<RoadmapPage />} />
+        </Route>
 
-        {view.name === 'step' && (
-          <StepPage
-            stepId={view.stepId}
-            signedIn={Boolean(user)}
-            onOpenStep={openStep}
-            onBack={() => setView({ name: 'roadmap' })}
-            onPractise={(topic, difficulty) =>
-              setView({ name: 'match', preset: { topic, difficulty } })
+        <Route element={<Narrow />}>
+          <Route path="/step/:id" element={<StepPage signedIn={Boolean(user)} />} />
+          <Route path="/signin" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
+          <Route
+            path="/match"
+            element={user ? <MatchPage active={active} onJoined={setActive} /> : <LoginPage />}
+          />
+          <Route
+            path="/session/:id"
+            element={
+              user ? (
+                <SessionRoute onEnded={() => setActive(null)} />
+              ) : (
+                <Navigate to="/signin" replace />
+              )
             }
           />
-        )}
-
-        {view.name === 'signin' && <LoginPage />}
-
-        {view.name === 'match' &&
-          (user ? (
-            <MatchPage
-              preset={view.preset}
-              active={active}
-              onMatched={(session, question) => {
-                setActive(session);
-                setView({ name: 'session', session, question });
-              }}
-              onResume={(session) => void resume(session)}
-            />
-          ) : (
-            <LoginPage />
-          ))}
-
-        {view.name === 'session' && user && (
-          <SessionPage
-            session={view.session}
-            question={view.question}
-            onEnded={(summary) => {
-              setActive(null);
-              setView({ name: 'summary', summary });
-            }}
-          />
-        )}
-
-        {view.name === 'summary' && (
-          <SummaryPage summary={view.summary} onDone={() => setView({ name: 'roadmap' })} />
-        )}
-      </main>
-
-      {/* Over the roadmap rather than replacing it, so closing it puts you
-          back exactly where you were on the map. */}
-      {openTopic && view.name === 'roadmap' && (
-        <TopicDialog topic={openTopic} onOpenStep={openStep} onClose={() => setOpenTopic(null)} />
-      )}
+          <Route path="/summary" element={<SummaryPage />} />
+          {/* Anything else is a typo or a stale link, and the roadmap is the
+              one page that always makes sense to land on. */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
     </>
+  );
+}
+
+/** The header entry for a session in progress. Separate so it can ask the
+ * router whether the session page is the one currently open. */
+function SessionNavEntry({ sessionId }: { sessionId: string }) {
+  const here = useLocation().pathname === `/session/${sessionId}`;
+  if (here) return <span className="live">In session</span>;
+  return (
+    <NavLink className="navlink primary" to={`/session/${sessionId}`}>
+      Return to session
+    </NavLink>
+  );
+}
+
+/** The roadmap is a canvas and fills the window; every other screen is a
+ * document and gets a reading width. Two layouts, one place each. */
+function Wide() {
+  return (
+    <main className="wide">
+      <Outlet />
+    </main>
+  );
+}
+
+function Narrow() {
+  return (
+    <main>
+      <Outlet />
+    </main>
   );
 }

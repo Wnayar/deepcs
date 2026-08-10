@@ -1,14 +1,7 @@
 import { useEffect, useState } from 'react';
 import { marked } from 'marked';
-import { getStep, questionReference, type Difficulty, type Step } from '../api';
-
-interface Props {
-  stepId: string;
-  signedIn: boolean;
-  onOpenStep: (stepId: string) => void;
-  onPractise: (topic: string, difficulty: Difficulty) => void;
-  onBack: () => void;
-}
+import { useNavigate, useParams } from 'react-router';
+import { getStep, questionReference, type Step } from '../api';
 
 /**
  * One step: the questions it prepares you for, then the material, then the
@@ -29,7 +22,10 @@ interface Props {
  * route updates it. The day lessons start accepting submissions is the day
  * that line needs a sanitizer in front of it.
  */
-export function StepPage({ stepId, signedIn, onOpenStep, onPractise, onBack }: Props) {
+export function StepPage({ signedIn }: { signedIn: boolean }) {
+  const navigate = useNavigate();
+  const { id: stepId = '' } = useParams();
+
   const [step, setStep] = useState<Step | null>(null);
   const [answers, setAnswers] = useState<string | null>(null);
   const [loadingAnswers, setLoadingAnswers] = useState(false);
@@ -62,7 +58,11 @@ export function StepPage({ stepId, signedIn, onOpenStep, onPractise, onBack }: P
   return (
     <div className="step-layout">
       <nav className="sidebar" aria-label={`Steps in ${step.topicTitle}`}>
-        <button className="quiet" onClick={onBack} style={{ marginBottom: '0.6rem' }}>
+        <button
+          className="quiet"
+          onClick={() => void navigate(`/topic/${step.topic}`)}
+          style={{ marginBottom: '0.6rem' }}
+        >
           ← Roadmap
         </button>
         <span className="heading">{step.topicTitle}</span>
@@ -70,7 +70,7 @@ export function StepPage({ stepId, signedIn, onOpenStep, onPractise, onBack }: P
           <button
             key={sibling.id}
             aria-current={sibling.id === step.id ? 'page' : undefined}
-            onClick={() => onOpenStep(sibling.id)}
+            onClick={() => void navigate(`/step/${sibling.id}`)}
           >
             {sibling.step}. {sibling.title}
           </button>
@@ -104,7 +104,12 @@ export function StepPage({ stepId, signedIn, onOpenStep, onPractise, onBack }: P
         </p>
 
         <div className="row">
-          <button className="primary" onClick={() => onPractise(step.topic, step.difficulty)}>
+          <button
+            className="primary"
+            onClick={() =>
+              void navigate(`/match?topic=${step.topic}&difficulty=${step.difficulty}`)
+            }
+          >
             Work through it with a partner
           </button>
 
