@@ -4,7 +4,6 @@ import { USER_ID_HEADER } from '@deepcs/shared/headers';
 const participantResponse = z.object({
   participant: z.boolean(),
   questionId: z.string().optional(),
-  partnerUid: z.string().optional(),
 });
 
 /**
@@ -17,13 +16,12 @@ const REQUEST_TIMEOUT_MS = 5_000;
 
 export interface SessionAuthorization {
   questionId: string;
-  partnerUid: string | null;
 }
 
 /**
  * Asks Matching whether `uid` is one of the two people in `sessionId` — e.g.
  *   checkSessionParticipant(matchingUrl, 's42', 'bob')
- * returns `{ questionId, partnerUid }` if bob is a participant, or `null` if
+ * returns `{ questionId }` if bob is a participant, or `null` if
  * the session doesn't exist or bob isn't in it. The Gateway can't answer this
  * itself (it holds no session data), so a WebSocket handshake to `/collab`
  * calls this before the socket is allowed to upgrade.
@@ -48,14 +46,13 @@ export async function checkSessionParticipant(
     throw new Error(`matching service returned ${res.status}`);
   }
 
-  // Only `participant` and `questionId` gate the answer. `partnerUid` is
-  // parsed to pin Matching's response shape (that is what the contract test
-  // asserts) but is deliberately not required here: making it a condition
-  // would turn a future response-shape change into a 403 for someone who
-  // really is in the session, which is the wrong way to fail.
+  // `participant` and `questionId` are the whole answer. Matching does not
+  // name the other person in this response and Collab has no use for it: a
+  // room is keyed by session, and the sockets in it are authorized one at a
+  // time against their own uid.
   const body = participantResponse.parse(await res.json());
   if (!body.participant || !body.questionId) return null;
-  return { questionId: body.questionId, partnerUid: body.partnerUid ?? null };
+  return { questionId: body.questionId };
 }
 
 const questionResponse = z.object({

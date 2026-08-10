@@ -23,6 +23,7 @@ jobs:
     outputs:
       services: ${{ steps.detect.outputs.services }}
       count: ${{ steps.detect.outputs.count }}
+      web: ${{ steps.detect.outputs.web }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,6 +52,16 @@ jobs:
 
           changed=$(git diff --name-only "$base" HEAD)
           echo "changed files:"; echo "$changed"
+
+          # The frontend is decided on its own, not as a matrix entry. The
+          # matrix builds a Docker image per service and polls /health/ready,
+          # and a static bundle has neither. Computed before the early exit
+          # below, which returns without reaching the rest of this script.
+          if echo "$changed" | grep -qE '^(frontend/|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|\.github/workflows/)'; then
+            echo "web=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "web=false" >> "$GITHUB_OUTPUT"
+          fi
 
           # Anything shared rebuilds everything: packages/shared is compiled
           # into all six images, and the root config, Dockerfile and lockfile
@@ -101,6 +112,36 @@ jobs:
       # tests. It needs no Postgres or Redis — it asserts on app.inject alone —
       # so it belongs here rather than in the matrix job that provisions both.
       - run: pnpm --filter @deepcs/shared test
+
+  # ── The frontend: typecheck and build, and nothing else ──────────────────────
+  # Deliberately not an entry in the matrix below. That job builds a container
+  # image per service and proves it answers /health/ready; the frontend is a
+  # static bundle with no image, no port and no health endpoint, so it would
+  # need a third special case in a step that already has one for Stats.
+  #
+  # No Postgres or Redis either — nothing here touches them. What this does
+  # catch is the failure that actually happens: a type error, or a Monaco or
+  # Firebase import that resolves in the editor and not in a real build.
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @deepcs/web typecheck
+      # The collab client's tests need the whole stack and the Auth emulator,
+      # which this job does not stand up — they detect that and skip rather
+      # than fail. Run for the same reason the contract tests are: so a change
+      # that breaks them locally is caught by someone, and so the step exists
+      # the day CI does orchestrate the services.
+      - run: pnpm --filter @deepcs/web test
+      - run: pnpm --filter @deepcs/web build
 
   # ── Per-service: typecheck, test, build, and build the image ─────────────────
   service:

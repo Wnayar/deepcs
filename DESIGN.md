@@ -1,7 +1,8 @@
 # DeepCS — Design Doc
 
 > A deliberately lean, production-grade web backend: **real-time collaboration,
-> microservices + gateway, auth, rate limiting, and a live cloud deploy.**
+> microservices + gateway, auth, rate limiting, and Kubernetes locally, with a
+> cloud deploy last.**
 
 **Repo description:** CS fundamentals question bank with real-time
 collaborative solving. Practice solo or get matched with someone.
@@ -49,7 +50,8 @@ to need full context, alternatives, and accepted tradeoffs are ADRs (§9).
   created", recorded as data) to a replayable log; a scheduled job consumes them
   into session summaries and live stats — which is where at-least-once delivery
   forces idempotency (§6).
-- A system that's actually deployed at a live URL, inside a hard cost ceiling
+- A system that runs on Kubernetes locally at no cost, and is deployed to a
+  live URL at the end, inside a hard cost ceiling
   (§7) — the constraint that shapes more of this design than any other.
 
 ---
@@ -58,26 +60,35 @@ to need full context, alternatives, and accepted tradeoffs are ADRs (§9).
 
 **Core loop:**
 
-1. Sign up.
-2. Browse, search, and filter the question bank; read answers solo.
-3. Optionally choose "solve with someone" and join the queue with topic +
-   difficulty preferences.
-4. Get matched with another waiting user.
-5. Land in a shared scaffolded document seeded from the question's parts.
-6. Co-write the answer in real time with presence + cursors.
-7. Mutual-consent reveal of the reference answer.
-8. End session; see a short summary.
+1. Arrive at a roadmap of nine topics, laid out in a recommended reading order.
+   No account needed.
+2. Open a topic, pick one of its three steps, and read the lesson with the
+   questions it prepares you for.
+3. Sign up.
+4. Optionally choose "solve with someone" and join the queue with topic +
+   difficulty preferences, usually straight from the step you just read.
+5. Get matched with another waiting user.
+6. Land in a shared scaffolded document seeded from the question's parts.
+7. Co-write the answer in real time with presence + cursors.
+8. Mutual-consent reveal of the reference answer.
+9. End session; see a short summary.
+
+*Steps 1 and 2 replaced "browse the question bank", which was the original entry
+point and was the wrong one: a list of questions you cannot answer yet is not
+somewhere to start learning. The bank still exists and matching still searches
+it; it just is not the front door. See
+[docs/phases/5b-roadmap.md](./docs/phases/5b-roadmap.md).*
 
 **Domain:** a bank of multi-part CS fundamentals questions (OS, networking,
 databases, concurrency), sourced from my existing notes repo — so the content
 is already owned. Editing is symmetric: both users type into the same document
 at the same time with equal rights, which is exactly the concurrent-edit
 situation a CRDT exists to resolve, so the CRDT is genuinely load-bearing. The
-public browsable question bank makes the live deploy useful to a single
+public roadmap and its lessons make the live deploy useful to a single
 visitor — matchmaking alone would demo as an empty room.
 
-**In scope:** auth; public browsable question bank (search/filter/read solo);
-join queue with topic + difficulty preferences; match; shared real-time
+**In scope:** auth; a public roadmap of topics, each with lessons and the
+questions that drill them, readable solo and signed out; join queue with topic + difficulty preferences; match; shared real-time
 scaffolded session document with presence; mutual-consent reference reveal;
 reconnect after disconnect; end session + summary; public stats endpoint
 (sessions solved, popular topics — fed by the event log, §5).
@@ -190,7 +201,7 @@ see §5.
 | Layer | Choice | Why — and why not the alternative |
 |-------|--------|-----|
 | All services | TypeScript + Fastify (Node web framework) | One language across six deployables + the frontend = fast solo iteration, and shared types across service boundaries, which matters much more now that boundaries exist. *Not Express:* Fastify has JSON-schema validation and a real plugin/encapsulation model built in, and is meaningfully faster. *Not NestJS:* heavy structure earns its keep on a team. |
-| Frontend | React + Vite (build tool) + TS | Minimal, just enough to demo; Yjs bindings for React editors are mature. *Not Next.js:* SSR buys nothing for an authenticated single-page editor and adds a server to deploy where a static bundle on a CDN costs nothing. |
+| Frontend | React + Vite (build tool) + TS, with `react-router` and `marked` | Minimal, just enough to demo; Yjs bindings for React editors are mature. *Not Next.js:* SSR buys nothing for an authenticated single-page editor and adds a server to deploy where a static bundle on a CDN costs nothing. `react-router` arrived once there were six screens: navigating by React state meant the whole site lived at one address, so the browser Back button left it entirely and no lesson could be linked to. `marked` renders the seeded lesson markdown, and needs no sanitizer because that markdown is seeded by a migration and no route writes it. |
 | Auth | Firebase Auth (email/password) **[bought]** | Identity is a solved, security-critical problem with no design insight left in it; Google's abuse detection and key rotation beat anything hand-rolled. *Not self-hosted:* ADR-04. Free at this scale. |
 | DB access | `pg` driver + hand-written parameterized SQL; migrations as numbered `.sql` files (ADR-10) | No schema DSL on the critical path, and ADR-09's per-schema grants stay literal SQL. *Not Drizzle:* deferred, not rejected — it is item 1 in the additive backlog (§10). |
 | Database | PostgreSQL (Neon, free) **[bought]** — one instance, schema per service | Relational data, plus built-in tag filtering (`text[]` + GIN index) and full-text search (`tsvector`), so no separate search engine. *Not database-per-service:* ADR-09 — it would cost cross-service atomicity and force a saga. *Not Mongo:* the data is relational. *Not Cloud SQL:* no free tier, bills hourly. |
@@ -538,10 +549,58 @@ setting is a security control, not a deployment detail.
   Neon + Upstash via env vars; secrets in Secret Manager; frontend on Cloud
   Storage + CDN; Stats as a Cloud Run job triggered by Cloud Scheduler every 5
   minutes. One live URL.
+- **The frontend bucket must serve `index.html` for unknown paths.** Routing is
+  client-side, so `/step/<uuid>` exists only once the bundle is running: without
+  a rewrite the CDN answers 404 for every link into the app except the root, and
+  the failure shows up only for shared links and refreshes, never while clicking
+  around. On Cloud Storage this is the bucket's error page set to `index.html`;
+  behind a load balancer it is a URL map rewrite. Vite's dev server and
+  `vite preview` both do it already, which is exactly why it is easy to miss.
 - **CI:** GitHub Actions, **path-filtered per service** — a change under
   `services/questions/` builds and deploys only Questions. Independent deploy is
   most of the point of the split (ADR-01), and it doesn't exist unless CI is
   wired for it.
+
+**How a waiting user finds out they were matched.** Being matched is caused by
+somebody else's request, and HTTP gives a server no way to speak first, so a
+client either asks repeatedly or is told. It asked, at first, and that turned out
+to defeat both mechanisms this cost model rests on: Neon suspends idle compute
+and Cloud Run scales to zero, and neither can happen while a request arrives
+every few seconds. Slowing it down to fix that made a partner's arrival up to
+twenty seconds late, with the partner sitting alone in the editor meanwhile.
+
+It is now server-sent events: `GET /match/events` holds one ordinary HTTP
+response open and Matching writes into it when the Redis message for that user
+arrives. Nothing is spent while nothing happens, and delivery is immediate
+(23 ms end to end through the Gateway, measured). Two things about it are worth
+knowing rather than discovering:
+
+- **A connection is not free either.** On Cloud Run an open stream occupies a
+  concurrency slot and keeps the instance alive, so a stream is opened only by
+  somebody actually waiting, never by everyone signed in, and it is given up
+  after fifteen minutes.
+- **Its failure mode is silent.** Anything in the path that buffers turns the
+  stream into one long pause and then everything at once: the request succeeds,
+  the headers are right, and events simply never arrive. That cannot be caught
+  by reading code, so it is caught by a wall-clock assertion through the Gateway
+  in `frontend/src/matchEvents.test.ts`.
+
+**Whether Matching and Collab go out with the rest is a decision for the day,
+not for now.** A lone visitor cannot use matchmaking: queue up with nobody else
+there and you wait forever, which is why the roadmap and its lessons are public
+in the first place (§2). The case for leaving those two undeployed is real, and
+the case against is that they are the CRDT, the atomic pair claim, the
+cross-instance pub/sub and the authorised WebSocket — most of what makes this a
+distributed system rather than a content site.
+
+What settles it is that **omitting them saves no money**. Cloud Run bills
+requests and CPU time, so a service nobody calls scales to zero and costs
+approximately nothing; the thing that was going to cost was polling, and there
+is no polling any more. So the choice is about deployment effort, and ADR-01's
+whole point is that the six deploy independently, which makes this a flag on the
+day rather than a fork in the design. The empty room is answered by the demo
+recording, which phase 10 already lists, and by the fact that two tabs and two
+accounts work.
 
 **The cost of six deployables, stated honestly:** a cold match request can chain
 cold starts — Gateway → Matching → Users → Questions, each potentially starting
@@ -669,7 +728,7 @@ it deliberately and on a deadline is safer than doing it casually.
    a pod and watch it self-heal, read logs via `kubectl`. No Helm, no k3d — raw
    YAML so every line is understood.
 2. **Delete the cluster**, keep the manifests in `k8s/`. Production never moves:
-   it is on Cloud Run from phase 6 onwards and stays there, which is the whole
+   it is on Cloud Run from phase 10 onwards and stays there, which is the whole
    point of running this as a detour on a deadline. ADR-05 records it.
 
 ---
@@ -688,14 +747,42 @@ it deliberately and on a deadline is safer than doing it casually.
   Matching→Questions, Collab→Matching), so a response-shape change breaks CI
   rather than production. This is the tax independent deployability charges.
 - **One end-to-end happy path:** sign in → match → collab edit syncs → end.
-- **k6 load test on Collab, run twice.** Locally against docker-compose first —
-  that's where the *volume* goes, because nothing throttles and bugs are cheap to
-  find there (a socket leak, an unbounded map, a missing `await`). Then a
-  deliberately **smaller** run against Cloud Run with Grafana open, answering a
-  different question: does it behave the same under the §7 flags, real network
-  latency to `asia-southeast1`, and cold starts. Headline: *"holds N concurrent
-  WebSocket connections per instance at p95 X ms edit-propagation latency"* —
-  stated together with which of the two environments produced it. Either way the
+- **k6 load test on Collab, run twice, and the two runs answer different
+  questions.**
+
+  **The baseline is phase 7, against `docker-compose`.** It requires Collab and
+  nothing else, so it has been possible since phase 4; it is numbered anyway
+  because a task with no place in the sequence is a task that never happens, and
+  this is the one that turns a quoted figure into a measured one. Ramping
+  WebSocket connections is where the volume goes and where bugs are cheap to
+  find (a socket leak, an unbounded map, a missing `await`), and this run is
+  what produces the headline concurrency and propagation figures.
+
+  **Phase 8 re-runs the same script on the local Kubernetes cluster**, and the
+  point is not a bigger number. It is that load can be applied *while* a rolling
+  update goes out and *while* a pod is deleted, which is a different claim.
+
+  **What a local run may and may not claim.** It measures a laptop, not a
+  system, so it cannot support a capacity claim: "holds N concurrent
+  connections" is a number about the machine that produced it. What it supports
+  perfectly well are correctness-under-concurrency claims, which do not depend
+  on the hardware at all:
+
+  - zero dropped requests during a rolling update,
+  - no lost edits while an instance is replaced,
+  - flat memory and no leaked sockets over a long run.
+
+  The first of those is the payoff for the readiness probes written in phase 1:
+  a pod failing `/health/ready` is removed from the Service endpoints, and that
+  is the mechanism that makes the update lossless. "Zero dropped requests, and
+  here is why" is a better answer to what Kubernetes buys than listing object
+  kinds.
+
+  **Phase 10 re-runs it smaller against Cloud Run with Grafana open**, answering
+  the question the local one cannot: does it behave the same under the §7 flags,
+  real network latency to `asia-southeast1`, and cold starts. Headline: *"holds
+  N concurrent WebSocket connections per instance at p95 X ms edit-propagation
+  latency"* — stated together with which environment produced it. Either way the
   configured ceiling (250/instance) is the first limit N hits, not hardware, so
   raise the flag deliberately before chasing a bigger number.
 
@@ -839,7 +926,7 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
    survives the switch.
 5. **Cloud Run over Kubernetes for production** — production runs on Cloud Run
    from the first deploy onwards, for scale-to-zero and zero idle cost. GKE is
-   stood up separately as a time-boxed learning detour (phase 9), run alongside
+   stood up separately as a learning detour (phase 8), run alongside
    the live deployment, then deleted; the manifests are retained in `k8s/` as
    evidence, not as an alternative production path.
 6. **Reference answers never enter the shared doc** — a Yjs doc replicates to all
@@ -932,30 +1019,61 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
 | 3 | **Matching**: reactive matching (Redis sorted set + Lua claim), session rows, pub/sub match event, validation calls to Users + Questions, contract tests | two users join → matched → session exists; a Users outage fails the match cleanly rather than corrupting state |
 | 4 | **Collab (hardest):** WebSockets + Yjs, authorize the socket via Matching, cross-instance pub/sub, presence/cursors, snapshot + reconnect, graceful shutdown | two tabs sync live; kill one instance, the other keeps working |
 | 5 | Minimal React: login, question list, match button, session page (Monaco wired to Yjs) with scaffolded editor, reveal flow, end | open two browsers, match, collaborate, reveal |
-| 6 | Deploy the five services to Cloud Run + frontend to CDN; CI deploys per service on merge; logs + health + `/metrics` → Grafana; k6 load run; README + ADRs + demo GIF | live URL; headline load number in README; deploying Questions alone doesn't restart Collab |
-| 7 | Event pipeline: `emitEvent` → `events` stream (behind the `EventLog` interface); idempotent **Stats** consumer → summaries + aggregates; Cloud Scheduler → Cloud Run job | end a session on the live URL → summary renders; `/stats` shows real counts |
-| 8 | **[built · learning]** Terraform: import the manual setup (services + flags, service accounts, invoker bindings, registry, secrets, bucket, scheduler job, budget alerts) | `terraform apply` rebuilds the environment |
-| 9 | **[detour · learning]** k8s sprint on trial credits: raw manifests → GKE Autopilot → roll out / self-heal demo → migrate back, delete cluster, keep `k8s/` | app runs on Kubernetes; manifests in repo; cluster deleted |
-| 10 | **[detour · learning]** Kafka in dev: single-node Kafka (KRaft) in compose + a Kafka adapter for `EventLog` | same events flow through Kafka on `docker-compose up`; prod unchanged |
+| 5b | The question list became a roadmap: topics ordered as a recommended path, one lesson per question set seeded from the same notes, light/dark, and URLs for every screen. Content fixed in the seed rather than at render time | click a topic, read its lesson, press "find a partner" from it; Back works; a lesson link opens that lesson |
+| 6 | Event pipeline: `emitEvent` → `events` stream (behind the `EventLog` interface); idempotent **Stats** consumer → summaries + aggregates; Cloud Scheduler → Cloud Run job | end a session on the live URL → summary renders; `/stats` shows real counts |
+| 7 | **Load and soak.** One k6 script against `docker-compose`: ramp WebSocket connections on Collab to the configured 250/instance ceiling, hold, and watch memory and socket counts. Needs nothing beyond phase 4, and phases 8 and 10 re-run this same script against different targets | headline concurrency and p95 edit-propagation numbers, **stated with the environment that produced them**; no leaked sockets and flat memory over a long hold |
+| 8 | **Kubernetes, locally.** `k8s/` manifests: Deployment + Service per service, ConfigMap + Secret, Ingress, probes pointed at the existing `/health/live` and `/health/ready`, Postgres and Redis for local use; `make k8s-up` / `make k8s-down` on `kind`; the k6 script re-run during a rolling update and a killed pod | app runs on Kubernetes; k6 shows **zero dropped requests during a rolling update**, and `kubectl delete pod` does not interrupt it |
+| 9 | **[detour · learning]** Kafka in dev: single-node Kafka (KRaft) in compose + a Kafka adapter for `EventLog` | same events flow through Kafka on `docker-compose up`; prod unchanged |
+| 10 | **Deploy.** The services to Cloud Run + frontend to CDN; CI deploys per service on merge; logs + health + `/metrics` → Grafana; the smaller k6 run against the real thing; README + ADRs + demo GIF | live URL; headline load number in README with the environment stated; deploying Questions alone doesn't restart Collab |
+| 11 | **[built · learning]** Terraform: import the manual setup (services + flags, service accounts, invoker bindings, registry, secrets, bucket, scheduler job, budget alerts). After phase 10, because it imports infrastructure that has to exist first | `terraform apply` rebuilds the environment |
 
-**The project is publicly demoable at phase 6 and feature-complete at phase 7** —
-phase 7 is where the event pipeline and `/stats` land, and both are stated scope
-(§1, §2), so it is not optional. Everything from phase 8 on *is* additive and
-independently droppable, in this order: 10 first (pure adapter work behind an
-existing interface), then 9, then 8. If time runs short, what gets cut is
-learning detours, never the running system.
+**The project is feature-complete at phase 6**, which is where the event
+pipeline and `/stats` land. Both are stated scope (§1, §2), so phase 6 is not
+optional and nothing after it is load-bearing for the product. *Publicly*
+demoable means phase 10, and that is the deliberate cost of this ordering.
+
+**Why the deploy moved last.** It was phase 6, ahead of everything additive. The
+trade it was making turned out to be a bad one: a live URL is the only part of
+this a stranger experiences, but keeping one alive inside a $20 ceiling meant
+budget alarms, kill switches, free-tier quotas and a running audit of anything
+that might generate traffic — attention spent on billing rather than on the
+system. Running on Kubernetes locally costs nothing, has no billing account
+attached, and teaches the part of operations the compose file was hiding. The
+live URL is still the goal; it is now the last thing rather than the middle one.
+
+What is honestly lost is worth naming rather than glossing: until phase 10 there
+is no URL to send anybody, and nobody is going to run `kind create cluster` to
+look at a project. The README carries the demo recording until then.
+
+**Why the event pipeline moved ahead of Kubernetes.** They swapped after the CV
+went out. Ordering by cost and learning value is the right rule while nothing
+outside the repo depends on the plan, and the wrong one once something does: the
+event pipeline is described in writing to people who may ask about it, and
+Kubernetes is described as in progress, which it honestly is. Finishing the
+claim that is already in circulation comes before starting the one that is
+labelled as unfinished.
+
+**Why the load run is its own phase, and sits before Kubernetes.** It depends on
+nothing past phase 4, so it could be run on any afternoon, and that is exactly
+why it needed a number: work that can happen at any time tends to happen at no
+time, and this is the work that turns a quoted figure into a measured one. It
+goes before Kubernetes rather than after because phase 8 re-runs *this* script
+during a rolling update, so the script has to exist first, and because a socket
+leak is far cheaper to find before there are manifests between you and the
+process. Phases 8 and 10 re-run it against different targets to answer different
+questions; neither produces the baseline. See §8.
 
 **The additive backlog, highest priority first:**
 
 | | Item | Why it sits here |
 |---|---|---|
 | 1 | **Adopt Drizzle** over the `pg` layer (ADR-10) | The only deferred item that pays down a cost already being paid — hand-written result types, drifting from the schema, on every service from phase 1 onward. Adoptable one service at a time. Ahead of the phases below because it makes existing code better rather than adding new capability. |
-| 2 | Phase 10 — Kafka adapter | Pure adapter work behind the existing `EventLog` interface; prod unchanged. |
-| 3 | Phase 9 — Kubernetes sprint | Time-boxed to trial credits, and the cluster is deleted afterwards. |
-| 4 | Phase 8 — Terraform import | Highest effort, and it documents infrastructure that already works. |
+| 2 | Phase 8 — Kubernetes locally | Costs nothing and teaches the operations layer the compose file hides, but nothing in the product depends on it. |
+| 3 | Phase 9 — Kafka adapter | Pure adapter work behind the existing `EventLog` interface; prod unchanged. |
+| 4 | Phase 11 — Terraform import | Highest effort, and it documents infrastructure that already works. |
 
-**Why this ordering and not the doc's original.** Phases 8–10 each add something
-new. ADR-10's deferral is different in kind: it is a debt taken deliberately to
+**Why this ordering and not the doc's original.** Phases 8, 9 and 11 each add
+something new. ADR-10's deferral is different in kind: it is a debt taken deliberately to
 reach a demoable product sooner, and it accrues interest with every service
 written against the raw driver. Adding capability to a codebase carrying a known
 deferred decision is the wrong order if there is ever time for exactly one of
@@ -966,7 +1084,7 @@ recovery path if skipped.
 
 *Why is Collab at phase 4 rather than last?* It's the piece that can genuinely
 fail — cross-instance sync, snapshot correctness, reconnect. Hitting that in
-phase 4 leaves room to change approach; hitting it in phase 9 leaves none. It
+phase 4 leaves room to change approach; hitting it in phase 10 leaves none. It
 sits as early as its dependencies (a session row, phase 3) allow.
 
 *Why do the schema roles land in phase 1?* Because a boundary that isn't enforced

@@ -120,7 +120,7 @@ resulting code back into the terminal.
 
 ## 2.2 gh
 
-The GitHub CLI. Needed because phase 0's CI runs on GitHub Actions and phase 6
+The GitHub CLI. Needed because phase 0's CI runs on GitHub Actions and phase 10
 deploys from it.
 
 ```bash
@@ -163,8 +163,12 @@ No CLI path exists for this; it needs the console.
 varies by region, and DESIGN.md §7 builds an argument on the 90-day figure. Tell
 me if yours differs.
 
-**Note today's date.** The 90 days start now, and that clock decides whether the
-GKE sprint (phase 9) runs on trial credits or your own money.
+**Note today's date.** The 90 days start now, and that clock decides how much of
+the deploy (phase 10) is free.
+
+*The Kubernetes sprint no longer depends on this clock at all: it is phase 8 and
+runs locally on `kind`, so there is no cluster billing by the hour and nothing
+to race.*
 
 **Why the card can't be charged during the trial:** the trial is a hard stop, not
 a warning. When credits run out Google suspends resources rather than billing
@@ -308,7 +312,7 @@ into an HTTP request against your service, with authentication attached.
 **Cloud Run function** (what used to be called a Cloud Function gen2 — the
 console may show either name) — your code, packaged into a container by Cloud
 Build, running on Cloud Run, invoked by Eventarc. It is *the same platform the
-five DeepCS services will deploy to in phase 6*, with a build pipeline and an
+five DeepCS services will deploy to in phase 10*, with a build pipeline and an
 event trigger bolted on the front.
 
 **Cloud Billing API** — the endpoint that can read and change a project's billing
@@ -631,7 +635,7 @@ Two behaviours that differ from the budget in 6.2, and both matter:
   *net* of trial credits, so it stays near $0 and never fires during the trial —
   correct, since Google can't charge you then anyway. The spend cap counts gross,
   so it *can* fire while credits are still paying. If Cloud Run goes quiet
-  unexpectedly during phase 6, check here first.
+  unexpectedly during phase 10, check here first.
 - **Its thresholds are fixed at 50 / 80 / 100%** and its notifications aren't
   configurable. You can't attach a Pub/Sub topic, which is why this cannot
   replace 6.2.

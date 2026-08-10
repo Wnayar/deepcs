@@ -157,7 +157,7 @@ route with the Gateway-verified uid:
 
 ```
 GET /match/sessions/:id/participant     with header  X-User-Id: bob
--> { participant: true, questionId, partnerUid }   bob is in this session
+-> { participant: true, questionId }               bob is in this session
 -> { participant: false }                          session exists, bob isn't
 -> 401                                             no caller identity at all
 -> 404                                             no such session
@@ -332,21 +332,24 @@ here were wrong at some point:
 # Part 6 — What this phase deliberately did not build
 
 - **No `/metrics` or WebSocket connection count.** DESIGN.md scopes that to
-  phase 6 alongside Grafana for every service.
+  phase 10 alongside Grafana for every service.
 - **No frontend and no real Yjs client.** `y-monaco` and the editor are phase
   5. The tests drive the wire protocol directly, which is enough to prove the
   server side.
 - **`session.started` is a log line, not an event**, same as phase 3's
-  `queue.joined`/`match.created`; phase 7 puts it behind the real `EventLog`.
+  `queue.joined`/`match.created`; phase 6 puts it behind the real `EventLog`.
   Note it currently marks a *room opening on an instance*, so a session whose
-  participants all disconnect and return logs it again — phase 7 has to dedupe
+  participants all disconnect and return logs it again — phase 6 has to dedupe
   on `session_id`.
 - **Nothing subscribes to Matching's `match:session:{id}` channel.** Phase 3
   left it for "Collab or a future live-status channel"; Collab turned out not
   to need it, since a client learns its session id from `/match/join` and
   brings it to the socket. It stays for phase 5's live status.
 - **No reveal or consent flow**, still. Matching owns that state per DESIGN.md
-  and nothing has needed it yet.
+  and nothing has needed it yet. *(Phase 5 built it. Collab needed no change:
+  the answer never enters the Yjs document — it is released by Matching to the
+  browser over HTTP, which is exactly what ADR-06 requires, since a document
+  replicates to every peer.)*
 - **CI does not orchestrate sibling services for the contract tests**, same
   caveat as phase 3: `clients.test.ts` calls a real Users, Matching and
   Questions and passes locally, but the per-service CI matrix brings up only

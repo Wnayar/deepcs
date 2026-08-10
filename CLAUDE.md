@@ -66,6 +66,13 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ---
 
+## Running it
+
+`make up` starts the stack and applies migrations (compose has a one-shot
+`migrate` service every other service waits on). `make web` starts the frontend
+on :5173. `make test` needs the stack up, because the suites use real Postgres
+and Redis rather than mocks.
+
 ## Project context
 
 - [DESIGN.md](./DESIGN.md) — the architecture and reasoning; every other doc cites it by section
@@ -75,6 +82,8 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - [docs/phases/2-questions-bank.md](./docs/phases/2-questions-bank.md) — the question bank: cursor pagination, the read-through cache, and why `reference_md` never reaches a browser
 - [docs/phases/3-matching.md](./docs/phases/3-matching.md) — the atomic pair claim, why external calls run before any mutation, and idempotent join/retry
 - [docs/phases/4-collab.md](./docs/phases/4-collab.md) — collab: why two instances have to agree on a document's *identity* and not just its text, the pre-await frame queue, and snapshot/reconnect
+- [docs/phases/5-frontend.md](./docs/phases/5-frontend.md) — the React app, and the reveal rule: why the answer and the authority to release it live in different services
+- [docs/phases/5b-roadmap.md](./docs/phases/5b-roadmap.md) — the roadmap that replaced Learn and the bank, and the standing rule it came from: fix content in the seed, never at render time
 
 ### Comment style
 
@@ -103,3 +112,61 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
   `@deepcs/shared`). The reason is in `packages/shared/src/service.ts`.
 - **Tests use real Postgres and Redis, not mocks** (§8). CI provides both as
   service containers.
+
+### Working conventions established later
+
+- **Fix content at the source, never at render time.** If stored text is in the
+  wrong shape, change the seed and re-run the migration. A fix applied while
+  rendering has to be remembered at every place that text is displayed, and the
+  place that gets forgotten is the one nobody looks at. This rule is why
+  `frontend/src/reference.ts` no longer exists; see
+  [docs/phases/5b-roadmap.md](./docs/phases/5b-roadmap.md) thing 1.
+- **No em dashes in anything a reader sees**, including seeded lesson and
+  question text. A test asserts this against the database. Code comments and
+  these docs are exempt.
+- **Colours live in `:root` custom properties only.** No component names a
+  colour, so light and dark are two lists of variables rather than two
+  stylesheets.
+- **Every screen is a URL** (`react-router`, `frontend/src/App.tsx`). The rule a
+  new route is held to: *a URL is a promise that the page can be rebuilt from
+  it*, so a route refetches rather than relying on state it was handed. The one
+  exception is `/summary`, which is assembled from what the session page knew
+  and has no endpoint behind it, so it travels in history state and a refresh
+  goes to the roadmap. Navigation is `<NavLink className="navlink">`, never a
+  `<button>` inside it.
+- **Interactive elements do not nest.** A `<button>` inside an `<a>`, or an
+  `<h3>` inside a `<button>`, is invalid markup: React builds it through the DOM
+  so nothing visibly breaks, and then clicks land unpredictably and assistive
+  tech reads it wrong. Both shipped here before being caught. A clickable card
+  is a `<button>` containing spans.
+- **Editing a seeded migration means re-applying it by hand.** Migrations are
+  recorded in `public.schema_migrations`, so changing an already-applied file is
+  a no-op until its row is deleted:
+
+  ```bash
+  docker compose exec -T postgres psql -U deepcs -d deepcs \
+    -c "DELETE FROM public.schema_migrations WHERE filename LIKE '%009%';"
+  DATABASE_URL="postgresql://deepcs:deepcs@127.0.0.1:5432/deepcs" \
+    pnpm --filter @deepcs/db migrate
+  ```
+
+  The seeds are written to be re-runnable (`ON CONFLICT DO UPDATE`) precisely so
+  this is safe. Questions caches its list in Redis for 60s, so also
+  `redis-cli DEL questions:roadmap` or wait a minute before believing the API.
+
+- **The browser is told, not asked.** A client that needs to know about an event
+  another user caused subscribes to `GET /match/events` rather than polling.
+  Polling kept Neon's compute awake and every service warm for people who were
+  only waiting, and slowing it down enough to afford made the news late. The one
+  remaining timer is the crash-recovery check in `Match.tsx`, which detects a
+  lost pair claim, not a match.
+- **Phase order: 6 event pipeline, 7 load and soak, 8 Kubernetes locally, 9
+  Kafka, 10 deploy, 11 Terraform.** The deploy is last because keeping a live
+  URL inside a cost ceiling was buying attention on billing rather than on the
+  system, and the event pipeline is first because it is the piece already
+  described to people outside the repo. DESIGN.md §10 records both.
+- **The k6 script is written once, in phase 7, and re-run twice.** Phase 8 runs
+  it during a rolling update and a pod kill; phase 10 runs it smaller against
+  Cloud Run. Only phase 10 may make a capacity claim, because a local run
+  measures a laptop. A local run can still claim zero dropped requests during a
+  deploy, which is hardware-independent.

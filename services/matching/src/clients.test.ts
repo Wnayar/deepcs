@@ -1,5 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { checkUserExists, findQuestion } from './clients.js';
+import { checkUserExists, fetchReferenceMd, findQuestion } from './clients.js';
 
 /**
  * Contract tests (§8) — these call the *real* Users and Questions HTTP APIs,
@@ -43,6 +44,25 @@ describe.skipIf(!process.env.CI && process.env.USERS_URL === undefined)(
       await fetch(`${USERS_URL}/users/me`, { headers: { 'x-user-id': uid } });
 
       expect(await checkUserExists(USERS_URL, uid)).toBe(true);
+    });
+  },
+);
+
+describe.skipIf(!process.env.CI && process.env.QUESTIONS_URL === undefined)(
+  'fetchReferenceMd (Matching -> Questions contract)',
+  () => {
+    it('reads a real answer from the internal route', async () => {
+      if (!(await reachable(QUESTIONS_URL))) return;
+      const id = await findQuestion(QUESTIONS_URL, 'os', 'hard');
+
+      const referenceMd = await fetchReferenceMd(QUESTIONS_URL, id!);
+
+      expect(referenceMd?.length ?? 0).toBeGreaterThan(0);
+    });
+
+    it('is null for a question that does not exist', async () => {
+      if (!(await reachable(QUESTIONS_URL))) return;
+      expect(await fetchReferenceMd(QUESTIONS_URL, randomUUID())).toBeNull();
     });
   },
 );

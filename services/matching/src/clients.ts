@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+/**
+ * How long to wait on a sibling service before giving up. Unbounded `fetch`
+ * would let a hung Users or Questions hold this request — and its Cloud Run
+ * concurrency slot — open indefinitely.
+ */
+const REQUEST_TIMEOUT_MS = 5_000;
+
 const existsResponse = z.object({ exists: z.boolean() });
 
 /**
@@ -10,7 +17,9 @@ const existsResponse = z.object({ exists: z.boolean() });
  * up as a clear error instead of silently treating a real user as missing.
  */
 export async function checkUserExists(usersUrl: string, uid: string): Promise<boolean> {
-  const res = await fetch(`${usersUrl}/users/${encodeURIComponent(uid)}/exists`);
+  const res = await fetch(`${usersUrl}/users/${encodeURIComponent(uid)}/exists`, {
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
   if (!res.ok) {
     throw new Error(`users service returned ${res.status}`);
   }
@@ -48,10 +57,38 @@ export async function findQuestion(
   url.searchParams.set('difficulty', difficulty);
   url.searchParams.set('limit', '1');
 
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
   if (!res.ok) {
     throw new Error(`questions service returned ${res.status}`);
   }
   const body = listResponse.parse(await res.json());
   return body.items[0]?.id ?? null;
+}
+
+const referenceResponse = z.object({ referenceMd: z.string() });
+
+/**
+ * Fetches a question's answer text — e.g.
+ * `fetchReferenceMd('http://questions:8082', '3f2e...')` returns the markdown,
+ * or `null` if the question is gone.
+ *
+ * Called only after this service has confirmed both participants consented
+ * (ADR-06). The path is `/internal/...` rather than `/questions/...` because
+ * the Gateway proxies the `/questions` prefix wholesale — an answer route
+ * under it would be public. Nothing proxies `/internal`, so this call only
+ * works from inside the network.
+ */
+export async function fetchReferenceMd(
+  questionsUrl: string,
+  questionId: string,
+): Promise<string | null> {
+  const res = await fetch(
+    `${questionsUrl}/internal/questions/${encodeURIComponent(questionId)}/reference`,
+    { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) },
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`questions service returned ${res.status}`);
+  }
+  return referenceResponse.parse(await res.json()).referenceMd;
 }

@@ -438,7 +438,7 @@ when the UID already existed. An empty result is therefore the signal that this
 was a genuine first sight of the UID — the `created` flag at
 [`repository.ts:21`](../../services/users/src/repository.ts#L21) — and since
 there is no signup endpoint (§5), it is the **only** place `user.signed_up` can
-be emitted from in phase 7. It is a log line for now at
+be emitted from in phase 6. It is a log line for now at
 [`index.ts:45`](../../services/users/src/index.ts#L45).
 
 Get it wrong and the event fires on every request, and the sign-up count in
@@ -651,12 +651,12 @@ would only prove it agrees with itself.
 Stated so a green demo does not imply more than it covers.
 
 - **Internal ingress and invoker IAM** are listed in §10's phase 1 row but are
-  Cloud Run settings, and nothing is deployed until phase 6. They land there.
+  Cloud Run settings, and nothing is deployed until phase 10. They land there.
   Until then, the "downstream services are unreachable directly" half of the
   header-forgery guarantee is **not** in force — locally, ports 8081–8084 are
   open on your machine.
 - **`user.signed_up` is a log line**, not an event
-  ([`index.ts:45`](../../services/users/src/index.ts#L45)). Phase 7 puts it behind
+  ([`index.ts:45`](../../services/users/src/index.ts#L45)). Phase 6 puts it behind
   the `EventLog` interface. It is logged now so the once-per-user property is
   observable before there is a consumer to prove it.
 - **No tighter rate-limit bucket on `/match/*`** — §6 asks for one. Per-user
@@ -669,4 +669,4 @@ Stated so a green demo does not imply more than it covers.
 - **`GET /users/me` does not accept a profile update yet.** `display_name` and
   `preferred_topics` are columns with no write path until the frontend needs one.
 - **`/metrics` is not implemented.** §6 wants Prometheus-format metrics on every
-  service; that lands with observability in phase 6.
+  service; that lands with observability in phase 10.

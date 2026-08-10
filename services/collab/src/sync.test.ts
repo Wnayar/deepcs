@@ -9,7 +9,7 @@ import * as Y from 'yjs';
 import * as syncProtocol from 'y-protocols/sync';
 import { createPool } from '@deepcs/shared/db';
 import { createRedis } from '@deepcs/shared/redis';
-import { createRoomManager, MESSAGE_SYNC, toUint8Array } from './rooms.js';
+import { createRoomManager, MESSAGE_SYNC, SESSION_ENDED_CODE, toUint8Array } from './rooms.js';
 
 /**
  * The regression tests for the hard part of this phase (DESIGN.md's
@@ -242,6 +242,58 @@ describe.skipIf(!process.env.CI && process.env.QUESTIONS_URL === undefined)('col
       await second.ready();
       expect(second.text()).toContain('survives the disconnect. ');
       await second.close();
+    } finally {
+      await instance.app.close();
+    }
+  }, 20_000);
+
+  /**
+   * The bug this exists for: ending a session only ever stopped *new* sockets,
+   * because Collab authorizes against Matching's participant check and never
+   * heard about ending at all. A socket already open kept accepting edits, and
+   * the 30s snapshot kept saving them — so the document carried on changing
+   * after the session was over, and phase 6's summary would read whatever it
+   * had drifted to.
+   */
+  it('closes an open socket and stops persisting edits once the session ends', async (ctx) => {
+    const questionId = await seedQuestionId();
+    if (!questionId) return ctx.skip();
+
+    pool ??= createPool({ connectionString: DATABASE_URL, max: 4 });
+    redisA ??= createRedis(REDIS_URL);
+
+    const sessionId = randomUUID();
+    const instance = await startInstance(18190, redisA);
+
+    try {
+      const client = connectClient(18190, sessionId, questionId);
+      await client.ready();
+      client.doc.getText('content').insert(0, 'BEFORE. ');
+      await until(() => client.text().includes('BEFORE. '));
+
+      // Exactly what Matching publishes from POST /match/sessions/:id/end.
+      const closed = new Promise<number>((resolve) => client.ws.once('close', resolve));
+      await redisA.publish(
+        `match:session:${sessionId}`,
+        JSON.stringify({ type: 'session.ended', sessionId }),
+      );
+
+      // A distinct close code, so the browser can tell this from a dropped
+      // connection and not reconnect forever against a session that will
+      // never accept it again.
+      expect(await closed).toBe(SESSION_ENDED_CODE);
+
+      // Anything typed now has nowhere to go. The proof is the snapshot: a
+      // fresh room built from Postgres must contain the edit made before the
+      // end and not the one made after.
+      client.doc.getText('content').insert(0, 'AFTER. ');
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const survivor = connectClient(18190, sessionId, questionId);
+      await survivor.ready();
+      expect(survivor.text()).toContain('BEFORE. ');
+      expect(survivor.text()).not.toContain('AFTER. ');
+      await survivor.close();
     } finally {
       await instance.app.close();
     }

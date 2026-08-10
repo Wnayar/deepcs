@@ -70,6 +70,15 @@ services:
     ports:
       - '9099:9099' # Auth emulator API
       - '4000:4000' # Emulator UI — browse and create test users here
+    volumes:
+      # Where the emulator writes its accounts on shutdown and reads them back
+      # on start. Without it every rebuild of a service that depends on this
+      # one takes your test accounts with it.
+      - firebase-data:/srv/state
+    # The export happens during shutdown, so the emulator needs long enough to
+    # write it before Docker's SIGKILL. The default 10s is usually enough; this
+    # makes it not a race.
+    stop_grace_period: 30s
     healthcheck:
       # 127.0.0.1, never `localhost`. Inside this container `localhost`
       # resolves to ::1 first, and the emulator binds IPv4 0.0.0.0 only — so a
@@ -257,4 +266,5 @@ services:
     restart: 'no'
 
 volumes:
+  firebase-data:
   pgdata:

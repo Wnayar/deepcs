@@ -46,7 +46,7 @@ app.get('/users/me', async (req, reply) => {
 
   if (created) {
     /**
-     * Phase 7 replaces this with emitEvent('user.signed_up', ...) behind the
+     * Phase 6 replaces this with emitEvent('user.signed_up', ...) behind the
      * EventLog interface. It is a log line now rather than nothing, so that the
      * "exactly once per user" property is observable before there is a
      * consumer to prove it.

@@ -89,7 +89,7 @@ export function createService({ name, port, ready }: ServiceOptions): {
      * supplied. `true` trusts the whole chain and takes the leftmost — which a
      * client sets themselves, handing them a fresh bucket per forged header
      * and removing the limit entirely. `1` trusts exactly the one hop in front
-     * of us. Re-check this number in phase 6 against whatever actually sits in
+     * of us. Re-check this number in phase 10 against whatever actually sits in
      * front of the service; it is a property of the deployment, not of Fastify.
      */
     trustProxy: 1,

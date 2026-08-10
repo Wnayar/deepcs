@@ -20,6 +20,7 @@
     "@eslint/js": "^9.34.0",
     "@types/node": "catalog:",
     "eslint": "^9.34.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "prettier": "^3.6.2",
     "typescript": "catalog:",
     "typescript-eslint": "^8.41.0"

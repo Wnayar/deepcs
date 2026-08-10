@@ -1,0 +1,34 @@
+{
+  "name": "@deepcs/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "//": "The one package here that is not a Node service. It builds to a static bundle served from a CDN in phase 6, so it has no Dockerfile target, no port and no /health/ready.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "firebase": "catalog:",
+    "marked": "catalog:",
+    "lib0": "catalog:",
+    "monaco-editor": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router": "catalog:",
+    "y-monaco": "catalog:",
+    "y-protocols": "catalog:",
+    "yjs": "catalog:"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

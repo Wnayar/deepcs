@@ -2,8 +2,9 @@ import { z } from 'zod';
 import { createService, probe } from '@deepcs/shared/service';
 import { createPool, pingDb } from '@deepcs/shared/db';
 import { createRedis, pingRedis } from '@deepcs/shared/redis';
+import { getUserId } from '@deepcs/shared/headers';
 import { SERVICES } from '@deepcs/shared/services';
-import { getQuestion, listQuestions } from './repository.js';
+import { getQuestion, getReferenceMd, getRoadmap, getStep, listQuestions } from './repository.js';
 import { cached } from './cache.js';
 
 const pool = createPool();
@@ -79,7 +80,53 @@ app.get('/questions', async (req, reply) => {
   return reply.send(result);
 });
 
+/**
+ * The whole roadmap, e.g.
+ *   GET /roadmap
+ * returns `{ topics: [{ topic, title, summary, dependsOn, gridX, gridY,
+ * steps: [...] }, ...] }` for all nine topics.
+ *
+ * Public, like the bank. It is teaching material and there is nothing here to
+ * gate. It is also one request rather than nine: the screen draws arrows
+ * between topics, so a half-loaded roadmap is a wrong roadmap rather than a
+ * short one.
+ */
+app.get('/roadmap', async (_req, reply) => {
+  const { value, hit } = await cached(redis, 'questions:roadmap', LIST_CACHE_TTL_SECONDS, () =>
+    getRoadmap(pool),
+  );
+  reply.header('x-cache', hit ? 'HIT' : 'MISS');
+  return reply.send({ topics: value });
+});
+
 const idParams = z.object({ id: z.string().uuid() });
+
+/**
+ * One step: its lesson, its questions, and its sibling steps, e.g.
+ *   GET /steps/3f2e1c9a-...-b1a4
+ * returns `{ id, topic, topicTitle, step, title, difficulty, parts, lessonMd,
+ * siblings }`, or 404.
+ *
+ * Everything one screen needs in one call. Not cached: the lesson bodies are
+ * about 400KB together and each is read once per visit, so caching them trades
+ * a primary-key lookup for holding the whole corpus in Redis.
+ *
+ * No `reference_md`. The answer has its own route below, which checks who is
+ * asking; this one is public.
+ */
+app.get('/steps/:id', async (req, reply) => {
+  const parsed = idParams.safeParse(req.params);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid id' });
+  }
+
+  const step = await getStep(pool, parsed.data.id);
+  if (!step) {
+    return reply.code(404).send({ error: 'not found' });
+  }
+
+  return reply.send(step);
+});
 
 /**
  * Get a single question by id, e.g. GET /questions/3f2e1c9a-...-b1a4.
@@ -99,6 +146,74 @@ app.get('/questions/:id', async (req, reply) => {
   }
 
   return reply.send(question);
+});
+
+/**
+ * The answer, for someone studying alone — e.g.
+ *   GET /questions/3f2e1c9a-...-b1a4/reference    (signed in)
+ * returns `{ referenceMd: "..." }`, or 401 when there is no caller.
+ *
+ * Being signed in is the whole check, and that is a deliberate narrowing of
+ * what the reveal rule claims. It cannot be about secrecy: the lesson for this
+ * question teaches the same material and is public. What mutual consent still
+ * buys is coordination *inside a session* — the answer does not appear on a
+ * shared screen until both people say they are done attempting it. Whether you
+ * look something up on your own is your business.
+ *
+ * Anonymous callers get nothing, so the bank stays browsable signed out
+ * without the answer key coming with it.
+ */
+app.get('/questions/:id/reference', async (req, reply) => {
+  const parsed = idParams.safeParse(req.params);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid id' });
+  }
+  if (!getUserId(req)) {
+    return reply.code(401).send({ error: 'unauthorized' });
+  }
+
+  const referenceMd = await getReferenceMd(pool, parsed.data.id);
+  if (referenceMd === null) {
+    return reply.code(404).send({ error: 'not found' });
+  }
+
+  return reply.send({ referenceMd });
+});
+
+/**
+ * Release a question's answer text, e.g.
+ *   GET /internal/questions/3f2e1c9a-...-b1a4/reference
+ * returns `{ referenceMd: "## Process vs thread?\n\n..." }`, or 404.
+ *
+ * The same bytes as the route above, for a different caller. That one answers
+ * a signed-in browser and identifies it by `X-User-Id`; this one answers
+ * Matching, which is acting for a *pair* and holds no user token of its own —
+ * it has already checked both participants consented, which is a question this
+ * service cannot ask.
+ *
+ * The `/internal` prefix is what keeps it that way. The Gateway proxies a
+ * fixed list of prefixes — `/users`, `/questions`, `/lessons`, `/match`,
+ * `/collab` — with no filtering on what follows, so anything under
+ * `/questions/` is reachable from a browser and has to carry its own check.
+ * Nothing proxies `/internal`, so this route is callable only from inside the
+ * network.
+ *
+ * Deliberately not cached: `cached()` wraps list queries, and putting answer
+ * text into a shared Redis key is a second copy of the thing this service
+ * works hardest not to hand out.
+ */
+app.get('/internal/questions/:id/reference', async (req, reply) => {
+  const parsed = idParams.safeParse(req.params);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid id' });
+  }
+
+  const referenceMd = await getReferenceMd(pool, parsed.data.id);
+  if (referenceMd === null) {
+    return reply.code(404).send({ error: 'not found' });
+  }
+
+  return reply.send({ referenceMd });
 });
 
 app.addHook('onClose', async () => {

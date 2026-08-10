@@ -1,0 +1,11 @@
+{
+  "//": "The first per-package tsconfig override in the repo. tsconfig.base.json targets Node: it has no `jsx` and its `lib` is ES2023 with no DOM, so `document`, `window` and JSX are all unresolved without these three lines.",
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "noEmit": true
+  },
+  "include": ["src", "vite.config.ts"]
+}

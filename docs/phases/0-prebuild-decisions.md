@@ -76,7 +76,7 @@ The doc commits to `asia-southeast1` (Singapore) throughout. That string ends up
 in every deploy command, plus the Neon and Upstash region pickers you'll set
 during account signup today.
 
-Cheap to change now, annoying at phase 6. **Where are you physically?** If you're
+Cheap to change now, annoying at phase 10. **Where are you physically?** If you're
 not in Southeast Asia, tell me and I'll update the doc before you create the
 accounts.
 
@@ -174,6 +174,18 @@ Three ways out. Pick one before you create the account:
 
 My call: **move it to after phase 6.** It's the only option where the doc's own
 claim ("during the trial") stays true.
+
+> **Superseded, and by a fourth option this table did not consider.** The whole
+> table assumes Kubernetes means GKE, and therefore a cluster that bills by the
+> hour and a trial clock to race. It does not. The sprint is now phase 8 and
+> runs on `kind`, locally, at no cost and with no deadline attached, which
+> removes the problem this decision was solving rather than choosing between its
+> consequences. What that trades away is the cloud-specific half: managed
+> ingress, node pools, workload identity. DESIGN.md §10 records the reasoning.
+>
+> Worth keeping the original text rather than editing it away: the mistake here
+> was not the choice made, it was that every option on the table shared an
+> assumption nobody had written down.
 
 ---
 

@@ -77,6 +77,23 @@ function syncChannel(sessionId: string): string {
   return `collab:sync:${sessionId}`;
 }
 
+/** Matching's lifecycle channel. Named by Matching, not here — see
+ * `sessionChannel` in services/matching/src/index.ts. */
+function matchChannel(sessionId: string): string {
+  return `match:session:${sessionId}`;
+}
+
+/**
+ * The close code sent to a socket whose session was ended by its partner.
+ *
+ * In the 4000-4999 range, which the WebSocket spec leaves to applications. It
+ * exists so the browser can tell "this is over" from "the connection dropped"
+ * — the client reconnects on the second and must not on the first, and without
+ * a distinct code both look identical. The frontend matches on the same number
+ * in frontend/src/collab.ts.
+ */
+export const SESSION_ENDED_CODE = 4001;
+
 /**
  * Builds the scaffold as a Yjs update: one heading per question part with the
  * part's own text under it, plus "## Our answer" and "## Scratch" (DESIGN.md:
@@ -97,11 +114,17 @@ async function seedUpdate(questionsUrl: string, questionId: string): Promise<Uin
     throw new Error(`question ${questionId} not found`);
   }
 
+  // A numbered list of the questions, and room under each to answer it.
+  //
+  // Not markdown headings, and no "Our answer" or "Scratch" sections. The
+  // scaffold's whole job is to say which question you are on and give the two
+  // of you somewhere to type; separate answer and scratch areas meant deciding
+  // where a thought belonged before writing it down, and the numbering now
+  // matches how the questions read everywhere else in the app.
   const lines: string[] = [];
   question.parts.forEach((part, i) => {
-    lines.push(`## Part ${i + 1}`, '', part, '');
+    lines.push(`${i + 1}. ${part}`, '', '', '');
   });
-  lines.push('## Our answer', '', '## Scratch', '');
 
   const seed = new Y.Doc();
   seed.clientID = SEED_CLIENT_ID;
@@ -172,7 +195,9 @@ export function createRoomManager(deps: RoomDeps): RoomManager {
     let promise = rooms.get(sessionId);
     if (!promise) {
       created = true;
-      promise = buildRoom(sessionId, questionId, deps, instanceId);
+      promise = buildRoom(sessionId, questionId, deps, instanceId, () => {
+        void endRoom(sessionId);
+      });
       promise.catch(() => rooms.delete(sessionId));
       rooms.set(sessionId, promise);
     }
@@ -217,11 +242,23 @@ export function createRoomManager(deps: RoomDeps): RoomManager {
     // the room is live again and must not be torn down.
     if (room.sockets.size > 0) return;
 
+    await teardown(sessionId, room);
+  }
+
+  /** Releases everything a room holds. The caller decides *whether* to do
+   * this; snapshotting first is also the caller's job, since by the time this
+   * returns the document is gone. */
+  async function teardown(sessionId: string, room: Room): Promise<void> {
     room.closing = true;
     clearInterval(room.snapshotTimer);
     rooms.delete(sessionId);
     await room.subscriber
-      .unsubscribe(docChannel(sessionId), awarenessChannel(sessionId), syncChannel(sessionId))
+      .unsubscribe(
+        docChannel(sessionId),
+        awarenessChannel(sessionId),
+        syncChannel(sessionId),
+        matchChannel(sessionId),
+      )
       .catch(() => {});
     room.subscriber.disconnect();
     // Both hold interval timers of their own — an Awareness re-announces
@@ -229,6 +266,38 @@ export function createRoomManager(deps: RoomDeps): RoomManager {
     // publishing to Redis forever.
     room.awareness.destroy();
     room.doc.destroy();
+  }
+
+  /**
+   * Closes a session for good, because Matching says it ended.
+   *
+   * Without this, ending only stopped *new* sockets: the participant check
+   * refused them, but a socket already open kept accepting edits and the 30s
+   * snapshot kept saving them, so the document went on changing after the
+   * session was over — and phase 6's summary would read whatever it had
+   * drifted to.
+   *
+   * Ordering matters twice here. `closing` goes up first so nothing else is
+   * relayed or published while we work. And the sockets are closed *after* the
+   * room leaves the map, so each one's close handler finds nothing in `rooms`
+   * and returns immediately rather than racing this teardown.
+   */
+  async function endRoom(sessionId: string): Promise<void> {
+    const promise = rooms.get(sessionId);
+    if (!promise) return;
+    const room = await promise.catch(() => null);
+    if (!room || room.closing) return;
+
+    room.closing = true;
+    await snapshotDoc(deps.pool, sessionId, room.doc).catch((err: unknown) =>
+      deps.log.error({ err, session_id: sessionId }, 'final snapshot failed'),
+    );
+
+    const sockets = [...room.sockets];
+    room.sockets.clear();
+    await teardown(sessionId, room);
+
+    for (const socket of sockets) socket.close(SESSION_ENDED_CODE, 'session ended');
   }
 
   async function attachSocket(
@@ -307,6 +376,7 @@ async function buildRoom(
   questionId: string,
   deps: RoomDeps,
   instanceId: string,
+  onSessionEnded: () => void,
 ): Promise<Room> {
   const doc = new Y.Doc();
   const snapshot = await loadSnapshot(deps.pool, sessionId);
@@ -335,6 +405,7 @@ async function buildRoom(
       docChannel(sessionId),
       awarenessChannel(sessionId),
       syncChannel(sessionId),
+      matchChannel(sessionId),
     );
   } catch (err) {
     // duplicate() already opened a socket. Without this it would sit there
@@ -366,6 +437,12 @@ async function buildRoom(
       Y.applyUpdate(doc, message, 'redis');
     } else if (name === awarenessChannel(sessionId)) {
       applyAwarenessUpdate(awareness, message, 'redis');
+    } else if (name === matchChannel(sessionId)) {
+      // Matching's lifecycle channel. Every instance holding this session gets
+      // it, which is what makes ending work across instances rather than only
+      // on whichever one the person who pressed the button was talking to.
+      const event = parseSessionEvent(message);
+      if (event?.type === 'session.ended') onSessionEnded();
     } else if (name === syncChannel(sessionId) && message.toString() !== instanceId) {
       // Another instance just opened this session and is asking whoever
       // already holds it for the current state. The reply is the *whole*
@@ -458,6 +535,17 @@ function sendInitialSync(room: Room, socket: WebSocket): void {
       encodeAwarenessUpdate(room.awareness, [...states.keys()]),
     );
     socket.send(encoding.toUint8Array(awarenessEncoder));
+  }
+}
+
+/** Matching's events are JSON on a channel that also carries `match.created`.
+ * A malformed or unknown payload is ignored rather than thrown: this runs in a
+ * Redis listener, where an uncaught throw takes the process down. */
+function parseSessionEvent(message: Buffer): { type?: string } | null {
+  try {
+    return JSON.parse(message.toString()) as { type?: string };
+  } catch {
+    return null;
   }
 }
 

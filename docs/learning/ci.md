@@ -283,7 +283,7 @@ Tying back to the big picture at the top, now with the specific jobs in view:
 - **Reusable workflows / composite actions** — calling one workflow from another.
   Not used here; every job in this file is defined inline.
 - **Secrets and `GITHUB_TOKEN` permissions** — this file needs none yet, because
-  it never pushes an image or deploys anything. Phase 6 will add both.
+  it never pushes an image or deploys anything. Phase 10 will add both.
 - **Self-hosted runners** — `ubuntu-latest` (GitHub's own machines) is the right
   choice for a long time.
 - **Caching beyond what's here** — `cache: pnpm` and the Docker action's

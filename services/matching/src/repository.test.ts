@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPool } from '@deepcs/shared/db';
-import { createSession, findActiveSessionForUser, findSessionById } from './repository.js';
+import {
+  addRevealConsent,
+  createSession,
+  endSession,
+  findActiveSessionForUser,
+  findSessionById,
+} from './repository.js';
 
 /**
  * Real Postgres, not a mock (§8) — schema isolation is a database property, a
@@ -68,6 +74,78 @@ describe.skipIf(!process.env.CI && process.env.DATABASE_URL === undefined)('sess
     expect(await findSessionById(pool, randomUUID())).toBeNull();
   });
 });
+
+describe.skipIf(!process.env.CI && process.env.DATABASE_URL === undefined)(
+  'consent and ending',
+  () => {
+    it('records a consent once, however many times it is given', async () => {
+      if (!reachable) return;
+      const alice = uid();
+      const created = await createSession(pool, alice, uid(), randomUUID());
+
+      await addRevealConsent(pool, created.id, alice);
+      const twice = await addRevealConsent(pool, created.id, alice);
+
+      // Not a length check on purpose: the bug this guards is the same uid
+      // landing twice, which would make a two-entry array that looks like
+      // mutual consent.
+      expect(twice?.revealConsents).toEqual([alice]);
+    });
+
+    it('keeps both consents when each participant gives one', async () => {
+      if (!reachable) return;
+      const alice = uid();
+      const bob = uid();
+      const created = await createSession(pool, alice, bob, randomUUID());
+
+      await addRevealConsent(pool, created.id, alice);
+      const both = await addRevealConsent(pool, created.id, bob);
+
+      expect(both?.revealConsents.sort()).toEqual([alice, bob].sort());
+    });
+
+    it('starts a session unconsented and unended', async () => {
+      if (!reachable) return;
+      const created = await createSession(pool, uid(), uid(), randomUUID());
+      expect(created.revealConsents).toEqual([]);
+      expect(created.endedAt).toBeNull();
+    });
+
+    it('does not move ended_at when a session is ended twice', async () => {
+      if (!reachable) return;
+      const created = await createSession(pool, uid(), uid(), randomUUID());
+
+      const first = await endSession(pool, created.id);
+      const second = await endSession(pool, created.id);
+
+      // Both participants press End; the second press must not rewrite the
+      // timestamp the first person's summary is already showing.
+      expect(first?.endedAt).not.toBeNull();
+      expect(second?.endedAt?.toISOString()).toBe(first?.endedAt?.toISOString());
+    });
+
+    /**
+     * The regression test for a bug that arrives with `ended_at` rather than
+     * being fixed by it. `POST /match/join` uses this function as its
+     * idempotence guard, so if it kept returning a finished session, the user
+     * would be handed that same dead session on every future join and could
+     * never be matched with anyone again.
+     */
+    it('stops reporting a session as active once it has ended', async () => {
+      if (!reachable) return;
+      const alice = uid();
+      const created = await createSession(pool, alice, uid(), randomUUID());
+      expect((await findActiveSessionForUser(pool, alice))?.id).toBe(created.id);
+
+      await endSession(pool, created.id);
+
+      expect(await findActiveSessionForUser(pool, alice)).toBeNull();
+      // Still findable by id — ending hides it from matching, it does not
+      // delete it, because the summary still has to render.
+      expect((await findSessionById(pool, created.id))?.id).toBe(created.id);
+    });
+  },
+);
 
 /**
  * ADR-09's boundary, asserted rather than assumed — same shape as the

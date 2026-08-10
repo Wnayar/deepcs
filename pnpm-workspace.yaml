@@ -1,6 +1,13 @@
 packages:
   - 'services/*'
   - 'packages/*'
+  # The frontend sits at the top level rather than under packages/, and the
+  # reason is CI: the `changes` job treats any edit under packages/ as "a
+  # shared file changed, rebuild everything", so every UI tweak would rebuild
+  # and image-smoke-test all six backend services. It is not under services/
+  # either — that matrix assumes each entry is a Docker-buildable server with a
+  # /health/ready endpoint, and this is a static bundle.
+  - 'frontend'
 
 # pnpm blocks dependency install scripts by default (a supply-chain control:
 # a compromised transitive package cannot run code on install). esbuild is an
@@ -8,6 +15,14 @@ packages:
 # in place, and tsup and vitest are both dead without it.
 allowBuilds:
   esbuild: true
+  # Both arrived with the Firebase web SDK and both are declined. protobufjs
+  # comes in transitively via Firestore, which this app does not use — only
+  # Auth — and @firebase/util's script is not needed for a bundle Vite builds
+  # from source. Declining is the default this list exists to make explicit;
+  # if something turns out to need them, that is a deliberate change with a
+  # reason attached rather than a silent yes.
+  '@firebase/util': false
+  protobufjs: false
 
 # One version of each dependency across seven package.json files. Without a
 # catalog, six services drift onto six Fastify versions and the shared types in
@@ -47,3 +62,32 @@ catalog:
   '@fastify/websocket': ^11.3.0
   ws: ^8.21.3
   '@types/ws': ^8.18.1
+
+  # ── phase 5 ────────────────────────────────────────────────────────────────
+  # The browser half. `firebase` is the web SDK — the client that *obtains* a
+  # token, as opposed to the Gateway's `jose`, which only verifies one; the two
+  # never swap roles. `y-monaco` is the binding between the Yjs document the
+  # Collab service already serves and the editor, and it renders remote cursors
+  # from Yjs awareness for free, which is why presence needs no code of its own.
+  react: ^19.2.8
+  react-dom: ^19.2.8
+  '@types/react': ^19.2.18
+  '@types/react-dom': ^19.2.4
+  vite: ^8.2.1
+  '@vitejs/plugin-react': ^6.0.5
+  firebase: ^12.17.1
+  # Lessons are markdown; `marked` turns them into HTML. It is not a
+  # sanitizer and does not need to be: the bodies are seeded by a migration
+  # from our own notes, never user input, and the page's CSP forbids inline
+  # script regardless of what any renderer emits.
+  marked: ^18.0.9
+  # URLs for the screens. The app navigated with a `useState` switch until now,
+  # which meant one history entry for the whole site: the browser Back button
+  # left it entirely, refreshing lost your place, and no lesson could be linked
+  # to. Hand-rolling this on the History API is about sixty lines, but a router
+  # is load-bearing rather than a leaf, and its failure modes (double history
+  # entries, state out of step with the URL, back landing on a screen whose data
+  # was never fetched) are the tedious kind to find.
+  react-router: ^8.3.0
+  monaco-editor: ^0.56.0
+  y-monaco: ^0.1.6
