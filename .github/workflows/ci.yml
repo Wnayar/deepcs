@@ -203,11 +203,18 @@ jobs:
             # into the runner stage, so the emulator guard is also live here:
             # setting FIREBASE_AUTH_EMULATOR_HOST would make the Gateway refuse
             # to boot, exactly as intended.
+            # USERS_URL/QUESTIONS_URL only need to be non-empty here — Matching
+            # checks for their presence at boot (same fail-fast pattern as
+            # DATABASE_URL) but never dereferences them, since /health/ready
+            # doesn't call out to either service. Sibling services ignore the
+            # two vars entirely.
             docker run -d --name smoke --network host \
               -e PORT=8080 \
               -e DATABASE_URL="$DATABASE_URL" \
               -e REDIS_URL="$REDIS_URL" \
               -e FIREBASE_PROJECT_ID=demo-deepcs \
+              -e USERS_URL=http://localhost:8081 \
+              -e QUESTIONS_URL=http://localhost:8082 \
               deepcs/${{ matrix.service }}:ci
             for i in $(seq 1 30); do
               if curl -fsS http://localhost:8080/health/ready; then ok=1; break; fi

@@ -12,10 +12,14 @@
   },
   "dependencies": {
     "@deepcs/shared": "workspace:*",
-    "fastify": "catalog:"
+    "fastify": "catalog:",
+    "ioredis": "catalog:",
+    "pg": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/pg": "catalog:",
     "tsup": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",

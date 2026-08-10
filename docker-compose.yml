@@ -192,6 +192,11 @@ services:
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-demo-deepcs}
       FIREBASE_AUTH_EMULATOR_HOST: firebase-auth:9099
       DATABASE_URL: postgresql://matching_svc:matching_svc@postgres:5432/deepcs
+      # Internal service-to-service calls (clients.ts), reached by compose's
+      # service-name DNS — not through the Gateway, since these are
+      # server-to-server, not client-facing.
+      USERS_URL: http://users:8081
+      QUESTIONS_URL: http://questions:8082
     ports:
       - '8083:8083'
     volumes:
