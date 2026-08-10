@@ -2,7 +2,11 @@ import { useEffect, useState } from 'react';
 
 export type Theme = 'light' | 'dark';
 
-const KEY = 'deepcs.theme';
+// Versioned, and the version was stepped when dark became the default. A saved
+// choice wins over the default, which is right, but it also means anyone who
+// had ever pressed the toggle kept their old theme and never saw the new
+// default at all. Changing the key discards those saved choices once.
+const KEY = 'deepcs.theme.v2';
 
 /**
  * What a first-time visitor gets.

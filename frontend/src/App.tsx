@@ -10,6 +10,15 @@ import { MatchPage } from './pages/Match';
 import { SessionRoute } from './pages/Session';
 import { SummaryPage } from './pages/Summary';
 
+/**
+ * How often the shell asks whether a partner has turned up.
+ *
+ * Slower than the match screen's own poll, because this one runs while you are
+ * doing something else and only exists to notice an event you would otherwise
+ * miss entirely.
+ */
+const ACTIVE_SESSION_POLL_MS = 4_000;
+
 export interface SessionSummary {
   question: Question;
   startedAt: string;
@@ -33,6 +42,10 @@ export function App() {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
   const [active, setActive] = useState<Session | null>(null);
+  /** True when a session appeared while the user was somewhere else, so the
+   * header can say a partner has arrived rather than inviting them back to a
+   * room they have never been in. */
+  const [arrived, setArrived] = useState(false);
   const [theme, toggleTheme] = useTheme();
 
   useEffect(
@@ -59,6 +72,36 @@ export function App() {
       .then(setActive)
       .catch(() => setActive(null));
   }, [user]);
+
+  /**
+   * Keep asking, until there is a session to be in.
+   *
+   * Being matched is something that happens *to* you. Whoever joins the queue
+   * first is matched by the second person's request, and is usually not looking
+   * at the match screen when it lands: they queued, got bored, and went to read
+   * a lesson. The match screen polls, but it unmounts when you navigate away,
+   * so that person ended up in a session nobody had told them about, while
+   * their partner sat alone in the editor.
+   *
+   * Asking from the shell instead means it is noticed from any page. It stops
+   * as soon as there is a session, so this is not a background timer for the
+   * whole visit, and it is a primary-key lookup on an indexed column.
+   */
+  useEffect(() => {
+    if (!user || active) return;
+    const timer = setInterval(() => {
+      void currentSession()
+        .then((session) => {
+          if (!session) return;
+          setActive(session);
+          setArrived(true);
+        })
+        .catch(() => {
+          /* transient, and the next tick tries again */
+        });
+    }, ACTIVE_SESSION_POLL_MS);
+    return () => clearInterval(timer);
+  }, [user, active]);
 
   if (!ready) return <main className="muted">Loading…</main>;
 
@@ -87,7 +130,11 @@ export function App() {
               gets its own quiet marker and only leaving it turns into a call to
               go back. */}
           {active ? (
-            <SessionNavEntry sessionId={active.id} />
+            <SessionNavEntry
+              sessionId={active.id}
+              arrived={arrived}
+              onSeen={() => setArrived(false)}
+            />
           ) : (
             <NavLink className="navlink" to="/match">
               Find a partner
@@ -155,14 +202,35 @@ export function App() {
   );
 }
 
-/** The header entry for a session in progress. Separate so it can ask the
- * router whether the session page is the one currently open. */
-function SessionNavEntry({ sessionId }: { sessionId: string }) {
+/**
+ * The header entry for a session in progress.
+ *
+ * Three states rather than two, and the third is the one worth having.
+ * "Return to session" is the right words for somebody who stepped out of a room
+ * they have been in. It is the wrong words for the person who queued, wandered
+ * off, and was matched by their partner's request without ever seeing the room:
+ * nothing has happened yet that they could return from. They are told a partner
+ * turned up instead.
+ */
+function SessionNavEntry({
+  sessionId,
+  arrived,
+  onSeen,
+}: {
+  sessionId: string;
+  arrived: boolean;
+  onSeen: () => void;
+}) {
   const here = useLocation().pathname === `/session/${sessionId}`;
+
+  useEffect(() => {
+    if (here) onSeen();
+  }, [here, onSeen]);
+
   if (here) return <span className="live">In session</span>;
   return (
     <NavLink className="navlink primary" to={`/session/${sessionId}`}>
-      Return to session
+      {arrived ? 'Partner found, join now' : 'Return to session'}
     </NavLink>
   );
 }

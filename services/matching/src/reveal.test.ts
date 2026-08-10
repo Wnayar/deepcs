@@ -385,3 +385,63 @@ describe.skipIf(!process.env.CI && process.env.MATCHING_URL === undefined)(
     });
   },
 );
+
+describe.skipIf(!process.env.CI && process.env.MATCHING_URL === undefined)(
+  'being matched while looking at something else',
+  () => {
+    /**
+     * The person who queues first is matched by somebody else's request.
+     *
+     * Nothing tells them. They joined, got `{status: "waiting"}`, wandered off
+     * to read a lesson, and their partner's join is what created the session.
+     * If they are not asking, they never find out, and their partner is alone
+     * in the editor waiting for someone who does not know they are expected.
+     *
+     * The fix is in the browser, where the shell polls from any page rather
+     * than only from the match screen. This is the contract that fix leans on:
+     * the session is discoverable by asking, with no memory of having queued
+     * and no parameters describing what was queued for.
+     */
+    it('leaves the session findable by the person who never polled', async (ctx) => {
+      if (!(await allReachable())) return ctx.skip();
+
+      const alice = `away-a-${Math.random().toString(36).slice(2)}`;
+      const bob = `away-b-${Math.random().toString(36).slice(2)}`;
+      for (const uid of [alice, bob]) {
+        await fetch(`${USERS_URL}/users/me`, { headers: { 'x-user-id': uid } });
+      }
+
+      const body = JSON.stringify({ topic: 'behavioural', difficulty: 'hard' });
+      const first = (await (
+        await fetch(`${MATCHING_URL}/match/join`, {
+          method: 'POST',
+          headers: { ...JSON_HEADERS, 'x-user-id': alice },
+          body,
+        })
+      ).json()) as { status: string };
+      expect(first.status).toBe('waiting');
+
+      // Alice asks nothing from here on. Bob turning up is the whole event.
+      await fetch(`${MATCHING_URL}/match/join`, {
+        method: 'POST',
+        headers: { ...JSON_HEADERS, 'x-user-id': bob },
+        body,
+      });
+
+      // `/match/session` takes no topic or difficulty: a client that has
+      // forgotten what it queued for, or was reloaded since, can still find
+      // its way back. That is what makes one poll in the shell enough.
+      const found = (await (
+        await fetch(`${MATCHING_URL}/match/session`, { headers: { 'x-user-id': alice } })
+      ).json()) as { session: { id: string } | null };
+
+      expect(found.session).not.toBeNull();
+
+      // And it is the same room, not a second one.
+      const bobs = (await (
+        await fetch(`${MATCHING_URL}/match/session`, { headers: { 'x-user-id': bob } })
+      ).json()) as { session: { id: string } | null };
+      expect(found.session!.id).toBe(bobs.session!.id);
+    });
+  },
+);

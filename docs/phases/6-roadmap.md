@@ -277,6 +277,25 @@ One deployment consequence for phase 6: a static host must rewrite unknown paths
 to `index.html`, or `/step/<id>` returns a 404 from the CDN before the app ever
 loads. Vite's dev server and `vite preview` both do this already.
 
+Routing also exposed a bug that had been there since phase 3 and only became
+visible once leaving a screen was easy. Being matched is something that happens
+*to* you: whoever queues first is matched by the second person's request. The
+match screen polls for that, but it unmounts when you navigate away, so somebody
+who queued and then went to read a lesson was put into a session nobody told
+them about, while their partner sat alone in the editor.
+
+The poll moved into the shell, where it runs from any page and stops as soon as
+there is a session to be in. `GET /match/session` takes no topic or difficulty,
+which is what makes one poll enough: a client that has forgotten what it queued
+for, or has been reloaded since, still finds its way back. A test in
+`reveal.test.ts` pins that contract by matching two users where one of them
+never polls at all.
+
+The header then has three states rather than two, and the third is the one worth
+having. "Return to session" is right for someone who stepped out of a room they
+have been in, and wrong for someone who has never seen it: nothing has happened
+that they could return from. They are told a partner turned up instead.
+
 ---
 
 # Part 4 — Themes as tokens
