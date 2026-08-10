@@ -154,16 +154,24 @@ select {
   color: var(--muted);
 }
 
-/* y-monaco draws remote carets as bare elements; without a width they are
-   invisible, and without the label rule the peer's name never appears. */
+/* The other person's cursor and selection.
+ *
+ * y-monaco emits `.yRemoteSelection` plus a per-client `.yRemoteSelection-<id>`
+ * and no colours at all, so without these rules every remote caret inherits
+ * currentColor and is invisible against the text.
+ *
+ * One colour, not one per client. A session has exactly two people in it: you
+ * are Monaco's own caret and everyone else is this. Generating a palette keyed
+ * by client id solved a crowd this room never has, and it needed a name in
+ * awareness to key on — which meant broadcasting one. */
 .yRemoteSelection {
-  opacity: 0.4;
+  background-color: rgba(37, 99, 235, 0.25);
 }
 
 .yRemoteSelectionHead {
   position: absolute;
-  border-left: 2px solid;
-  border-top: 2px solid;
+  border-left: 2px solid var(--accent);
+  border-top: 2px solid var(--accent);
   height: 100%;
   box-sizing: border-box;
 }

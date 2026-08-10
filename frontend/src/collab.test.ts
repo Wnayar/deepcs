@@ -96,13 +96,11 @@ describe.skipIf(!process.env.CI && process.env.VITE_GATEWAY_URL === undefined)(
       const a = connectCollab({
         sessionId,
         token: tokens[0],
-        displayName: 'alice',
         onStatus: (s) => statuses.push(s),
       });
       const b = connectCollab({
         sessionId,
         token: tokens[1],
-        displayName: 'bob',
         onStatus: () => {},
       });
 
@@ -123,12 +121,14 @@ describe.skipIf(!process.env.CI && process.env.VITE_GATEWAY_URL === undefined)(
         await until(() => textOf(b).includes('typed in the browser client. '));
         expect(textOf(b)).toBe(textOf(a));
 
-        // Presence: y-monaco draws remote cursors from exactly this.
+        // Presence: this is what y-monaco draws the remote caret from. It is
+        // also asserted to be *anonymous* — awareness is broadcast to everyone
+        // in the room, so anything identifying in here would be handed to
+        // whoever you were matched with.
         await until(() => a.awareness.getStates().size >= 2);
-        const names = [...a.awareness.getStates().values()].map(
-          (state) => (state as { user?: { name?: string } }).user?.name,
-        );
-        expect(names).toContain('bob');
+        const published = [...a.awareness.getStates().values()];
+        expect(published.length).toBeGreaterThanOrEqual(2);
+        expect(JSON.stringify(published)).not.toContain('@');
       } finally {
         a.destroy();
         b.destroy();
@@ -143,7 +143,6 @@ describe.skipIf(!process.env.CI && process.env.VITE_GATEWAY_URL === undefined)(
       const handle = connectCollab({
         sessionId,
         token: 'not-a-real-token',
-        displayName: 'imposter',
         onStatus: (s) => statuses.push(s),
       });
 

@@ -32,10 +32,6 @@ export function SummaryPage({ summary, onDone }: { summary: SessionSummary; onDo
         </div>
         <dl className="muted" style={{ margin: '0.75rem 0 0' }}>
           <div className="row">
-            <dt>Partner:</dt>
-            <dd style={{ margin: 0 }}>{summary.partnerUid}</dd>
-          </div>
-          <div className="row">
             <dt>Lasted:</dt>
             <dd style={{ margin: 0 }}>
               {minutes} minute{minutes === 1 ? '' : 's'}

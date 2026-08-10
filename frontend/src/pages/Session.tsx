@@ -4,7 +4,6 @@ import type * as Y from 'yjs';
 import { consentToReveal, endSession, revealState, type Question, type Session } from '../api';
 import { idToken } from '../auth';
 import { connectCollab, type CollabStatus } from '../collab';
-import { watchCursorStyles } from '../cursors';
 import { monaco } from '../monaco';
 import type { SessionSummary } from '../App';
 
@@ -15,11 +14,10 @@ const REVEAL_POLL_MS = 2_500;
 interface Props {
   session: Session;
   question: Question;
-  displayName: string;
   onEnded: (summary: SessionSummary) => void;
 }
 
-export function SessionPage({ session, question, displayName, onEnded }: Props) {
+export function SessionPage({ session, question, onEnded }: Props) {
   const editorHost = useRef<HTMLDivElement>(null);
   const editorRef = useRef<ReturnType<typeof monaco.editor.create> | null>(null);
   const [status, setStatus] = useState<CollabStatus>('connecting');
@@ -46,7 +44,6 @@ export function SessionPage({ session, question, displayName, onEnded }: Props) 
       const collab = connectCollab({
         sessionId: session.id,
         token,
-        displayName,
         onStatus: (next) => {
           if (!cancelled) setStatus(next);
         },
@@ -77,10 +74,6 @@ export function SessionPage({ session, question, displayName, onEnded }: Props) 
 
       // Everyone in the room except us. Yjs awareness carries this for free,
       // and y-monaco draws the remote carets from the same data.
-      // y-monaco names a class per peer but ships no colours; this is what
-      // turns awareness state into a visible, attributable cursor.
-      const stopCursorStyles = watchCursorStyles(collab.awareness);
-
       const onAwareness = () => {
         if (!cancelled) setPeers(Math.max(0, collab.awareness.getStates().size - 1));
       };
@@ -88,7 +81,6 @@ export function SessionPage({ session, question, displayName, onEnded }: Props) 
 
       cleanup = () => {
         editorRef.current = null;
-        stopCursorStyles();
         collab.awareness.off('change', onAwareness);
         binding.destroy();
         editor.dispose();
@@ -100,7 +92,7 @@ export function SessionPage({ session, question, displayName, onEnded }: Props) 
       cancelled = true;
       cleanup();
     };
-  }, [session.id, displayName]);
+  }, [session.id]);
 
   /**
    * The partner pressed End. The socket is already closed by the server, so
@@ -161,8 +153,7 @@ export function SessionPage({ session, question, displayName, onEnded }: Props) 
     <>
       <h2>{question.title}</h2>
       <p className="status">
-        {statusLabel(status)} · {peers === 1 ? 'partner connected' : `${peers} others here`} ·
-        working with {session.partnerUid}
+        {statusLabel(status)} · {peers === 1 ? 'partner connected' : 'waiting for your partner'}
       </p>
 
       {status === 'unauthorized' && (

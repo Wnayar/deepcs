@@ -75,7 +75,22 @@ export function App() {
   return (
     <>
       <header>
-        <h1>deepcs</h1>
+        {/* The wordmark is the way back to the front page — an inert <h1>
+            in the corner of an app is a dead end everyone tries to click. */}
+        <h1>
+          <button
+            onClick={() => setView({ name: 'questions' })}
+            style={{
+              border: 0,
+              background: 'none',
+              padding: 0,
+              font: 'inherit',
+              cursor: 'pointer',
+            }}
+          >
+            deepcs
+          </button>
+        </h1>
         <nav>
           <button onClick={() => setView({ name: 'questions' })}>Questions</button>
           {/* Shown signed out too, and it has to be: the match view falls back
@@ -124,7 +139,6 @@ export function App() {
           <SessionPage
             session={view.session}
             question={view.question}
-            displayName={user.email ?? user.uid}
             onEnded={(summary) => {
               setActive(null);
               setView({ name: 'summary', summary });

@@ -56,19 +56,12 @@ export interface CollabHandle {
 export interface CollabOptions {
   sessionId: string;
   token: string;
-  /** Shown on the other person's cursor. */
-  displayName: string;
   onStatus: (status: CollabStatus) => void;
 }
 
 const RECONNECT_DELAY_MS = 1_500;
 
-export function connectCollab({
-  sessionId,
-  token,
-  displayName,
-  onStatus,
-}: CollabOptions): CollabHandle {
+export function connectCollab({ sessionId, token, onStatus }: CollabOptions): CollabHandle {
   const doc = new Y.Doc();
   const awareness = new Awareness(doc);
 
@@ -132,10 +125,12 @@ export function connectCollab({
       syncProtocol.writeSyncStep1(encoder, doc);
       ws.send(encoding.toUint8Array(encoder));
 
-      awareness.setLocalStateField('user', {
-        name: displayName,
-        color: colorFor(displayName),
-      });
+      // Nothing identifying goes into awareness. It is broadcast to everyone
+      // else in the room, so putting an email in it would hand your address to
+      // whoever you were matched with — and a coloured caret already says
+      // everything the other person needs to know, which is "that is not me".
+      // y-monaco publishes the selection itself; this only marks us present.
+      awareness.setLocalStateField('present', true);
     });
 
     ws.addEventListener('message', (event: MessageEvent<ArrayBuffer>) => {
@@ -198,11 +193,4 @@ export function connectCollab({
       doc.destroy();
     },
   };
-}
-
-/** A stable colour per name, so the same person keeps one cursor colour. */
-function colorFor(name: string): string {
-  let hash = 0;
-  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) % 360;
-  return `hsl(${hash}, 70%, 45%)`;
 }
