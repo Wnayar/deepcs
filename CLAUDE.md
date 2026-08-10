@@ -66,6 +66,13 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ---
 
+## Running it
+
+`make up` starts the stack and applies migrations (compose has a one-shot
+`migrate` service every other service waits on). `make web` starts the frontend
+on :5173. `make test` needs the stack up, because the suites use real Postgres
+and Redis rather than mocks.
+
 ## Project context
 
 - [DESIGN.md](./DESIGN.md) — the architecture and reasoning; every other doc cites it by section
@@ -120,6 +127,33 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - **Colours live in `:root` custom properties only.** No component names a
   colour, so light and dark are two lists of variables rather than two
   stylesheets.
+- **Every screen is a URL** (`react-router`, `frontend/src/App.tsx`). The rule a
+  new route is held to: *a URL is a promise that the page can be rebuilt from
+  it*, so a route refetches rather than relying on state it was handed. The one
+  exception is `/summary`, which is assembled from what the session page knew
+  and has no endpoint behind it, so it travels in history state and a refresh
+  goes to the roadmap. Navigation is `<NavLink className="navlink">`, never a
+  `<button>` inside it.
+- **Interactive elements do not nest.** A `<button>` inside an `<a>`, or an
+  `<h3>` inside a `<button>`, is invalid markup: React builds it through the DOM
+  so nothing visibly breaks, and then clicks land unpredictably and assistive
+  tech reads it wrong. Both shipped here before being caught. A clickable card
+  is a `<button>` containing spans.
+- **Editing a seeded migration means re-applying it by hand.** Migrations are
+  recorded in `public.schema_migrations`, so changing an already-applied file is
+  a no-op until its row is deleted:
+
+  ```bash
+  docker compose exec -T postgres psql -U deepcs -d deepcs \
+    -c "DELETE FROM public.schema_migrations WHERE filename LIKE '%009%';"
+  DATABASE_URL="postgresql://deepcs:deepcs@127.0.0.1:5432/deepcs" \
+    pnpm --filter @deepcs/db migrate
+  ```
+
+  The seeds are written to be re-runnable (`ON CONFLICT DO UPDATE`) precisely so
+  this is safe. Questions caches its list in Redis for 60s, so also
+  `redis-cli DEL questions:roadmap` or wait a minute before believing the API.
+
 - **The browser is told, not asked.** A client that needs to know about an event
   another user caused subscribes to `GET /match/events` rather than polling.
   Polling kept Neon's compute awake and every service warm for people who were
