@@ -86,10 +86,12 @@ export async function listQuestions(pool: pg.Pool, filters: ListFilters): Promis
     // the topic. Now typing "deadlock" finds the synchronisation lesson whose
     // title never says it.
     //
-    // `= ANY (tags)` and not `ILIKE`: tags are lowercase single words, so an
-    // exact element match is both right and index-friendly, where a wildcard
-    // over an array would force a scan.
-    conditions.push(`(title ILIKE $${params.length - 1} OR $${params.length} = ANY (tags))`);
+    // Tags match a whole element, not a substring: they are lowercase single
+    // words, so `@>` ("the tags contain this one") is both the right meaning
+    // and the only form the GIN index on `tags` can serve. The equivalent
+    // `$1 = ANY (tags)` reads more naturally and has no index path at all —
+    // EXPLAIN picks a sequential scan even with seqscan priced absurdly high.
+    conditions.push(`(title ILIKE $${params.length - 1} OR tags @> ARRAY[$${params.length}])`);
   }
   if (filters.cursor) {
     params.push(filters.cursor);
