@@ -1,4 +1,4 @@
-import Redis from 'ioredis';
+import Redis, { type RedisOptions } from 'ioredis';
 
 /**
  * Redis does five jobs in this system (§4): rate-limit state, match queue,
@@ -10,7 +10,7 @@ import Redis from 'ioredis';
  * limiter's atomicity depends on that script, so the client's script handling
  * is not an incidental detail.
  */
-export function createRedis(url = process.env.REDIS_URL): Redis {
+export function createRedis(url = process.env.REDIS_URL, overrides: RedisOptions = {}): Redis {
   if (!url) {
     throw new Error('REDIS_URL is not set');
   }
@@ -36,6 +36,22 @@ export function createRedis(url = process.env.REDIS_URL): Redis {
      * Nothing to configure here — noted because the missing extra `s` is the
      * usual cause of a connection that works locally and refuses in production.
      */
+
+    /**
+     * Overrides, and there is only one thing anybody overrides: the offline
+     * queue, back on. The default suits a client whose first command arrives
+     * with a user's request, long after the socket connected. It is wrong for
+     * two other shapes, both of which exist here:
+     *
+     *   - a long-lived subscriber, which subscribes at startup (Collab's rooms,
+     *     Matching's event stream),
+     *   - a job, whose first command races its own connect because there is no
+     *     request to wait for.
+     *
+     * In both, failing fast means failing at startup for a socket that is
+     * about to be ready, which is not a useful kind of fast.
+     */
+    ...overrides,
   });
 }
 

@@ -5,6 +5,7 @@ import type WebSocket from 'ws';
 import { createService, probe } from '@deepcs/shared/service';
 import { createPool, pingDb } from '@deepcs/shared/db';
 import { createRedis, pingRedis } from '@deepcs/shared/redis';
+import { createRedisEventLog, emitEvent } from '@deepcs/shared/events';
 import { getUserId } from '@deepcs/shared/headers';
 import { SERVICES } from '@deepcs/shared/services';
 import { checkSessionParticipant } from './clients.js';
@@ -12,6 +13,7 @@ import { createRoomManager } from './rooms.js';
 
 const pool = createPool();
 const redis = createRedis();
+const events = createRedisEventLog(redis);
 
 // Both are load-bearing: Postgres holds the snapshots a room is rebuilt from,
 // and Redis is the only path between two instances holding the same session.
@@ -103,12 +105,15 @@ app.get(
     }
 
     if (created) {
-      // The real emitEvent/event-log pipeline is phase 6 — this is the same
-      // structured-log breadcrumb every other lifecycle moment already uses
-      // (queue.joined, match.created). Note it marks a room being *opened* on
-      // this instance, so a session whose participants all disconnect and come
-      // back logs it again; phase 6 has to dedupe on session_id.
-      req.log.info({ session_id: sessionId }, 'session.started');
+      // This marks a room being opened *on this instance*, not a session
+      // beginning: participants who all disconnect and return open it again,
+      // and two instances open it separately. So it arrives more than once per
+      // session by design, and Stats keeps only the first via COALESCE rather
+      // than this side trying to suppress the repeats, which it cannot see.
+      await emitEvent(events, req.log, 'session.started', {
+        sessionId,
+        connectedAt: new Date().toISOString(),
+      });
     }
   },
 );

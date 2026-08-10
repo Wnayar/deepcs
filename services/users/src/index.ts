@@ -1,11 +1,17 @@
 import { z } from 'zod';
 import { createService, probe } from '@deepcs/shared/service';
 import { createPool, pingDb } from '@deepcs/shared/db';
+import { createRedis } from '@deepcs/shared/redis';
+import { createRedisEventLog, emitEvent } from '@deepcs/shared/events';
 import { getUserId } from '@deepcs/shared/headers';
 import { SERVICES } from '@deepcs/shared/services';
 import { profileExists, upsertProfile } from './repository.js';
 
 const pool = createPool();
+// Redis is here only to append to the event log. Users has no cache, no queue
+// and no pub/sub, so losing Redis must not take this service out of rotation:
+// `emitEvent` swallows the failure and the sign-in still succeeds.
+const events = createRedisEventLog(createRedis());
 
 // Every route here reads or writes Postgres, so an unreachable database means
 // this instance can only produce 500s — readiness says no rather than
@@ -46,12 +52,13 @@ app.get('/users/me', async (req, reply) => {
 
   if (created) {
     /**
-     * Phase 6 replaces this with emitEvent('user.signed_up', ...) behind the
-     * EventLog interface. It is a log line now rather than nothing, so that the
-     * "exactly once per user" property is observable before there is a
-     * consumer to prove it.
+     * The only place this event can come from: there is no signup endpoint, so
+     * "a user appeared" is observable exactly once, here, on the insert that
+     * created the row. `created` comes from the upsert itself rather than from
+     * a prior existence check, which is what makes it once per user rather
+     * than once per sign-in.
      */
-    req.log.info({ user_id: uid, profile_id: profile.id }, 'user.signed_up');
+    await emitEvent(events, req.log, 'user.signed_up', { userId: uid });
   }
 
   return reply.code(created ? 201 : 200).send(profile);

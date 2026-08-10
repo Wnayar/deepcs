@@ -5,6 +5,7 @@ import { createPool, pingDb } from '@deepcs/shared/db';
 import { createRedis, pingRedis } from '@deepcs/shared/redis';
 import { getUserId } from '@deepcs/shared/headers';
 import { SERVICES } from '@deepcs/shared/services';
+import { createRedisEventLog, emitEvent } from '@deepcs/shared/events';
 import { checkUserExists, fetchReferenceMd, findQuestion } from './clients.js';
 import { createQueue } from './queue.js';
 import {
@@ -20,6 +21,9 @@ import {
 const pool = createPool();
 const redis = createRedis();
 const queue = createQueue(redis);
+// Matching owns the queue and the session lifecycle, so four of the six domain
+// events are emitted here (DESIGN.md §5).
+const events = createRedisEventLog(redis);
 
 // Both, and neither is optional here: the queue *is* Redis, and the session
 // rows are Postgres. Losing either one makes every route on this service fail.
@@ -166,15 +170,26 @@ app.post('/match/join', async (req, reply) => {
     return reply.code(404).send({ error: 'no question available for this topic and difficulty' });
   }
 
-  const partnerUid = await queue.join(uid, topic, difficulty);
+  const claim = await queue.join(uid, topic, difficulty);
 
-  if (!partnerUid) {
-    req.log.info({ user_id: uid, topic, difficulty }, 'queue.joined');
+  if (!claim) {
+    await emitEvent(events, req.log, 'queue.joined', { userId: uid, topic, difficulty });
     return reply.send({ status: 'waiting' });
   }
 
+  const { partnerUid, waitedSeconds } = claim;
   const session = await createSession(pool, uid, partnerUid, questionId);
-  req.log.info({ session_id: session.id, users: [uid, partnerUid] }, 'match.created');
+  await emitEvent(events, req.log, 'match.created', {
+    sessionId: session.id,
+    questionId,
+    topic,
+    difficulty,
+    participants: [uid, partnerUid].join(','),
+    // The wait belongs to the person who was already queued, not to the caller,
+    // whose wait was zero by definition.
+    waitedSeconds: String(waitedSeconds),
+    startedAt: session.createdAt.toISOString(),
+  });
 
   // Collab does not consume this one — a client learns its session id from
   // this very response. It stays for a future live-status channel, and it is
@@ -480,7 +495,7 @@ app.post('/match/sessions/:id/reveal', async (req, reply) => {
   if (!session) {
     return reply.code(404).send({ error: 'not found' });
   }
-  req.log.info({ session_id: session.id, user_id: getUserId(req) }, 'reveal.consented');
+  await emitEvent(events, req.log, 'reveal.consented', { sessionId: session.id });
 
   try {
     return reply.send(await toRevealResponse(session, getUserId(req)!));
@@ -527,7 +542,10 @@ app.post('/match/sessions/:id/end', async (req, reply) => {
   if (!session?.endedAt) {
     return reply.code(404).send({ error: 'not found' });
   }
-  req.log.info({ session_id: session.id, user_id: getUserId(req) }, 'session.ended');
+  await emitEvent(events, req.log, 'session.ended', {
+    sessionId: session.id,
+    endedAt: new Date().toISOString(),
+  });
 
   // This is what actually closes the live document. Setting `ended_at` only
   // stops *new* sockets — the participant check refuses them — but a socket
