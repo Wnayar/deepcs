@@ -35,8 +35,11 @@ export function LoginPage() {
         void submit('in');
       }}
     >
-      <h2>Sign in to find a partner</h2>
-      <p className="muted">Browsing the question bank needs no account.</p>
+      <h2>Finding a partner needs an account</h2>
+      <p className="muted">
+        Someone has to be on the other end of the editor, so pairing is the one thing here that
+        cannot be anonymous. Reading the lessons and browsing the question bank need no account.
+      </p>
 
       <input
         type="email"

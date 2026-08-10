@@ -111,10 +111,12 @@ export function App() {
           >
             Questions
           </button>
-          {/* Shown signed out too, and it has to be: the match view falls back
-              to the sign-in form, so this is the only route to it. Hiding it
-              until you are signed in leaves a signed-out visitor with no way
-              to sign in at all. */}
+          {/* Shown signed out too, and labelled the same either way. It is the
+              only route to the sign-in form, so it cannot be hidden — but
+              calling it "Sign in" while signed out describes the step rather
+              than the destination, and a visitor deciding whether this site is
+              worth an account learns nothing from it. It says what it does;
+              clicking it signed out explains that pairing needs an account. */}
           {/* Three states, not two. "Return to session" while you are already
               looking at it is a button that does nothing, so being in the room
               gets its own quiet green marker and only leaving it turns into a
@@ -132,7 +134,7 @@ export function App() {
               aria-current={view.name === 'match' ? 'page' : undefined}
               onClick={() => setView({ name: 'match' })}
             >
-              {user ? 'Find a partner' : 'Sign in'}
+              Find a partner
             </button>
           )}
           {user && (
