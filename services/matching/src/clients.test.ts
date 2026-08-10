@@ -52,9 +52,9 @@ describe.skipIf(!process.env.CI && process.env.QUESTIONS_URL === undefined)(
   () => {
     it('finds a seeded question by topic and difficulty', async () => {
       if (!(await reachable(QUESTIONS_URL))) return;
-      // From packages/db/migrations/005_questions_seed.sql: each of the five
-      // topics has exactly one question per difficulty, so any combination a
-      // caller can express resolves to something.
+      // From packages/db/migrations/005_questions_seed.sql: each topic has
+      // exactly one question per difficulty, so any combination a caller can
+      // express resolves to something.
       const id = await findQuestion(QUESTIONS_URL, 'os', 'hard');
       expect(typeof id).toBe('string');
     });
@@ -62,12 +62,22 @@ describe.skipIf(!process.env.CI && process.env.QUESTIONS_URL === undefined)(
     /**
      * The property Matching actually depends on: it refuses a match when no
      * question fits, so a topic+difficulty with nothing behind it is a pair of
-     * users who can never be matched. Five of these fifteen were empty until
-     * the seed's difficulties were made the day index within each topic.
+     * users who can never be matched. Five cells were empty until the seed's
+     * difficulties were made a row's position within its own topic.
      */
     it('has a question for every topic and difficulty a caller can ask for', async () => {
       if (!(await reachable(QUESTIONS_URL))) return;
-      const topics = ['os', 'networking', 'databases', 'oop', 'system-design'];
+      const topics = [
+        'os',
+        'networking',
+        'databases',
+        'oop',
+        'system-design',
+        'security',
+        'debugging',
+        'ai-tooling',
+        'behavioural',
+      ];
       const difficulties = ['easy', 'medium', 'hard'] as const;
 
       for (const topic of topics) {

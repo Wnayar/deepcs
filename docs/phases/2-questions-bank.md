@@ -82,7 +82,7 @@ match the mechanism to the actual cost of being wrong."*
 | 2 | [`services/questions/src/repository.ts`](../../services/questions/src/repository.ts) | List/filter/search/paginate/get, and the column list that keeps `reference_md` off the wire. |
 | 3 | [`services/questions/src/cache.ts`](../../services/questions/src/cache.ts) | The read-through cache — ~25 lines, and the whole point is what happens when it fails. |
 | 4 | [`services/questions/src/index.ts`](../../services/questions/src/index.ts) | Routes: `GET /questions`, `GET /questions/:id`. |
-| 5 | [`packages/db/migrations/005_questions_seed.sql`](../../packages/db/migrations/005_questions_seed.sql) | The 15 seeded questions. Data, not logic — see Part 3 below for where it came from. |
+| 5 | [`packages/db/migrations/005_questions_seed.sql`](../../packages/db/migrations/005_questions_seed.sql) | The 27 seeded questions. Data, not logic — see Part 3 below for where it came from. |
 
 ---
 
@@ -106,9 +106,9 @@ CREATE INDEX IF NOT EXISTS bank_tags_idx ON questions.bank USING GIN (tags);
 
 **No `topic` column.** DESIGN.md's row shape is `parts[]`, `reference_md`,
 `tags text[]` (GIN-indexed), `difficulty` — filtering is entirely through
-`tags`. A question's topic is just its first, most general tag (`os`,
-`networking`, `databases`, `oop`, `system-design`). One mechanism instead of
-two overlapping ones.
+`tags`. A question's topic is just its first, most general tag — `os`,
+`networking`, `databases`, `oop`, `system-design`, `security`, `debugging`,
+`ai-tooling`, `behavioural`. One mechanism instead of two overlapping ones.
 
 **`parts` is `jsonb`, not `text[]`.** Each entry is a short prompt string —
 `"What is a mutex and how does it work?"` — and phase 4's Collab doc seeds one
@@ -166,7 +166,7 @@ it's trimmed from the page. No separate `COUNT` query, no "is there a next
 page" flag to keep in sync by hand.
 
 **Why `ILIKE` and not a full-text index.** DESIGN.md doesn't specify the
-search mechanism, and the bank is 15 rows. A `tsvector` GIN index is the
+search mechanism, and the bank is 27 rows. A `tsvector` GIN index is the
 right answer at scale; at this scale it's solving a problem this dataset
 doesn't have. Worth revisiting if question authoring ever ships and the bank
 grows past a few hundred rows.
@@ -182,12 +182,17 @@ endpoint that writes a row into `questions.bank`, ever. So the bank has to be
 seeded once, by hand, the same way the schema itself is: a numbered migration
 file, applied forward, never edited in place after it's run anywhere.
 
-The content is adapted from a personal CS-fundamentals study repo — 5 topics
-(OS, Networking, Databases, OOP, System Design) × 3 days each, 15 day-files
-total. Each day-file already closed with an "Interview Questions Answered"
-section pairing a handful of question headers with full-paragraph answers —
-which maps directly onto this bank's shape: **the questions become `parts[]`,
-the answers become `reference_md`.** One day-file → one bank row.
+The content is adapted from a personal CS-fundamentals study repo, which comes
+in two shapes. Five topics (OS, Networking, Databases, OOP, System Design) are
+three-day curricula — 15 day-files, one bank row each. Four more (Security,
+Debugging, AI Tooling, Behavioural) are single overview files, split into three
+rows apiece along seams the notes already have.
+
+Both shapes end the same way: a section pairing question headers with
+full-paragraph answers — "Interview Questions Answered" in the day files,
+"High-Value Interview Questions to Drill" in the overviews. That maps directly
+onto this bank's shape: **the questions become `parts[]`, the answers become
+`reference_md`.** 27 rows across 9 topics.
 
 This is why every seeded question is multi-part rather than a single Q&A
 pair: DESIGN.md's domain is "a bank of multi-part CS fundamentals
@@ -205,28 +210,38 @@ in any absolute sense, only later in the sequence.
 The reason it matters is downstream. Matching pairs people by topic **and**
 difficulty and refuses the match when nothing fits, so a combination with no
 question behind it is a pair of users who can never be matched — a dead end
-they meet only after choosing. Five topics × three days lands exactly on the
-five-by-three grid, one question per cell:
+they meet only after choosing. Nine topics × three lands exactly on the grid,
+one question per cell:
 
 | | easy | medium | hard |
 |---|---|---|---|
+| ai-tooling | LLMs, prompts & context | agents, RAG & fine-tuning | hallucination & responsible AI |
+| behavioural | STAR & what each company tests | the competencies | delivering an answer |
 | databases | SQL foundations | transactions & MVCC | NoSQL & CAP |
+| debugging | a systematic method | common bug types | debugging in production |
 | networking | the stack & TCP/IP | HTTP | DNS, LB & API design |
 | oop | the 4 pillars | SOLID & patterns | behavioural patterns |
 | os | processes & threads | synchronization | memory & I/O |
+| security | authN, authZ & passwords | sessions, tokens & HTTPS | attacks & safe defaults |
 | system-design | foundations | classic HLD | LLD & trade-offs |
 
-An earlier ad-hoc assignment of difficulties left five of those cells empty.
-It is asserted now rather than assumed, in
+An earlier ad-hoc assignment of difficulties left five cells empty. It is
+asserted now rather than assumed, in
 [`clients.test.ts`](../../services/matching/src/clients.test.ts) — the test
-walks all fifteen combinations, because the failure is invisible until a user
-picks the one that isn't there.
+walks all twenty-seven combinations, because the failure is invisible until a
+user picks the one that isn't there.
 
-**Not every topic in the source made it in.** The study repo also has
-security, debugging, behavioural and AI-tooling material, but those are
-overview files with no "Interview Questions Answered" section, so they have no
-`parts[]` to become. Importing them would mean authoring questions, which
-DESIGN.md puts out of scope — they are left out rather than half-imported.
+**Behavioural is shaped differently, on purpose.** The other eight topics have
+a reference answer because the source notes have one. Behavioural is a *story
+scaffold*: the answers are the author's own experiences and the slots are
+deliberately blank, so there is nothing to import and inventing one would be
+exactly what those notes warn against. Its `parts[]` are therefore real
+questions to expect ("tell me about a time you failed") and its `reference_md`
+describes what a strong answer has to contain rather than supplying one. That
+still works for the product — two people take turns answering, and the
+reference is the rubric they check each other against — but it is a different
+contract from the rest of the bank, and the migration says so where the rows
+are defined.
 
 ---
 
@@ -286,7 +301,7 @@ phase 1's Part 7.
 - **No write path.** Question authoring is out of scope for the whole
   project; the bank is migration-seeded, full stop.
 - **No full-text search index.** See Part 2 — `ILIKE` is the honest answer at
-  15 rows.
+  27 rows.
 
 ---
 
@@ -302,7 +317,7 @@ alongside phase 1's migrations, same as always — nothing new to run by hand.
 ## Claim 1 — browse, filter, search, paginate, get by id
 
 ```bash
-curl -s http://localhost:8080/questions | jq '.items | length'          # 15 by default (limit=20)
+curl -s http://localhost:8080/questions | jq '.items | length'          # 20 — the default limit, of 27
 curl -s "http://localhost:8080/questions?tags=os" | jq '.items[].title'  # the 3 OS days
 curl -s "http://localhost:8080/questions?difficulty=hard" | jq '.items[].title'
 curl -s "http://localhost:8080/questions?q=memory" | jq '.items[].title' # title search
