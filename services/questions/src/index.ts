@@ -3,7 +3,7 @@ import { createService, probe } from '@deepcs/shared/service';
 import { createPool, pingDb } from '@deepcs/shared/db';
 import { createRedis, pingRedis } from '@deepcs/shared/redis';
 import { SERVICES } from '@deepcs/shared/services';
-import { getQuestion, listQuestions } from './repository.js';
+import { getQuestion, getReferenceMd, listQuestions } from './repository.js';
 import { cached } from './cache.js';
 
 const pool = createPool();
@@ -99,6 +99,37 @@ app.get('/questions/:id', async (req, reply) => {
   }
 
   return reply.send(question);
+});
+
+/**
+ * Release a question's answer text, e.g.
+ *   GET /internal/questions/3f2e1c9a-...-b1a4/reference
+ * returns `{ referenceMd: "## Process vs thread?\n\n..." }`, or 404.
+ *
+ * **The `/internal` prefix is the access control, and it is the only thing
+ * standing between this answer and the public internet.** The Gateway proxies
+ * exactly four prefixes — `/users`, `/questions`, `/match`, `/collab` — with
+ * no filtering on the path that follows, so a route named
+ * `/questions/:id/reference` would be reachable from any browser. Nothing
+ * proxies `/internal`, so this is callable only from inside the network, which
+ * is where Matching lives.
+ *
+ * Deliberately not cached: `cached()` wraps list queries, and putting answer
+ * text into a shared Redis key is a second copy of the thing this service
+ * works hardest not to hand out.
+ */
+app.get('/internal/questions/:id/reference', async (req, reply) => {
+  const parsed = idParams.safeParse(req.params);
+  if (!parsed.success) {
+    return reply.code(400).send({ error: 'invalid id' });
+  }
+
+  const referenceMd = await getReferenceMd(pool, parsed.data.id);
+  if (referenceMd === null) {
+    return reply.code(404).send({ error: 'not found' });
+  }
+
+  return reply.send({ referenceMd });
 });
 
 app.addHook('onClose', async () => {

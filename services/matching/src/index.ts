@@ -1,15 +1,19 @@
 import { z } from 'zod';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { createService, probe } from '@deepcs/shared/service';
 import { createPool, pingDb } from '@deepcs/shared/db';
 import { createRedis, pingRedis } from '@deepcs/shared/redis';
 import { getUserId } from '@deepcs/shared/headers';
 import { SERVICES } from '@deepcs/shared/services';
-import { checkUserExists, findQuestion } from './clients.js';
+import { checkUserExists, fetchReferenceMd, findQuestion } from './clients.js';
 import { createQueue } from './queue.js';
 import {
+  addRevealConsent,
   createSession,
+  endSession,
   findActiveSessionForUser,
   findSessionById,
+  isParticipant,
   type Session,
 } from './repository.js';
 
@@ -214,11 +218,146 @@ app.get('/match/sessions/:id/participant', async (req, reply) => {
     return reply.code(404).send({ error: 'not found' });
   }
 
-  if (uid !== session.userAUid && uid !== session.userBUid) {
+  // An ended session has no participants any more, and this is the only place
+  // that needs to say so. Collab authorizes every socket against this route,
+  // so refusing here is what actually stops a finished session being rejoined
+  // — without Collab knowing that sessions can end at all.
+  if (session.endedAt !== null || !isParticipant(session, uid)) {
     return reply.send({ participant: false });
   }
 
   return reply.send({ ...toResponse(session, uid).session, participant: true });
+});
+
+/**
+ * Loads a session and confirms the caller belongs to it, or produces the
+ * reply explaining why not. Shared by the three routes below, which all begin
+ * the same way: valid uuid, authenticated caller, existing session, caller is
+ * one of its two people.
+ */
+async function loadForParticipant(
+  req: FastifyRequest,
+  reply: FastifyReply,
+): Promise<Session | null> {
+  const params = participantParams.safeParse(req.params);
+  if (!params.success) {
+    reply.code(400).send({ error: 'invalid id' });
+    return null;
+  }
+
+  const uid = getUserId(req);
+  if (!uid) {
+    reply.code(401).send({ error: 'unauthorized' });
+    return null;
+  }
+
+  const session = await findSessionById(pool, params.data.id);
+  if (!session) {
+    reply.code(404).send({ error: 'not found' });
+    return null;
+  }
+  if (!isParticipant(session, uid)) {
+    // 403 rather than 404: the caller is authenticated and the session is
+    // real, they simply are not in it.
+    reply.code(403).send({ error: 'not a participant in this session' });
+    return null;
+  }
+
+  return session;
+}
+
+/**
+ * Shapes the reveal state for a caller, fetching the answer from Questions
+ * only once both participants have consented.
+ */
+async function toRevealResponse(session: Session) {
+  // Both, not "two consents" — a length check would release the answer to a
+  // pair where one person somehow consented twice.
+  const revealed =
+    session.revealConsents.includes(session.userAUid) &&
+    session.revealConsents.includes(session.userBUid);
+
+  if (!revealed) {
+    return { consented: session.revealConsents, revealed: false };
+  }
+
+  const referenceMd = await fetchReferenceMd(questionsUrl!, session.questionId);
+  return { consented: session.revealConsents, revealed: true, referenceMd };
+}
+
+/**
+ * Agree to reveal the reference answer — e.g.
+ *   POST /match/sessions/3f2e1c9a-.../reveal    (X-User-Id: bob)
+ * returns `{ consented: ["bob"], revealed: false }` while bob is waiting on
+ * his partner, and `{ consented: [both], revealed: true, referenceMd: "..." }`
+ * once both have agreed. Pressing it twice is the same as pressing it once.
+ *
+ * This route is where ADR-06 is enforced: Questions holds the answer but has
+ * no idea who is in a session, and this service knows exactly who consented
+ * but never stores the answer. Neither can release it alone.
+ */
+app.post('/match/sessions/:id/reveal', async (req, reply) => {
+  const existing = await loadForParticipant(req, reply);
+  if (!existing) return reply;
+
+  if (existing.endedAt !== null) {
+    return reply.code(409).send({ error: 'session has ended' });
+  }
+
+  const session = await addRevealConsent(pool, existing.id, getUserId(req)!);
+  if (!session) {
+    return reply.code(404).send({ error: 'not found' });
+  }
+  req.log.info({ session_id: session.id, user_id: getUserId(req) }, 'reveal.consented');
+
+  try {
+    return reply.send(await toRevealResponse(session));
+  } catch (err) {
+    req.log.error({ err }, 'questions service unavailable');
+    return reply.code(503).send({ error: 'questions service unavailable' });
+  }
+});
+
+/**
+ * Has my partner agreed yet? e.g.
+ *   GET /match/sessions/3f2e1c9a-.../reveal      (X-User-Id: bob)
+ * Same body as the POST above, without recording anything. This is what the
+ * session page polls in the gap between one person agreeing and the other.
+ */
+app.get('/match/sessions/:id/reveal', async (req, reply) => {
+  const session = await loadForParticipant(req, reply);
+  if (!session) return reply;
+
+  try {
+    return reply.send(await toRevealResponse(session));
+  } catch (err) {
+    req.log.error({ err }, 'questions service unavailable');
+    return reply.code(503).send({ error: 'questions service unavailable' });
+  }
+});
+
+/**
+ * Finish a session — e.g.
+ *   POST /match/sessions/3f2e1c9a-.../end        (X-User-Id: bob)
+ * returns `{ endedAt: "2026-08-11T..." }`. Either participant can end it, and
+ * ending an already-ended session returns the original timestamp rather than
+ * moving it, so both people's summaries agree.
+ *
+ * The consequence lands in the participant route above: once `endedAt` is set
+ * it reports `participant: false`, so Collab stops accepting sockets for this
+ * session and the document can no longer be edited.
+ */
+app.post('/match/sessions/:id/end', async (req, reply) => {
+  const existing = await loadForParticipant(req, reply);
+  if (!existing) return reply;
+
+  const session = await endSession(pool, existing.id);
+  if (!session?.endedAt) {
+    return reply.code(404).send({ error: 'not found' });
+  }
+  req.log.info({ session_id: session.id, user_id: getUserId(req) }, 'session.ended');
+
+  return reply.send({ endedAt: session.endedAt.toISOString() });
 });
 
 app.addHook('onClose', async () => {

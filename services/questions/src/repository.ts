@@ -24,12 +24,31 @@ export interface ListResult {
 
 /**
  * The columns every public query selects. `reference_md` (the answer text)
- * is deliberately left out — it's meant to stay hidden until a future
- * "reveal" flow checks both users agreed to see it. Leaving it out of the
- * query, instead of stripping it from the response later, means there's no
- * field a route handler could ever forget to remove.
+ * is deliberately left out — it stays hidden until the reveal flow confirms
+ * both users agreed to see it. Leaving it out of the query, instead of
+ * stripping it from the response later, means there's no field a route
+ * handler could ever forget to remove.
  */
 const SUMMARY_COLUMNS = 'id, title, difficulty, parts, tags, created_at';
+
+/**
+ * Reads a question's answer text — e.g.
+ *   getReferenceMd(pool, '3f2e1c9a-...')
+ * returns the markdown, or `null` if the id doesn't exist.
+ *
+ * The only function in this service that touches `reference_md`, and its one
+ * caller is the internal route Matching uses after it has verified both
+ * participants consented (ADR-06). Questions cannot make that check itself —
+ * it has no idea who is in a session — which is exactly why the answer is
+ * released to Matching rather than to a browser.
+ */
+export async function getReferenceMd(pool: pg.Pool, id: string): Promise<string | null> {
+  const { rows } = await pool.query<{ reference_md: string }>(
+    'SELECT reference_md FROM questions.bank WHERE id = $1',
+    [id],
+  );
+  return rows[0]?.reference_md ?? null;
+}
 
 /**
  * Lists questions, applying whichever filters are present, then returns one
