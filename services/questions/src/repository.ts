@@ -49,6 +49,9 @@ export async function listQuestions(pool: pg.Pool, filters: ListFilters): Promis
 
   if (filters.tags && filters.tags.length > 0) {
     params.push(filters.tags);
+    // `&&` is array overlap, not equality — true if the row's `tags` and the
+    // requested `filters.tags` share at least one element. e.g. a row tagged
+    // {'os','memory'} matches a request for tags=['memory','db'].
     conditions.push(`tags && $${params.length}::text[]`);
   }
   if (filters.difficulty) {
@@ -61,6 +64,10 @@ export async function listQuestions(pool: pg.Pool, filters: ListFilters): Promis
   }
   if (filters.cursor) {
     params.push(filters.cursor);
+    // `cursor` is just the last id you saw — e.g. after a page ending in id
+    // "abc", pass cursor="abc" to get the rows sorted right after it. Nothing
+    // fancier: `id > $cursor` combined with `ORDER BY id` below is the entire
+    // pagination mechanism.
     conditions.push(`id > $${params.length}`);
   }
 

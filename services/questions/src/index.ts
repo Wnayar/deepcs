@@ -28,7 +28,8 @@ app.get('/health/deps', async () => {
 });
 
 const listQuery = z.object({
-  // Comma-separated; a question matches if it has ANY of the listed tags.
+  // Comma-separated; a question matches if it has ANY of the listed tags —
+  // e.g. "os,networking" matches a question tagged just "os".
   tags: z.string().min(1).max(200).optional(),
   difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
   q: z.string().min(1).max(200).optional(),
@@ -36,6 +37,16 @@ const listQuery = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
+/**
+ * List / filter / search / paginate the bank. Every query param is optional
+ * and they combine (AND) — e.g.
+ *   GET /questions?tags=os,networking&difficulty=hard&q=memory&limit=5
+ *   → hard questions tagged "os" OR "networking", with "memory" in the title,
+ *     at most 5 at a time.
+ *
+ * Paginate by taking `nextCursor` from one response and passing it as
+ * `cursor` on the next call — repeat until `nextCursor` comes back `null`.
+ */
 app.get('/questions', async (req, reply) => {
   const parsed = listQuery.safeParse(req.query);
   if (!parsed.success) {
@@ -64,6 +75,11 @@ app.get('/questions', async (req, reply) => {
 
 const idParams = z.object({ id: z.string().uuid() });
 
+/**
+ * Get one question by id — e.g. GET /questions/3f2e1c9a-...-b1a4
+ * → { id, title, difficulty, parts, tags, createdAt } (no reference_md, see
+ * repository.ts). An id that doesn't exist is a 404, not an empty body.
+ */
 app.get('/questions/:id', async (req, reply) => {
   const parsed = idParams.safeParse(req.params);
   if (!parsed.success) {
