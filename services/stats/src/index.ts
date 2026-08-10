@@ -17,7 +17,7 @@ async function run(): Promise<void> {
   const startedAt = process.hrtime.bigint();
   log.info('stats job started');
 
-  // Phase 7 replaces this: read past the consumer-group bookmark on the
+  // Phase 6 replaces this: read past the consumer-group bookmark on the
   // `events` Redis Stream, write summaries + aggregates idempotently, ack.
   const drained = 0;
 

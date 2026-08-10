@@ -274,7 +274,7 @@ straight from Postgres), `waiting` (still in the Redis queue), or `none`
   CI matrix.
 - **`emitEvent` is a log line, not a real event pipeline**, same as phase
   1's `user.signed_up`. `queue.joined` and `match.created` are logged now;
-  phase 7 puts them behind the real `EventLog` interface.
+  phase 6 puts them behind the real `EventLog` interface.
 
 ---
 

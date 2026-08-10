@@ -11,7 +11,7 @@ import react from '@vitejs/plugin-react';
  * Injected on build only. The dev server needs inline scripts for hot reload,
  * and a policy loose enough to allow those is not a policy worth shipping; the
  * built bundle has no inline scripts, so production gets the strict version.
- * Phase 6 moves this to a CDN response header, which is where a CSP really
+ * Phase 9 moves this to a CDN response header, which is where a CSP really
  * belongs — a meta tag cannot express `frame-ancestors` or report endpoints.
  */
 const CSP = [

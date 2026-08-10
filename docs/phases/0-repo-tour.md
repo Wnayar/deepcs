@@ -76,7 +76,7 @@ The three phase-0 docs, so you know which is which:
 | [`.gitignore`](../../.gitignore) | Keeps `node_modules/`, `dist/` and **`.env`** out of git. That third one is the one that matters: `.env` is where your Neon and Upstash credentials will live. |
 | [`.dockerignore`](../../.dockerignore) | Keeps the same things out of the **build context** — the tarball of your working directory that Docker uploads to the daemon before building. Without it you'd ship `node_modules` and `.env` into the build. |
 | [`.env.example`](../../.env.example) | The template you copy to `.env`. Every key is documented with which phase starts needing it. Commented-out lines are phase-6 things you'll collect during cloud setup. |
-| [`README.md`](../../README.md) | Four lines, pointing at DESIGN.md. Phase 6 turns this into the real one with the load number and demo GIF. |
+| [`README.md`](../../README.md) | Four lines, pointing at DESIGN.md. Phase 9 turns this into the real one with the load number and demo GIF. |
 | [`DESIGN.md`](../../DESIGN.md) | 61 KB. The architecture and the reasoning. Everything else in the repo cites it by section — `§3` is the six-deployable split, `§5` the per-service specs, `§6` cross-cutting concerns, `§7` deployment and cost. |
 
 **Look closer — [the catalog](../../pnpm-workspace.yaml#L15).** Seven
@@ -410,7 +410,7 @@ The fix is on [line 75](../../.github/workflows/ci.yml#L75) —
   option is correct to keep; the explicit `|| true` is how you say "this
   particular non-match is expected".
 
-**The general lesson**, which will come up again in phase 6's deploy scripts: under
+**The general lesson**, which will come up again in phase 9's deploy scripts: under
 `set -euo pipefail`, a command whose "nothing found" case is *normal* needs that
 case handled explicitly, or your error handling becomes unreachable code.
 

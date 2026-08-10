@@ -438,7 +438,7 @@ when the UID already existed. An empty result is therefore the signal that this
 was a genuine first sight of the UID — the `created` flag at
 [`repository.ts:21`](../../services/users/src/repository.ts#L21) — and since
 there is no signup endpoint (§5), it is the **only** place `user.signed_up` can
-be emitted from in phase 7. It is a log line for now at
+be emitted from in phase 6. It is a log line for now at
 [`index.ts:45`](../../services/users/src/index.ts#L45).
 
 Get it wrong and the event fires on every request, and the sign-up count in
@@ -656,7 +656,7 @@ Stated so a green demo does not imply more than it covers.
   header-forgery guarantee is **not** in force — locally, ports 8081–8084 are
   open on your machine.
 - **`user.signed_up` is a log line**, not an event
-  ([`index.ts:45`](../../services/users/src/index.ts#L45)). Phase 7 puts it behind
+  ([`index.ts:45`](../../services/users/src/index.ts#L45)). Phase 6 puts it behind
   the `EventLog` interface. It is logged now so the once-per-user property is
   observable before there is a consumer to prove it.
 - **No tighter rate-limit bucket on `/match/*`** — §6 asks for one. Per-user

@@ -815,7 +815,7 @@ const ms = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
 log.info({ drained, duration_ms: ms }, 'stats job finished');
 ```
 
-Monotonic timer, a placeholder for phase 7, then a log line. `{ drained, ... }`
+Monotonic timer, a placeholder for phase 6, then a log line. `{ drained, ... }`
 is shorthand — the field is named `drained` because the variable is.
 
 ```ts
@@ -1194,7 +1194,7 @@ than the syntax does.
 
 ## Redis and streams
 
-Redis is memory-speed key/value storage. Phase 7's Stats job reads a **stream** —
+Redis is memory-speed key/value storage. Phase 6's Stats job reads a **stream** —
 an append-only log that remembers how far each consumer got, so a job that
 crashes resumes rather than reprocessing or skipping.
 

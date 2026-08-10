@@ -252,7 +252,7 @@ describe.skipIf(!process.env.CI && process.env.QUESTIONS_URL === undefined)('col
    * because Collab authorizes against Matching's participant check and never
    * heard about ending at all. A socket already open kept accepting edits, and
    * the 30s snapshot kept saving them — so the document carried on changing
-   * after the session was over, and phase 7's summary would read whatever it
+   * after the session was over, and phase 6's summary would read whatever it
    * had drifted to.
    */
   it('closes an open socket and stops persisting edits once the session ends', async (ctx) => {

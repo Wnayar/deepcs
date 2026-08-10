@@ -269,7 +269,7 @@ them side by side.
 
 ```mermaid
 flowchart TD
-    subgraph A["Path A — the five DeepCS services (phase 6)"]
+    subgraph A["Path A — the five DeepCS services (phase 9)"]
       A1["git push"] --> A2["GitHub Actions runner<br/>docker build"]
       A2 --> A3["Artifact Registry"]
       A3 --> A4["gcloud run deploy<br/>'start that image'"]
@@ -399,7 +399,7 @@ hour to resume).
 It enforces on **gross** cost, ignoring credits — unlike the `deepcs-20` budget,
 which tracks spend *net* of credits and therefore stays near $0 and never fires
 during the trial. So the cap can fire while credits are still paying. If Cloud
-Run goes quiet unexpectedly in phase 6, check there first.
+Run goes quiet unexpectedly in phase 9, check there first.
 
 **The kill-switch is last, and it is a backstop.** Budget data lags by hours, so
 a genuine runaway overshoots before it fires. What it does reliably is stop the

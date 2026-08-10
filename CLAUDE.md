@@ -126,5 +126,11 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
   only waiting, and slowing it down enough to afford made the news late. The one
   remaining timer is the crash-recovery check in `Match.tsx`, which detects a
   lost pair claim, not a match.
-- **Deploy is phase 9, not phase 6.** Kubernetes runs locally at phase 6 and
-  costs nothing; the cloud deploy is last. DESIGN.md §10 records why.
+- **Phase order: 6 event pipeline, 7 Kubernetes locally, 8 Kafka, 9 deploy, 10
+  Terraform.** The deploy is last because keeping a live URL inside a cost
+  ceiling was buying attention on billing rather than on the system, and the
+  event pipeline is first because it is the piece already described to people
+  outside the repo. DESIGN.md §10 records both.
+- **The k6 baseline belongs to no phase.** It needs only Collab, so it can run
+  against docker compose whenever a number is needed; phases 7 and 9 re-run the
+  same script for different claims.

@@ -337,9 +337,9 @@ here were wrong at some point:
   5. The tests drive the wire protocol directly, which is enough to prove the
   server side.
 - **`session.started` is a log line, not an event**, same as phase 3's
-  `queue.joined`/`match.created`; phase 7 puts it behind the real `EventLog`.
+  `queue.joined`/`match.created`; phase 6 puts it behind the real `EventLog`.
   Note it currently marks a *room opening on an instance*, so a session whose
-  participants all disconnect and return logs it again — phase 7 has to dedupe
+  participants all disconnect and return logs it again — phase 6 has to dedupe
   on `session_id`.
 - **Nothing subscribes to Matching's `match:session:{id}` channel.** Phase 3
   left it for "Collab or a future live-status channel"; Collab turned out not

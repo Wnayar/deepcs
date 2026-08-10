@@ -274,7 +274,7 @@ export function createRoomManager(deps: RoomDeps): RoomManager {
    * Without this, ending only stopped *new* sockets: the participant check
    * refused them, but a socket already open kept accepting edits and the 30s
    * snapshot kept saving them, so the document went on changing after the
-   * session was over — and phase 7's summary would read whatever it had
+   * session was over — and phase 6's summary would read whatever it had
    * drifted to.
    *
    * Ordering matters twice here. `closing` goes up first so nothing else is

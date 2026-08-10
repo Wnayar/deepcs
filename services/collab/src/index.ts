@@ -103,11 +103,11 @@ app.get(
     }
 
     if (created) {
-      // The real emitEvent/event-log pipeline is phase 7 — this is the same
+      // The real emitEvent/event-log pipeline is phase 6 — this is the same
       // structured-log breadcrumb every other lifecycle moment already uses
       // (queue.joined, match.created). Note it marks a room being *opened* on
       // this instance, so a session whose participants all disconnect and come
-      // back logs it again; phase 7 has to dedupe on session_id.
+      // back logs it again; phase 6 has to dedupe on session_id.
       req.log.info({ session_id: sessionId }, 'session.started');
     }
   },

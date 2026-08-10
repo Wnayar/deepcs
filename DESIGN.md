@@ -728,7 +728,7 @@ it deliberately and on a deadline is safer than doing it casually.
    a pod and watch it self-heal, read logs via `kubectl`. No Helm, no k3d — raw
    YAML so every line is understood.
 2. **Delete the cluster**, keep the manifests in `k8s/`. Production never moves:
-   it is on Cloud Run from phase 6 onwards and stays there, which is the whole
+   it is on Cloud Run from phase 9 onwards and stays there, which is the whole
    point of running this as a detour on a deadline. ADR-05 records it.
 
 ---
@@ -750,11 +750,16 @@ it deliberately and on a deadline is safer than doing it casually.
 - **k6 load test on Collab, run twice, and the two runs answer different
   questions.**
 
-  **The big run is phase 6, on the local Kubernetes cluster.** That is where the
-  volume goes: nothing throttles, bugs are cheap to find (a socket leak, an
-  unbounded map, a missing `await`), and Kubernetes makes it worth more than it
-  was under compose, because load can be applied *while* a rolling update goes
-  out and *while* a pod is deleted.
+  **The baseline run needs no phase.** It requires Collab and nothing else, so
+  it has been available since phase 4 and should happen before any number is
+  quoted. Against `docker-compose`, ramping WebSocket connections: that is where
+  the volume goes and where bugs are cheap to find (a socket leak, an unbounded
+  map, a missing `await`), and it is the run that produces the headline
+  concurrency and propagation figures.
+
+  **Phase 7 re-runs the same script on the local Kubernetes cluster**, and the
+  point is not a bigger number. It is that load can be applied *while* a rolling
+  update goes out and *while* a pod is deleted, which is a different claim.
 
   **What a local run may and may not claim.** It measures a laptop, not a
   system, so it cannot support a capacity claim: "holds N concurrent
@@ -772,7 +777,7 @@ it deliberately and on a deadline is safer than doing it casually.
   here is why" is a better answer to what Kubernetes buys than listing object
   kinds.
 
-  **The small run is phase 9, against Cloud Run with Grafana open**, answering
+  **Phase 9 re-runs it smaller against Cloud Run with Grafana open**, answering
   the question the local one cannot: does it behave the same under the §7 flags,
   real network latency to `asia-southeast1`, and cold starts. Headline: *"holds
   N concurrent WebSocket connections per instance at p95 X ms edit-propagation
@@ -920,7 +925,7 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
    survives the switch.
 5. **Cloud Run over Kubernetes for production** — production runs on Cloud Run
    from the first deploy onwards, for scale-to-zero and zero idle cost. GKE is
-   stood up separately as a time-boxed learning detour (phase 9), run alongside
+   stood up separately as a learning detour (phase 7), run alongside
    the live deployment, then deleted; the manifests are retained in `k8s/` as
    evidence, not as an alternative production path.
 6. **Reference answers never enter the shared doc** — a Yjs doc replicates to all
@@ -1014,16 +1019,16 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
 | 4 | **Collab (hardest):** WebSockets + Yjs, authorize the socket via Matching, cross-instance pub/sub, presence/cursors, snapshot + reconnect, graceful shutdown | two tabs sync live; kill one instance, the other keeps working |
 | 5 | Minimal React: login, question list, match button, session page (Monaco wired to Yjs) with scaffolded editor, reveal flow, end | open two browsers, match, collaborate, reveal |
 | 5b | The question list became a roadmap: topics ordered as a recommended path, one lesson per question set seeded from the same notes, light/dark, and URLs for every screen. Content fixed in the seed rather than at render time | click a topic, read its lesson, press "find a partner" from it; Back works; a lesson link opens that lesson |
-| 6 | **Kubernetes, locally.** `k8s/` manifests: Deployment + Service per service, ConfigMap + Secret, Ingress, probes pointed at the existing `/health/live` and `/health/ready`, Postgres and Redis for local use; `make k8s-up` / `make k8s-down` on `kind`; the big k6 run, driven through a rolling update and a killed pod | app runs on Kubernetes; k6 shows **zero dropped requests during a rolling update**, and `kubectl delete pod` does not interrupt it |
-| 7 | Event pipeline: `emitEvent` → `events` stream (behind the `EventLog` interface); idempotent **Stats** consumer → summaries + aggregates; Cloud Scheduler → Cloud Run job | end a session on the live URL → summary renders; `/stats` shows real counts |
+| 6 | Event pipeline: `emitEvent` → `events` stream (behind the `EventLog` interface); idempotent **Stats** consumer → summaries + aggregates; Cloud Scheduler → Cloud Run job | end a session on the live URL → summary renders; `/stats` shows real counts |
+| 7 | **Kubernetes, locally.** `k8s/` manifests: Deployment + Service per service, ConfigMap + Secret, Ingress, probes pointed at the existing `/health/live` and `/health/ready`, Postgres and Redis for local use; `make k8s-up` / `make k8s-down` on `kind`; the k6 script re-run during a rolling update and a killed pod | app runs on Kubernetes; k6 shows **zero dropped requests during a rolling update**, and `kubectl delete pod` does not interrupt it |
 | 8 | **[detour · learning]** Kafka in dev: single-node Kafka (KRaft) in compose + a Kafka adapter for `EventLog` | same events flow through Kafka on `docker-compose up`; prod unchanged |
 | 9 | **Deploy.** The services to Cloud Run + frontend to CDN; CI deploys per service on merge; logs + health + `/metrics` → Grafana; the smaller k6 run against the real thing; README + ADRs + demo GIF | live URL; headline load number in README with the environment stated; deploying Questions alone doesn't restart Collab |
 | 10 | **[built · learning]** Terraform: import the manual setup (services + flags, service accounts, invoker bindings, registry, secrets, bucket, scheduler job, budget alerts). After phase 9, because it imports infrastructure that has to exist first | `terraform apply` rebuilds the environment |
 
-**The project is demoable on a laptop at phase 6 and feature-complete at phase
-7** — phase 7 is where the event pipeline and `/stats` land, and both are stated
-scope (§1, §2), so it is not optional. *Publicly* demoable now means phase 9,
-and that is the deliberate cost of this ordering.
+**The project is feature-complete at phase 6**, which is where the event
+pipeline and `/stats` land. Both are stated scope (§1, §2), so phase 6 is not
+optional and nothing after it is load-bearing for the product. *Publicly*
+demoable means phase 9, and that is the deliberate cost of this ordering.
 
 **Why the deploy moved last.** It was phase 6, ahead of everything additive. The
 trade it was making turned out to be a bad one: a live URL is the only part of
@@ -1038,15 +1043,32 @@ What is honestly lost is worth naming rather than glossing: until phase 9 there
 is no URL to send anybody, and nobody is going to run `kind create cluster` to
 look at a project. The README carries the demo recording until then.
 
+**Why the event pipeline moved ahead of Kubernetes.** They swapped after the CV
+went out. Ordering by cost and learning value is the right rule while nothing
+outside the repo depends on the plan, and the wrong one once something does: the
+event pipeline is described in writing to people who may ask about it, and
+Kubernetes is described as in progress, which it honestly is. Finishing the
+claim that is already in circulation comes before starting the one that is
+labelled as unfinished.
+
+**The k6 baseline is not a phase and does not belong to one.** It needs Collab,
+which has existed since phase 4, and nothing else. The headline concurrency and
+propagation numbers can be measured against `docker-compose` on any afternoon,
+and should be measured before the number is quoted anywhere. Phases 7 and 9
+*re-run the same script* against different targets to answer different
+questions, which is why neither of them is a prerequisite for having a number.
+See §8.
+
 **The additive backlog, highest priority first:**
 
 | | Item | Why it sits here |
 |---|---|---|
 | 1 | **Adopt Drizzle** over the `pg` layer (ADR-10) | The only deferred item that pays down a cost already being paid — hand-written result types, drifting from the schema, on every service from phase 1 onward. Adoptable one service at a time. Ahead of the phases below because it makes existing code better rather than adding new capability. |
-| 2 | Phase 8 — Kafka adapter | Pure adapter work behind the existing `EventLog` interface; prod unchanged. |
-| 3 | Phase 10 — Terraform import | Highest effort, and it documents infrastructure that already works. |
+| 2 | Phase 7 — Kubernetes locally | Costs nothing and teaches the operations layer the compose file hides, but nothing in the product depends on it. |
+| 3 | Phase 8 — Kafka adapter | Pure adapter work behind the existing `EventLog` interface; prod unchanged. |
+| 4 | Phase 10 — Terraform import | Highest effort, and it documents infrastructure that already works. |
 
-**Why this ordering and not the doc's original.** Phases 8 and 10 each add
+**Why this ordering and not the doc's original.** Phases 7, 8 and 10 each add
 something new. ADR-10's deferral is different in kind: it is a debt taken deliberately to
 reach a demoable product sooner, and it accrues interest with every service
 written against the raw driver. Adding capability to a codebase carrying a known

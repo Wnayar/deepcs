@@ -73,7 +73,7 @@ accepting **new** connections with no change to Collab at all.
 **Which was not enough, and manual testing is what found it.** A socket
 already open never re-checks anything. It kept accepting edits, and the 30s
 snapshot kept saving them — so the "final" document went on changing after the
-session was over, and phase 7's summary would have read whatever it drifted to.
+session was over, and phase 6's summary would have read whatever it drifted to.
 The person who did not press the button also got no indication at all; their
 editor simply carried on working.
 
@@ -287,9 +287,9 @@ bundle and inherent to the editor DESIGN.md chose.
   cannot be withdrawn.
 - **No summary endpoint.** The summary is rendered from state the browser
   already holds. The richer version — sessions solved, popular topics — is fed
-  by the event log, which is phase 7.
+  by the event log, which is phase 6.
 - **`reveal.consented` and `session.ended` are log lines**, the last two of
-  DESIGN.md's six events. Phase 7 puts them behind the real `EventLog`.
+  DESIGN.md's six events. Phase 6 puts them behind the real `EventLog`.
 - **No frontend container.** It runs with `pnpm --filter @deepcs/web dev` rather
   than `docker compose up`, because in phase 6 it is a static bundle on a CDN
   and the shared Dockerfile builds Node servers out of `services/`.
