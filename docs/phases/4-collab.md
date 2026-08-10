@@ -157,7 +157,7 @@ route with the Gateway-verified uid:
 
 ```
 GET /match/sessions/:id/participant     with header  X-User-Id: bob
--> { participant: true, questionId, partnerUid }   bob is in this session
+-> { participant: true, questionId }               bob is in this session
 -> { participant: false }                          session exists, bob isn't
 -> 401                                             no caller identity at all
 -> 404                                             no such session

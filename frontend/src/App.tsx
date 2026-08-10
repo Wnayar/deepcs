@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
-import { currentSession, ensureProfile, getQuestion, type Question, type Session } from './api';
+import {
+  currentSession,
+  ensureProfile,
+  getQuestion,
+  type Difficulty,
+  type Question,
+  type Session,
+} from './api';
 import { signOutUser, watchUser, type User } from './auth';
+import { LearnPage } from './pages/Learn';
+import { LessonPage } from './pages/Lesson';
 import { LoginPage } from './pages/Login';
 import { QuestionsPage } from './pages/Questions';
 import { MatchPage } from './pages/Match';
@@ -8,21 +17,22 @@ import { SessionPage } from './pages/Session';
 import { SummaryPage } from './pages/Summary';
 
 /**
- * A `useState` switch rather than a router. There are five screens and no
+ * A `useState` switch rather than a router. There are seven screens and no
  * deep-linking requirement in this phase, so react-router would be a
  * dependency and a concept for nothing. The one place it costs something is
  * noted on the session screen: a refresh mid-session drops you back to the
  * question list rather than rejoining.
  */
 export type View =
+  | { name: 'learn' }
+  | { name: 'lesson'; topic: string }
   | { name: 'questions' }
-  | { name: 'match' }
+  | { name: 'match'; preset?: { topic: string; difficulty: Difficulty } }
   | { name: 'session'; session: Session; question: Question }
   | { name: 'summary'; summary: SessionSummary };
 
 export interface SessionSummary {
   question: Question;
-  partnerUid: string;
   startedAt: string;
   endedAt: string;
   revealed: boolean;
@@ -31,7 +41,9 @@ export interface SessionSummary {
 export function App() {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
-  const [view, setView] = useState<View>({ name: 'questions' });
+  // Learn, not the bank. The material is the thing you can use without an
+  // account and without a partner, so it is what an arriving visitor sees.
+  const [view, setView] = useState<View>({ name: 'learn' });
 
   useEffect(
     () =>
@@ -78,21 +90,27 @@ export function App() {
         {/* The wordmark is the way back to the front page — an inert <h1>
             in the corner of an app is a dead end everyone tries to click. */}
         <h1>
-          <button
-            onClick={() => setView({ name: 'questions' })}
-            style={{
-              border: 0,
-              background: 'none',
-              padding: 0,
-              font: 'inherit',
-              cursor: 'pointer',
-            }}
-          >
+          <button className="wordmark" onClick={() => setView({ name: 'learn' })}>
             deepcs
           </button>
         </h1>
         <nav>
-          <button onClick={() => setView({ name: 'questions' })}>Questions</button>
+          {/* `aria-current` is what marks the tab you are on, and the blue
+              outline in styles.css is drawn from it rather than from a second
+              class — so the highlight cannot drift out of step with what a
+              screen reader announces. A lesson counts as being under Learn. */}
+          <button
+            aria-current={view.name === 'learn' || view.name === 'lesson' ? 'page' : undefined}
+            onClick={() => setView({ name: 'learn' })}
+          >
+            Learn
+          </button>
+          <button
+            aria-current={view.name === 'questions' ? 'page' : undefined}
+            onClick={() => setView({ name: 'questions' })}
+          >
+            Questions
+          </button>
           {/* Shown signed out too, and it has to be: the match view falls back
               to the sign-in form, so this is the only route to it. Hiding it
               until you are signed in leaves a signed-out visitor with no way
@@ -110,7 +128,10 @@ export function App() {
               </button>
             )
           ) : (
-            <button onClick={() => setView({ name: 'match' })}>
+            <button
+              aria-current={view.name === 'match' ? 'page' : undefined}
+              onClick={() => setView({ name: 'match' })}
+            >
               {user ? 'Find a partner' : 'Sign in'}
             </button>
           )}
@@ -127,11 +148,26 @@ export function App() {
         {/* The bank is public (DESIGN.md §2) — a signed-out visitor can browse
             and read, which is what makes the deployed site useful to one
             person rather than an empty room. */}
+        {view.name === 'learn' && (
+          <LearnPage onOpen={(topic) => setView({ name: 'lesson', topic })} />
+        )}
+
+        {view.name === 'lesson' && (
+          <LessonPage
+            topic={view.topic}
+            onBack={() => setView({ name: 'learn' })}
+            onPractise={(topic, difficulty) =>
+              setView({ name: 'match', preset: { topic, difficulty } })
+            }
+          />
+        )}
+
         {view.name === 'questions' && <QuestionsPage signedIn={Boolean(user)} />}
 
         {view.name === 'match' &&
           (user ? (
             <MatchPage
+              preset={view.preset}
               active={active}
               onMatched={(session, question) => {
                 setActive(session);
@@ -155,7 +191,7 @@ export function App() {
         )}
 
         {view.name === 'summary' && (
-          <SummaryPage summary={view.summary} onDone={() => setView({ name: 'questions' })} />
+          <SummaryPage summary={view.summary} onDone={() => setView({ name: 'learn' })} />
         )}
       </main>
     </>

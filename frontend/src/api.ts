@@ -29,7 +29,6 @@ export interface QuestionPage {
 export interface Session {
   id: string;
   questionId: string;
-  partnerUid: string;
   createdAt: string;
 }
 
@@ -37,7 +36,12 @@ export type MatchStatus =
   { status: 'waiting' } | { status: 'none' } | { status: 'matched'; session: Session };
 
 export interface RevealState {
-  consented: string[];
+  /** Whether *you* have agreed, and whether your partner has. Two booleans
+   * rather than the uids that consented: a session never names the other
+   * person, and "have I agreed?" is not answerable from a list of ids without
+   * the browser knowing its own uid to search for. */
+  you: boolean;
+  partner: boolean;
   revealed: boolean;
   referenceMd?: string;
 }
@@ -145,4 +149,24 @@ export function revealState(sessionId: string) {
 
 export function endSession(sessionId: string) {
   return request<{ endedAt: string }>(`/match/sessions/${sessionId}/end`, { method: 'POST' });
+}
+
+export interface LessonSummary {
+  topic: string;
+  title: string;
+}
+
+export interface Lesson extends LessonSummary {
+  bodyMd: string;
+}
+
+/** The nine topics, e.g. `[{ topic: 'os', title: 'Operating Systems' }, ...]`.
+ * Public — the Learn index works signed out. */
+export function listLessons() {
+  return request<{ items: LessonSummary[] }>('/lessons');
+}
+
+/** One lesson's markdown, e.g. getLesson('os'). */
+export function getLesson(topic: string) {
+  return request<Lesson>(`/lessons/${encodeURIComponent(topic)}`);
 }

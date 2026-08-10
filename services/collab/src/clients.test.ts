@@ -68,12 +68,17 @@ async function createRealSession(): Promise<{
 describe.skipIf(!process.env.CI && process.env.MATCHING_URL === undefined)(
   'checkSessionParticipant (Collab -> Matching contract)',
   () => {
-    it('finds the partner uid and question for a real participant', async (ctx) => {
+    it('finds the question for a real participant, and names nobody', async (ctx) => {
       if (!(await allReachable())) return ctx.skip();
-      const { sessionId, alice, bob, questionId } = await createRealSession();
+      const { sessionId, alice, bob } = await createRealSession();
 
       const result = await checkSessionParticipant(MATCHING_URL, sessionId, alice);
-      expect(result).toEqual({ questionId, partnerUid: bob });
+      // Exactly the question id. Asserting the whole object, not just that
+      // `questionId` is right, is what keeps the other participant's uid from
+      // reappearing here: a session is anonymous, and Alice asking about her
+      // own membership must not be a way to learn who Bob is.
+      expect(result).toEqual({ questionId: expect.any(String) });
+      expect(JSON.stringify(result)).not.toContain(bob);
     });
 
     it('is null for a uid that is not in the session', async (ctx) => {

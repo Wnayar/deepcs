@@ -320,10 +320,11 @@ curl -s -X POST http://localhost:8080/match/join \
 curl -s -X POST http://localhost:8080/match/join \
   -H "Authorization: Bearer $TOKEN_B" -H 'Content-Type: application/json' \
   -d '{"topic":"os","difficulty":"hard"}'
-# {"status":"matched","session":{"id":"...","questionId":"...","partnerUid":"<alice's uid>"}}
+# {"status":"matched","session":{"id":"...","questionId":"...","createdAt":"..."}}
 ```
 
-Confirm from Alice's side too — same session id, `partnerUid` is Bob's:
+Confirm from Alice's side too — the same session id. Note what is *not* in
+the payload: a session never names the other participant.
 
 ```bash
 curl -s "http://localhost:8080/match/status?topic=os&difficulty=hard" -H "Authorization: Bearer $TOKEN_A"

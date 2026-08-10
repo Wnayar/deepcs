@@ -85,7 +85,7 @@ describe.skipIf(!process.env.CI && process.env.MATCHING_URL === undefined)(
       const body = (await (await reveal(sessionId, alice)).json()) as Record<string, unknown>;
 
       expect(body.revealed).toBe(false);
-      expect(body.consented).toEqual([alice]);
+      expect(body).toMatchObject({ you: true, partner: false });
       // The assertion that matters: not merely that a flag says false, but that
       // the answer text is genuinely absent from the payload.
       expect(body).not.toHaveProperty('referenceMd');
@@ -112,8 +112,7 @@ describe.skipIf(!process.env.CI && process.env.MATCHING_URL === undefined)(
       await reveal(sessionId, alice);
       const body = (await (await reveal(sessionId, alice)).json()) as Record<string, unknown>;
 
-      expect(body.consented).toEqual([alice]);
-      expect(body.revealed).toBe(false);
+      expect(body).toMatchObject({ you: true, partner: false, revealed: false });
     });
 
     it('refuses a caller who is not in the session', async (ctx) => {
@@ -151,8 +150,10 @@ describe.skipIf(!process.env.CI && process.env.MATCHING_URL === undefined)(
       await reveal(sessionId, bob, 'GET');
       const body = (await (await reveal(sessionId, bob, 'GET')).json()) as Record<string, unknown>;
 
-      expect(body.consented).toEqual([alice]);
-      expect(body.revealed).toBe(false);
+      // Read from Bob's side, so this also pins that the two flags are relative
+      // to the caller rather than fixed to userA/userB: the same session state
+      // reads `{you: true, partner: false}` for Alice.
+      expect(body).toMatchObject({ you: false, partner: true, revealed: false });
     });
   },
 );
@@ -322,6 +323,65 @@ describe.skipIf(!process.env.CI && process.env.MATCHING_URL === undefined)(
       });
 
       expect(await res.json()).toEqual({ session: null });
+    });
+  },
+);
+
+describe.skipIf(!process.env.CI && process.env.MATCHING_URL === undefined)(
+  'a session never names the other participant',
+  () => {
+    /**
+     * Every browser-reachable route that returns a session, checked against the
+     * one thing none of them may contain.
+     *
+     * A session is anonymous everywhere else by construction: awareness carries
+     * no identity, and the remote caret is drawn in a single colour precisely so
+     * that no name is needed to key it. That only holds if the payload the room
+     * is opened from is anonymous too — otherwise all of it is undone by one
+     * field, and the leak is silent because the UI need not display it to have
+     * already handed it to the browser.
+     *
+     * Asserting on the serialised body, rather than on named fields, is what
+     * makes this survive a refactor: a uid added back under any name at any
+     * depth fails here.
+     */
+    it('is absent from join, status, session and participant', async (ctx) => {
+      if (!(await allReachable())) return ctx.skip();
+      const { alice, bob, sessionId } = await matchedPair();
+      expect(sessionId).not.toBe('');
+
+      // Both consent, so the reveal route is exercised in its fullest state —
+      // the one that returns the answer, and the one where a list of who
+      // consented would name Bob.
+      await reveal(sessionId, alice);
+      await reveal(sessionId, bob);
+
+      const asAlice = { 'x-user-id': alice };
+      const bodies = await Promise.all(
+        [
+          fetch(`${MATCHING_URL}/match/session`, { headers: asAlice }),
+          fetch(`${MATCHING_URL}/match/status?topic=security&difficulty=medium`, {
+            headers: asAlice,
+          }),
+          fetch(`${MATCHING_URL}/match/sessions/${sessionId}/participant`, { headers: asAlice }),
+          fetch(`${MATCHING_URL}/match/sessions/${sessionId}/reveal`, { headers: asAlice }),
+          fetch(`${MATCHING_URL}/match/join`, {
+            method: 'POST',
+            headers: { ...JSON_HEADERS, ...asAlice },
+            body: JSON.stringify({ topic: 'security', difficulty: 'medium' }),
+          }),
+        ].map((p) => p.then((r) => r.text())),
+      );
+
+      for (const body of bodies) {
+        // Each call really returned its payload rather than an error that
+        // would trivially contain no uid.
+        expect(body).not.toContain('"error"');
+        expect(body).not.toContain(bob);
+      }
+      // And the richest of them was genuinely exercised: consent released the
+      // answer, which is the state where a list of who consented named Bob.
+      expect(bodies.some((b) => b.includes('referenceMd'))).toBe(true);
     });
   },
 );

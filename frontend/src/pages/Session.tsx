@@ -23,7 +23,7 @@ export function SessionPage({ session, question, onEnded }: Props) {
   const editorRef = useRef<ReturnType<typeof monaco.editor.create> | null>(null);
   const [status, setStatus] = useState<CollabStatus>('connecting');
   const [peers, setPeers] = useState(0);
-  const [consented, setConsented] = useState<string[]>([]);
+  const [consent, setConsent] = useState({ you: false, partner: false });
   const [reference, setReference] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ending, setEnding] = useState(false);
@@ -107,24 +107,24 @@ export function SessionPage({ session, question, onEnded }: Props) {
   /** Poll only while we have agreed and the answer has not arrived — not a
    * background timer for the whole session. */
   useEffect(() => {
-    if (reference || !consented.length) return;
+    if (reference || !consent.you) return;
     const timer = setInterval(async () => {
       try {
         const state = await revealState(session.id);
-        setConsented(state.consented);
+        setConsent({ you: state.you, partner: state.partner });
         if (state.referenceMd) setReference(state.referenceMd);
       } catch {
         /* transient; the next tick tries again */
       }
     }, REVEAL_POLL_MS);
     return () => clearInterval(timer);
-  }, [session.id, consented.length, reference]);
+  }, [session.id, consent.you, reference]);
 
   const agree = async () => {
     setError(null);
     try {
       const state = await consentToReveal(session.id);
-      setConsented(state.consented);
+      setConsent({ you: state.you, partner: state.partner });
       if (state.referenceMd) setReference(state.referenceMd);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'could not record consent');
@@ -137,7 +137,6 @@ export function SessionPage({ session, question, onEnded }: Props) {
       const { endedAt } = await endSession(session.id);
       onEnded({
         question,
-        partnerUid: session.partnerUid,
         startedAt: session.createdAt,
         endedAt,
         revealed: reference !== null,
@@ -148,13 +147,28 @@ export function SessionPage({ session, question, onEnded }: Props) {
     }
   };
 
-  const iAgreed = consented.length > 0 && reference === null;
+  // Waiting is specifically *you* having agreed and them not having. The old
+  // check was "anyone has agreed", which showed "waiting for your partner"
+  // to the person their partner was in fact waiting on.
+  const waitingOnPartner = consent.you && !consent.partner && reference === null;
 
   return (
     <>
       <h2>{question.title}</h2>
-      <p className="status">
-        {statusLabel(status)} · {peers === 1 ? 'partner connected' : 'waiting for your partner'}
+      <p className="status row">
+        {(() => {
+          const conn = connectionLabel(status);
+          return (
+            <span className={`signal ${conn.tone}`}>
+              <i className="dot" /> {conn.text}
+            </span>
+          );
+        })()}
+        {/* Awareness counts every connected client including this one, so a
+            second entry is the partner being in the room right now. */}
+        <span className={`signal ${peers === 1 ? 'ok' : 'wait'}`}>
+          <i className="dot" /> {peers === 1 ? 'Partner is here' : 'Waiting for your partner'}
+        </span>
       </p>
 
       {status === 'unauthorized' && (
@@ -177,7 +191,6 @@ export function SessionPage({ session, question, onEnded }: Props) {
             onClick={() =>
               onEnded({
                 question,
-                partnerUid: session.partnerUid,
                 startedAt: session.createdAt,
                 // The moment we were told, which is within milliseconds of the
                 // real end — the summary rounds to minutes.
@@ -204,7 +217,16 @@ export function SessionPage({ session, question, onEnded }: Props) {
         <button onClick={() => void finish()} disabled={ending || status === 'ended'}>
           {ending ? 'Ending…' : 'End session'}
         </button>
-        {iAgreed && <span className="status">Waiting for your partner to agree…</span>}
+        {waitingOnPartner && (
+          <span className="signal wait">
+            <i className="dot" /> Waiting for your partner to agree
+          </span>
+        )}
+        {!consent.you && consent.partner && reference === null && (
+          <span className="signal wait">
+            <i className="dot" /> Your partner is waiting on you
+          </span>
+        )}
       </div>
 
       {error && <p className="error">{error}</p>}
@@ -222,19 +244,29 @@ export function SessionPage({ session, question, onEnded }: Props) {
   );
 }
 
-function statusLabel(status: CollabStatus): string {
+/**
+ * The two things a person in a session needs to know, said in words rather
+ * than in a state name.
+ *
+ * There are two of them because they fail independently and the fix differs:
+ * your own socket can be down while your partner's is fine, and the reverse.
+ * The old single line read "live · partner connected", where "live" was the
+ * status of *your* connection — which nothing on the page said, so it could
+ * equally have been read as the session, the document, or the other person.
+ */
+function connectionLabel(status: CollabStatus): { text: string; tone: 'ok' | 'wait' | 'bad' } {
   switch (status) {
     case 'connecting':
-      return 'connecting…';
+      return { text: 'Connecting to the session…', tone: 'wait' };
     case 'connected':
-      return 'live';
+      return { text: 'Your edits are syncing', tone: 'ok' };
     case 'unauthorized':
-      return 'not signed in';
+      return { text: 'Sign-in rejected — not syncing', tone: 'bad' };
     case 'refused':
-      return 'session closed';
+      return { text: 'Session closed to you — not syncing', tone: 'bad' };
     case 'ended':
-      return 'ended';
+      return { text: 'Session ended — no longer syncing', tone: 'bad' };
     case 'closed':
-      return 'disconnected';
+      return { text: 'Disconnected — reconnecting', tone: 'bad' };
   }
 }

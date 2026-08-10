@@ -43,16 +43,22 @@ app.get('/', async () => ({ service: 'matching', phase: 3 }));
 
 app.get('/health/deps', deps);
 
-/** Shapes a session for the response, from `callerUid`'s point of view —
- * `partnerUid` is whichever side of the pair isn't the caller. */
-function toResponse(session: Session, callerUid: string) {
-  const partnerUid = session.userAUid === callerUid ? session.userBUid : session.userAUid;
+/**
+ * Shapes a session for the response.
+ *
+ * The other participant's uid is deliberately not in here. A session is
+ * anonymous by design — the editor shows an unnamed remote caret and awareness
+ * carries no identity — so naming the other person in this payload would be the
+ * one place the whole flow leaks who you were matched with. Nothing needs it:
+ * Collab authorizes each socket against the caller's own uid, and the UI has
+ * only ever printed it.
+ */
+function toResponse(session: Session) {
   return {
     status: 'matched' as const,
     session: {
       id: session.id,
       questionId: session.questionId,
-      partnerUid,
       createdAt: session.createdAt,
     },
   };
@@ -117,7 +123,7 @@ app.post('/match/join', async (req, reply) => {
   // instead of touching the queue again.
   const existing = await findActiveSessionForUser(pool, uid);
   if (existing) {
-    return reply.send(toResponse(existing, uid));
+    return reply.send(toResponse(existing));
   }
 
   // Both external checks run before anything in Redis or Postgres changes,
@@ -166,7 +172,7 @@ app.post('/match/join', async (req, reply) => {
     users: [uid, partnerUid],
   });
 
-  return reply.code(201).send(toResponse(session, uid));
+  return reply.code(201).send(toResponse(session));
 });
 
 const statusQuery = z.object({
@@ -200,7 +206,7 @@ app.get('/match/status', async (req, reply) => {
 
   const session = await findActiveSessionForUser(pool, uid);
   if (session) {
-    return reply.send(toResponse(session, uid));
+    return reply.send(toResponse(session));
   }
 
   if (await queue.isWaiting(uid, topic, difficulty)) {
@@ -228,7 +234,7 @@ app.get('/match/session', async (req, reply) => {
   }
 
   const session = await findActiveSessionForUser(pool, uid);
-  return reply.send(session ? toResponse(session, uid) : { session: null });
+  return reply.send(session ? toResponse(session) : { session: null });
 });
 
 const participantParams = z.object({ id: z.string().uuid() });
@@ -236,7 +242,7 @@ const participantParams = z.object({ id: z.string().uuid() });
 /**
  * Am *I* in this session? e.g.
  *   GET /match/sessions/3f2e1c9a-.../participant     (X-User-Id: bob)
- * returns `{ participant: true, questionId, partnerUid }` if bob is in that
+ * returns `{ participant: true, questionId }` if bob is in that
  * session, `{ participant: false }` if the session exists and he isn't, and
  * 404 if the id doesn't exist at all. Collab calls it to authorize a
  * WebSocket, passing the uid the Gateway verified for that socket.
@@ -273,7 +279,7 @@ app.get('/match/sessions/:id/participant', async (req, reply) => {
     return reply.send({ participant: false });
   }
 
-  return reply.send({ ...toResponse(session, uid).session, participant: true });
+  return reply.send({ ...toResponse(session).session, participant: true });
 });
 
 /**
@@ -314,30 +320,38 @@ async function loadForParticipant(
 }
 
 /**
- * Shapes the reveal state for a caller, fetching the answer from Questions
+ * Shapes the reveal state for `callerUid`, fetching the answer from Questions
  * only once both participants have consented.
+ *
+ * Two booleans rather than the list of uids that consented. The list was the
+ * obvious shape and the wrong one twice over: it names the other participant,
+ * which nothing else in a session does, and it cannot actually answer the
+ * question the UI is asking — "have *I* agreed, and have *they*?" — without the
+ * browser knowing its own uid to look for. `you` and `partner` say it directly
+ * and say nothing else.
  */
-async function toRevealResponse(session: Session) {
-  // Both, not "two consents" — a length check would release the answer to a
-  // pair where one person somehow consented twice.
-  const revealed =
-    session.revealConsents.includes(session.userAUid) &&
-    session.revealConsents.includes(session.userBUid);
+async function toRevealResponse(session: Session, callerUid: string) {
+  const partnerUid = session.userAUid === callerUid ? session.userBUid : session.userAUid;
+  const you = session.revealConsents.includes(callerUid);
+  const partner = session.revealConsents.includes(partnerUid);
 
-  if (!revealed) {
-    return { consented: session.revealConsents, revealed: false };
+  // Both people, not "two consents" — counting entries would release the
+  // answer to a pair where one person somehow consented twice.
+  if (!(you && partner)) {
+    return { you, partner, revealed: false };
   }
 
   const referenceMd = await fetchReferenceMd(questionsUrl!, session.questionId);
-  return { consented: session.revealConsents, revealed: true, referenceMd };
+  return { you, partner, revealed: true, referenceMd };
 }
 
 /**
  * Agree to reveal the reference answer — e.g.
  *   POST /match/sessions/3f2e1c9a-.../reveal    (X-User-Id: bob)
- * returns `{ consented: ["bob"], revealed: false }` while bob is waiting on
- * his partner, and `{ consented: [both], revealed: true, referenceMd: "..." }`
- * once both have agreed. Pressing it twice is the same as pressing it once.
+ * returns `{ you: true, partner: false, revealed: false }` while bob is
+ * waiting on his partner, and `{ you: true, partner: true, revealed: true,
+ * referenceMd: "..." }` once both have agreed. Pressing it twice is the same
+ * as pressing it once.
  *
  * This route is where ADR-06 is enforced: Questions holds the answer but has
  * no idea who is in a session, and this service knows exactly who consented
@@ -358,7 +372,7 @@ app.post('/match/sessions/:id/reveal', async (req, reply) => {
   req.log.info({ session_id: session.id, user_id: getUserId(req) }, 'reveal.consented');
 
   try {
-    return reply.send(await toRevealResponse(session));
+    return reply.send(await toRevealResponse(session, getUserId(req)!));
   } catch (err) {
     req.log.error({ err }, 'questions service unavailable');
     return reply.code(503).send({ error: 'questions service unavailable' });
@@ -376,7 +390,7 @@ app.get('/match/sessions/:id/reveal', async (req, reply) => {
   if (!session) return reply;
 
   try {
-    return reply.send(await toRevealResponse(session));
+    return reply.send(await toRevealResponse(session, getUserId(req)!));
   } catch (err) {
     req.log.error({ err }, 'questions service unavailable');
     return reply.code(503).send({ error: 'questions service unavailable' });

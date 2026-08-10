@@ -26,6 +26,10 @@ const POLL_MS = 2_000;
 interface Props {
   /** A session already in progress, if there is one. */
   active: Session | null;
+  /** Arrived here from a lesson's "find a partner" button, which already
+   * chose the topic and difficulty — so the form opens on them rather than
+   * making you re-pick what you just clicked. */
+  preset?: { topic: string; difficulty: Difficulty };
   onMatched: (session: Session, question: Question) => void;
   onResume: (session: Session) => void;
 }
@@ -41,9 +45,9 @@ interface Props {
  * case. Every topic and difficulty resolves to a question, so a join never
  * dead-ends on an empty combination.
  */
-export function MatchPage({ active, onMatched, onResume }: Props) {
-  const [topic, setTopic] = useState('os');
-  const [difficulty, setDifficulty] = useState<Difficulty>('medium');
+export function MatchPage({ active, preset, onMatched, onResume }: Props) {
+  const [topic, setTopic] = useState(preset?.topic ?? 'os');
+  const [difficulty, setDifficulty] = useState<Difficulty>(preset?.difficulty ?? 'medium');
   const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -107,8 +111,7 @@ export function MatchPage({ active, onMatched, onResume }: Props) {
       <>
         <h2>You are already in a session</h2>
         <p className="muted">
-          Working with {active.partnerUid}. Leaving the editor does not end it — the document is
-          still there, and so is your partner.
+          Leaving the editor does not end it — the document is still there, and so is your partner.
         </p>
         <div className="row">
           <button className="primary" onClick={() => onResume(active)}>
