@@ -9,6 +9,10 @@
       "host": "0.0.0.0",
       "port": 4000
     },
-    "singleProjectMode": true
+    "singleProjectMode": true,
+    "hub": {
+      "host": "0.0.0.0",
+      "port": 4400
+    }
   }
 }
