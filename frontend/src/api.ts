@@ -1,0 +1,134 @@
+import { idToken } from './auth';
+import { GATEWAY_URL } from './config';
+
+/**
+ * The typed client for everything behind the Gateway.
+ *
+ * One rule holds throughout: the browser never talks to a service directly.
+ * Ports 8081–8084 are not part of the contract — the Gateway is the single
+ * public origin, it is where authentication happens, and it is the only thing
+ * with CORS configured for this app.
+ */
+
+export type Difficulty = 'easy' | 'medium' | 'hard';
+
+export interface Question {
+  id: string;
+  title: string;
+  difficulty: Difficulty;
+  parts: string[];
+  tags: string[];
+  createdAt: string;
+}
+
+export interface QuestionPage {
+  items: Question[];
+  nextCursor: string | null;
+}
+
+export interface Session {
+  id: string;
+  questionId: string;
+  partnerUid: string;
+  createdAt: string;
+}
+
+export type MatchStatus =
+  { status: 'waiting' } | { status: 'none' } | { status: 'matched'; session: Session };
+
+export interface RevealState {
+  consented: string[];
+  revealed: boolean;
+  referenceMd?: string;
+}
+
+/** A failed request, carrying the status so a caller can tell "not signed in"
+ * from "not allowed" from "the service is down". */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = await idToken();
+  const headers = new Headers(init.headers);
+  // Absent when signed out, and that is a valid state rather than an error —
+  // the question bank is public. The Gateway reads a missing token as
+  // anonymous and falls back to per-IP rate limiting.
+  if (token) headers.set('authorization', `Bearer ${token}`);
+  if (init.body) headers.set('content-type', 'application/json');
+
+  const res = await fetch(`${GATEWAY_URL}${path}`, { ...init, headers });
+
+  if (!res.ok) {
+    // Every service in this system answers errors as `{ error: "..." }`, but
+    // a proxy or a crash can still produce HTML, so parsing is best-effort.
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new ApiError(res.status, body?.error ?? `request failed with ${res.status}`);
+  }
+  return (await res.json()) as T;
+}
+
+/**
+ * Creates this user's profile row if it does not exist, and returns it.
+ *
+ * Must be called once after signing in, before anything else: Users creates
+ * the row lazily on this call, and `POST /match/join` rejects a uid Users has
+ * never seen with "user not found". Signing in with Firebase alone is not
+ * enough to exist inside this system.
+ */
+export function ensureProfile() {
+  return request<{ id: string; firebaseUid: string }>('/users/me');
+}
+
+export function listQuestions(params: {
+  tags?: string;
+  difficulty?: Difficulty;
+  q?: string;
+  cursor?: string;
+  limit?: number;
+}) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') search.set(key, String(value));
+  }
+  const query = search.toString();
+  return request<QuestionPage>(`/questions${query ? `?${query}` : ''}`);
+}
+
+export function getQuestion(id: string) {
+  return request<Question>(`/questions/${id}`);
+}
+
+export function joinQueue(topic: string, difficulty: Difficulty) {
+  return request<MatchStatus>('/match/join', {
+    method: 'POST',
+    body: JSON.stringify({ topic, difficulty }),
+  });
+}
+
+export function matchStatus(topic: string, difficulty: Difficulty) {
+  return request<MatchStatus>(
+    `/match/status?topic=${encodeURIComponent(topic)}&difficulty=${difficulty}`,
+  );
+}
+
+/** Agree to reveal. Returns the answer only once the partner has agreed too. */
+export function consentToReveal(sessionId: string) {
+  return request<RevealState>(`/match/sessions/${sessionId}/reveal`, { method: 'POST' });
+}
+
+/** Read consent state without granting it — what the session page polls while
+ * waiting on the other person. */
+export function revealState(sessionId: string) {
+  return request<RevealState>(`/match/sessions/${sessionId}/reveal`);
+}
+
+export function endSession(sessionId: string) {
+  return request<{ endedAt: string }>(`/match/sessions/${sessionId}/end`, { method: 'POST' });
+}

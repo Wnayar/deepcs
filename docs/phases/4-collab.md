@@ -346,7 +346,10 @@ here were wrong at some point:
   to need it, since a client learns its session id from `/match/join` and
   brings it to the socket. It stays for phase 5's live status.
 - **No reveal or consent flow**, still. Matching owns that state per DESIGN.md
-  and nothing has needed it yet.
+  and nothing has needed it yet. *(Phase 5 built it. Collab needed no change:
+  the answer never enters the Yjs document — it is released by Matching to the
+  browser over HTTP, which is exactly what ADR-06 requires, since a document
+  replicates to every peer.)*
 - **CI does not orchestrate sibling services for the contract tests**, same
   caveat as phase 3: `clients.test.ts` calls a real Users, Matching and
   Questions and passes locally, but the per-service CI matrix brings up only

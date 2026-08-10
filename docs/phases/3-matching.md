@@ -247,8 +247,8 @@ straight from Postgres), `waiting` (still in the Redis queue), or `none`
 - **No consent or reveal endpoint.** DESIGN.md says Matching "owns... the
   consent state behind the reveal rule," but nothing calls that yet — the
   reveal UI doesn't exist until phase 5. Building it now would mean guessing
-  at the caller's needs; it's cheaper to add when there is one. *(Still true
-  after phase 4: Collab shipped without needing it.)*
+  at the caller's needs; it's cheaper to add when there is one. *(Built in
+  phase 5, once there was a real caller: `POST /match/sessions/:id/reveal`.)*
 - **Nothing subscribes to the match-event pub/sub channel.** `index.ts`
   publishes to `match:session:{id}` on every match, per DESIGN.md's design,
   but no consumer exists in this phase. It's there so Collab or a future
@@ -257,9 +257,12 @@ straight from Postgres), `waiting` (still in the Redis queue), or `none`
   its session id from `/match/join` and brings it to the socket. The channel
   is now waiting on phase 5's live status instead.)*
 - **No session-ending flow.** Nothing sets a session to "ended," because
-  nothing needs to yet. *(Phase 4 update: people can now edit, so this is the
-  first deferred item here with a real caller waiting — a session ends when
-  phase 5 gives someone a button to end it.)*
+  nothing needs to yet. *(Built in phase 5. Worth knowing how it landed: the
+  end route sets `ended_at`, and the **participant** route above then reports
+  `participant: false` — which is what actually stops Collab accepting sockets,
+  with no change to Collab. It also required `findActiveSessionForUser` to
+  exclude ended sessions, or `/match/join` would have handed every user their
+  finished session forever.)*
 - **A user queued for two topics at once can be matched twice.** The
   idempotence guard is per queue, so joining `(os,hard)` and then `(db,easy)`
   leaves you waiting in both, and two different people can each claim you. The

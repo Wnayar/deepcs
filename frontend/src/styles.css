@@ -1,0 +1,176 @@
+/*
+ * Minimal on purpose. DESIGN.md puts "polished UI" out of scope and asks for
+ * functional React only, so this is enough structure to read and no more —
+ * a system font stack, one accent colour, and layout for the few screens.
+ */
+
+:root {
+  --bg: #ffffff;
+  --fg: #1c1c1c;
+  --muted: #6b6b6b;
+  --line: #e2e2e2;
+  --accent: #2563eb;
+  --danger: #b91c1c;
+  --ok: #15803d;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    15px/1.5 -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+header h1 {
+  font-size: 1rem;
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+
+nav {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+main {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 4rem;
+}
+
+button {
+  font: inherit;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+input,
+select {
+  font: inherit;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--danger);
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.card h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.tag {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  margin-right: 0.25rem;
+  color: var(--muted);
+}
+
+.editor {
+  height: 60vh;
+  min-height: 20rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.reference {
+  border: 1px solid var(--ok);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1rem;
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  max-height: 24rem;
+  overflow: auto;
+}
+
+.status {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* y-monaco draws remote carets as bare elements; without a width they are
+   invisible, and without the label rule the peer's name never appears. */
+.yRemoteSelection {
+  opacity: 0.4;
+}
+
+.yRemoteSelectionHead {
+  position: absolute;
+  border-left: 2px solid;
+  border-top: 2px solid;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+form.auth {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-width: 20rem;
+}
