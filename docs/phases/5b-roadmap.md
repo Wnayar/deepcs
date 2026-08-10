@@ -1,4 +1,9 @@
-# Phase 6 — The roadmap, and fixing content at the source
+# Phase 5b — The roadmap, and fixing content at the source
+
+*Numbered 5b, not 6. This extends phase 5's frontend rather than following it,
+and phase 6 in DESIGN.md §10 is the Cloud Run deploy. Renaming the deploy would
+have been the wrong fix: the phase table is the plan, and a doc written after
+the fact does not get to renumber it.*
 
 Phases 1 to 5 built a question bank and a way to solve one with a stranger.
 What they did not build was a reason to be there before you could already

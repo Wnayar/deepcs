@@ -269,9 +269,22 @@ bundle and inherent to the editor DESIGN.md chose.
   a `useState` switch. The cost is real and worth naming: refreshing mid-session
   returns you to the question list rather than rejoining, because the session id
   lives only in memory.
+
+  *Superseded in 5b.* The cost named above turned out to be the smaller half of
+  it: with one address for the whole site the browser held a single history
+  entry, so **Back left the site entirely**. That is the version people notice,
+  and it took about four screens longer than it should have to fix. See
+  [5b-roadmap.md](./5b-roadmap.md) part 3.
 - **No leave-the-queue endpoint.** "Stop waiting" stops the polling but leaves
   the queue entry, which the next joiner claims. `queue.ts` has `join` and
   `isWaiting` and nothing to undo them.
+
+  *This one bit in 5b, in a way worth recording.* Leaving the queue entry is
+  defensible on its own. What was not defensible was that only the match screen
+  watched for the result, so someone who queued and then navigated away was
+  matched into a session nobody told them about, while their partner sat alone in
+  the editor. The watching moved into the app shell; the queue entry still
+  cannot be withdrawn.
 - **No summary endpoint.** The summary is rendered from state the browser
   already holds. The richer version — sessions solved, popular topics — is fed
   by the event log, which is phase 7.

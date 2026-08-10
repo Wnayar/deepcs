@@ -76,7 +76,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - [docs/phases/3-matching.md](./docs/phases/3-matching.md) — the atomic pair claim, why external calls run before any mutation, and idempotent join/retry
 - [docs/phases/4-collab.md](./docs/phases/4-collab.md) — collab: why two instances have to agree on a document's *identity* and not just its text, the pre-await frame queue, and snapshot/reconnect
 - [docs/phases/5-frontend.md](./docs/phases/5-frontend.md) — the React app, and the reveal rule: why the answer and the authority to release it live in different services
-- [docs/phases/6-roadmap.md](./docs/phases/6-roadmap.md) — the roadmap that replaced Learn and the bank, and the standing rule it came from: fix content in the seed, never at render time
+- [docs/phases/5b-roadmap.md](./docs/phases/5b-roadmap.md) — the roadmap that replaced Learn and the bank, and the standing rule it came from: fix content in the seed, never at render time
 
 ### Comment style
 
@@ -113,7 +113,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
   rendering has to be remembered at every place that text is displayed, and the
   place that gets forgotten is the one nobody looks at. This rule is why
   `frontend/src/reference.ts` no longer exists; see
-  [docs/phases/6-roadmap.md](./docs/phases/6-roadmap.md) thing 1.
+  [docs/phases/5b-roadmap.md](./docs/phases/5b-roadmap.md) thing 1.
 - **No em dashes in anything a reader sees**, including seeded lesson and
   question text. A test asserts this against the database. Code comments and
   these docs are exempt.

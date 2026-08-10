@@ -58,26 +58,35 @@ to need full context, alternatives, and accepted tradeoffs are ADRs (§9).
 
 **Core loop:**
 
-1. Sign up.
-2. Browse, search, and filter the question bank; read answers solo.
-3. Optionally choose "solve with someone" and join the queue with topic +
-   difficulty preferences.
-4. Get matched with another waiting user.
-5. Land in a shared scaffolded document seeded from the question's parts.
-6. Co-write the answer in real time with presence + cursors.
-7. Mutual-consent reveal of the reference answer.
-8. End session; see a short summary.
+1. Arrive at a roadmap of nine topics, laid out in a recommended reading order.
+   No account needed.
+2. Open a topic, pick one of its three steps, and read the lesson with the
+   questions it prepares you for.
+3. Sign up.
+4. Optionally choose "solve with someone" and join the queue with topic +
+   difficulty preferences, usually straight from the step you just read.
+5. Get matched with another waiting user.
+6. Land in a shared scaffolded document seeded from the question's parts.
+7. Co-write the answer in real time with presence + cursors.
+8. Mutual-consent reveal of the reference answer.
+9. End session; see a short summary.
+
+*Steps 1 and 2 replaced "browse the question bank", which was the original entry
+point and was the wrong one: a list of questions you cannot answer yet is not
+somewhere to start learning. The bank still exists and matching still searches
+it; it just is not the front door. See
+[docs/phases/5b-roadmap.md](./docs/phases/5b-roadmap.md).*
 
 **Domain:** a bank of multi-part CS fundamentals questions (OS, networking,
 databases, concurrency), sourced from my existing notes repo — so the content
 is already owned. Editing is symmetric: both users type into the same document
 at the same time with equal rights, which is exactly the concurrent-edit
 situation a CRDT exists to resolve, so the CRDT is genuinely load-bearing. The
-public browsable question bank makes the live deploy useful to a single
+public roadmap and its lessons make the live deploy useful to a single
 visitor — matchmaking alone would demo as an empty room.
 
-**In scope:** auth; public browsable question bank (search/filter/read solo);
-join queue with topic + difficulty preferences; match; shared real-time
+**In scope:** auth; a public roadmap of topics, each with lessons and the
+questions that drill them, readable solo and signed out; join queue with topic + difficulty preferences; match; shared real-time
 scaffolded session document with presence; mutual-consent reference reveal;
 reconnect after disconnect; end session + summary; public stats endpoint
 (sessions solved, popular topics — fed by the event log, §5).
@@ -190,7 +199,7 @@ see §5.
 | Layer | Choice | Why — and why not the alternative |
 |-------|--------|-----|
 | All services | TypeScript + Fastify (Node web framework) | One language across six deployables + the frontend = fast solo iteration, and shared types across service boundaries, which matters much more now that boundaries exist. *Not Express:* Fastify has JSON-schema validation and a real plugin/encapsulation model built in, and is meaningfully faster. *Not NestJS:* heavy structure earns its keep on a team. |
-| Frontend | React + Vite (build tool) + TS | Minimal, just enough to demo; Yjs bindings for React editors are mature. *Not Next.js:* SSR buys nothing for an authenticated single-page editor and adds a server to deploy where a static bundle on a CDN costs nothing. |
+| Frontend | React + Vite (build tool) + TS, with `react-router` and `marked` | Minimal, just enough to demo; Yjs bindings for React editors are mature. *Not Next.js:* SSR buys nothing for an authenticated single-page editor and adds a server to deploy where a static bundle on a CDN costs nothing. `react-router` arrived once there were six screens: navigating by React state meant the whole site lived at one address, so the browser Back button left it entirely and no lesson could be linked to. `marked` renders the seeded lesson markdown, and needs no sanitizer because that markdown is seeded by a migration and no route writes it. |
 | Auth | Firebase Auth (email/password) **[bought]** | Identity is a solved, security-critical problem with no design insight left in it; Google's abuse detection and key rotation beat anything hand-rolled. *Not self-hosted:* ADR-04. Free at this scale. |
 | DB access | `pg` driver + hand-written parameterized SQL; migrations as numbered `.sql` files (ADR-10) | No schema DSL on the critical path, and ADR-09's per-schema grants stay literal SQL. *Not Drizzle:* deferred, not rejected — it is item 1 in the additive backlog (§10). |
 | Database | PostgreSQL (Neon, free) **[bought]** — one instance, schema per service | Relational data, plus built-in tag filtering (`text[]` + GIN index) and full-text search (`tsvector`), so no separate search engine. *Not database-per-service:* ADR-09 — it would cost cross-service atomicity and force a saga. *Not Mongo:* the data is relational. *Not Cloud SQL:* no free tier, bills hourly. |
@@ -538,6 +547,13 @@ setting is a security control, not a deployment detail.
   Neon + Upstash via env vars; secrets in Secret Manager; frontend on Cloud
   Storage + CDN; Stats as a Cloud Run job triggered by Cloud Scheduler every 5
   minutes. One live URL.
+- **The frontend bucket must serve `index.html` for unknown paths.** Routing is
+  client-side, so `/step/<uuid>` exists only once the bundle is running: without
+  a rewrite the CDN answers 404 for every link into the app except the root, and
+  the failure shows up only for shared links and refreshes, never while clicking
+  around. On Cloud Storage this is the bucket's error page set to `index.html`;
+  behind a load balancer it is a URL map rewrite. Vite's dev server and
+  `vite preview` both do it already, which is exactly why it is easy to miss.
 - **CI:** GitHub Actions, **path-filtered per service** — a change under
   `services/questions/` builds and deploys only Questions. Independent deploy is
   most of the point of the split (ADR-01), and it doesn't exist unless CI is
@@ -932,6 +948,7 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
 | 3 | **Matching**: reactive matching (Redis sorted set + Lua claim), session rows, pub/sub match event, validation calls to Users + Questions, contract tests | two users join → matched → session exists; a Users outage fails the match cleanly rather than corrupting state |
 | 4 | **Collab (hardest):** WebSockets + Yjs, authorize the socket via Matching, cross-instance pub/sub, presence/cursors, snapshot + reconnect, graceful shutdown | two tabs sync live; kill one instance, the other keeps working |
 | 5 | Minimal React: login, question list, match button, session page (Monaco wired to Yjs) with scaffolded editor, reveal flow, end | open two browsers, match, collaborate, reveal |
+| 5b | The question list became a roadmap: topics ordered as a recommended path, one lesson per question set seeded from the same notes, light/dark, and URLs for every screen. Content fixed in the seed rather than at render time | click a topic, read its lesson, press "find a partner" from it; Back works; a lesson link opens that lesson |
 | 6 | Deploy the five services to Cloud Run + frontend to CDN; CI deploys per service on merge; logs + health + `/metrics` → Grafana; k6 load run; README + ADRs + demo GIF | live URL; headline load number in README; deploying Questions alone doesn't restart Collab |
 | 7 | Event pipeline: `emitEvent` → `events` stream (behind the `EventLog` interface); idempotent **Stats** consumer → summaries + aggregates; Cloud Scheduler → Cloud Run job | end a session on the live URL → summary renders; `/stats` shows real counts |
 | 8 | **[built · learning]** Terraform: import the manual setup (services + flags, service accounts, invoker bindings, registry, secrets, bucket, scheduler job, budget alerts) | `terraform apply` rebuilds the environment |
