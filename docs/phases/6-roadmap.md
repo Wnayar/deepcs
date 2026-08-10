@@ -93,30 +93,49 @@ construction, and that is deliberate. They answer different questions: one is
 them would mean the reading order could not change without changing who gets
 paired with whom.
 
-## 4. Prerequisites are content, not layout · ~5 min
+## 4. The lines are a recommendation, not a dependency graph · ~5 min
 
-`depends_on`, `grid_x` and `grid_y` are seeded. The browser could have run a
-layout algorithm over the dependency graph instead, and that would have been a
-worse answer: where a topic sits is a claim about what to read first, which is
-a judgement about the material and not something a spring simulation should be
-deciding.
+`depends_on`, `grid_x` and `grid_y` are seeded rather than computed in the
+browser. A layout algorithm over the graph would have been the obvious move and
+the wrong one: where a topic sits is a claim about what to read first, which is
+a judgement about the material, not something a spring simulation should decide.
 
-The one property worth enforcing is that the map flows downward, so a
-prerequisite is always above what depends on it. A test checks it, because
-seeded coordinates make it something a typo can break, and an arrow pointing
-upward reads as a cycle.
+The name `depends_on` is slightly stronger than what the column means, and the
+screen is careful not to repeat the overstatement. Nothing is locked and nothing
+is checked. A line says "this is the order I would read them in", so the lines
+only have to lead the eye downward, and the curves are deliberately loose
+rather than routed around obstacles.
 
-The order, and why:
+The shape is one tree with a single root:
 
-- **Operating Systems** and **Object-Oriented Programming** start it. Neither
-  needs anything first and nearly everything else leans on one of them.
-- **Networking**, **Databases** and **Debugging** follow. Indexes and
-  transactions make far more sense after the memory and disk material.
-- **Security** comes after Networking and Databases, because most of it is
-  those two seen from the attacker's side.
-- **System Design** is last, being mostly the earlier topics applied at scale.
-- **AI Tooling** and **Behavioural** depend on nothing, so they sit apart
-  rather than being given an invented prerequisite to justify a position.
+```
+                    Operating Systems
+                   /                 \
+            Networking        Object-Oriented Programming
+                |                      |
+            Databases              Debugging
+                   \                 /
+                      Security
+                          |
+                    System Design
+                   /                 \
+            AI Tooling            Behavioural
+```
+
+Operating Systems is the root because nearly everything below leans on knowing
+what a process, a thread and memory are. Networking and OOP split the path into
+a machine side and a code side, which rejoin at Security, since most of security
+is networking and databases seen from the other side. System Design is near the
+end because it is mostly the earlier topics applied at scale.
+
+AI Tooling and Behavioural sit at the bottom, and that placement is honest about
+something: neither actually requires anything above it. They are last because
+they are the two you can pick up whenever you like, not because they are hard.
+
+The one property worth enforcing is that every line points downward, so a topic
+always sits below whatever precedes it. A test checks it, because seeded
+coordinates make it something a typo can break and an upward line reads as a
+cycle.
 
 ---
 
@@ -160,10 +179,24 @@ applied to a single SVG group, which is why there is no graph library here: a
 node editor solves a problem this screen does not have, at the cost of a
 dependency and a large API to review.
 
-The one part worth reading is the zoom. Scaling towards the origin makes the
-map slide away as it grows, which feels like the zoom is fighting you. Scaling
-towards the pointer keeps whatever is under the cursor under the cursor, and
-the correction is three lines:
+Three details separate that from being unusable, and all three were wrong in
+the first attempt:
+
+1. **The pointer is not captured when a press starts.** Calling
+   `setPointerCapture` on `pointerdown` routes every later event to the canvas,
+   so the click never reaches the topic under the cursor and clicking a box did
+   nothing at all. Movement is tracked on `window` instead, and a press that
+   moves less than four pixels stays an ordinary click.
+2. **The wheel listener is attached natively with `passive: false`.** React's
+   `onWheel` cannot call `preventDefault`, so the page scrolled out from under
+   the zoom and the map appeared to hit a boundary.
+3. **`user-select: none` on the canvas.** Otherwise a drag across a label turns
+   into a text highlight partway through and the pan stops.
+
+Beyond those, the part worth reading is the zoom. Scaling towards the origin
+makes the map slide away as it grows, which feels like the zoom is fighting
+you. Scaling towards the pointer keeps whatever is under the cursor under the
+cursor, and the correction is three lines:
 
 ```js
 const ratio = scale / v.scale;

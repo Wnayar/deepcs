@@ -134,6 +134,7 @@ code {
 }
 
 header {
+  height: 3.25rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -166,12 +167,15 @@ main {
   padding: 1.75rem 1.25rem 4rem;
 }
 
-/* The roadmap fills the window instead, since it is a canvas. */
+/* The roadmap is a canvas, not a document: it fills exactly what is left
+   below the header and never scrolls the page. Without a fixed height the
+   canvas grows with its content and the wheel scrolls the window instead of
+   zooming the map. */
 main.wide {
   max-width: none;
   padding: 0;
-  display: flex;
-  flex-direction: column;
+  height: calc(100dvh - 3.25rem);
+  overflow: hidden;
 }
 
 .row {
@@ -316,13 +320,19 @@ button:focus-visible {
 /* ── The roadmap canvas ────────────────────────────────────────────────────── */
 
 .canvas {
-  flex: 1;
   position: relative;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   background-image: radial-gradient(circle, var(--line) 1px, transparent 1px);
   background-size: 26px 26px;
   cursor: grab;
+  /* Both matter for dragging. `touch-action` stops the browser claiming the
+     gesture as a scroll on a trackpad or touchscreen, and `user-select` stops
+     a drag across a label turning into a text highlight halfway through. */
   touch-action: none;
+  user-select: none;
+  overscroll-behavior: none;
 }
 
 .canvas.dragging {
@@ -371,10 +381,6 @@ button:focus-visible {
   font-weight: 500;
 }
 
-.node.start rect {
-  stroke: var(--accent);
-}
-
 .canvas-controls {
   position: absolute;
   right: 1rem;
@@ -382,6 +388,26 @@ button:focus-visible {
   display: flex;
   gap: 0.35rem;
   z-index: 2;
+}
+
+.canvas-title {
+  position: absolute;
+  left: 1.25rem;
+  top: 1.1rem;
+  z-index: 2;
+  max-width: 21rem;
+  /* The map is dragged from anywhere, including from behind this text. */
+  pointer-events: none;
+}
+
+.canvas-title h2 {
+  font-size: 1.15rem;
+  margin: 0 0 0.2rem;
+}
+
+.canvas-title p {
+  margin: 0;
+  line-height: 1.45;
 }
 
 .canvas-hint {
@@ -395,13 +421,6 @@ button:focus-visible {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   padding: 0.3rem 0.6rem;
-}
-
-.canvas-header {
-  padding: 1.5rem 1.25rem 0.9rem;
-  max-width: 66rem;
-  margin: 0 auto;
-  width: 100%;
 }
 
 /* ── Dialog ────────────────────────────────────────────────────────────────── */
@@ -525,6 +544,12 @@ button:focus-visible {
   background: var(--accent-soft);
   color: var(--accent);
   font-weight: 600;
+}
+
+/* The starting topic, marked so the eye has somewhere to begin. */
+.node.start rect {
+  stroke: var(--accent);
+  stroke-width: 2;
 }
 
 /* The questions this lesson prepares you for, shown before the lesson. */
@@ -659,8 +684,10 @@ button:focus-visible {
 /* ── The session screen ────────────────────────────────────────────────────── */
 
 .editor {
-  height: 58vh;
-  min-height: 20rem;
+  /* A fixed height, not a fraction of the viewport. Revealing the answer adds
+     a panel below, and a vh-based editor shrinks as the page grows, so the
+     document you are writing in gets smaller the moment you ask for help. */
+  height: 32rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;

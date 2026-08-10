@@ -66,6 +66,13 @@ export function App() {
   // about where you are: navigating away from the editor closes the socket but
   // does not end anything, so without this the nav would keep offering to
   // find a partner while you were still in a room.
+  // Signing in from the sign-in screen leaves you looking at a form you have
+  // already used. There is nothing on that page for someone with an account,
+  // so arriving in one moves you on.
+  useEffect(() => {
+    if (user) setView((current) => (current.name === 'signin' ? { name: 'roadmap' } : current));
+  }, [user]);
+
   useEffect(() => {
     if (!user) return setActive(null);
     void ensureProfile().catch(() => {});

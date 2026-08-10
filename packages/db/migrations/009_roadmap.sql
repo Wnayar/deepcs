@@ -35,47 +35,47 @@ ALTER TABLE questions.bank
   ADD COLUMN IF NOT EXISTS step int;
 
 INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
-  ('os', 'Operating Systems', 'How a computer runs more than one program at once, and what it costs. Start here: almost everything else on this map assumes you know what a process, a thread and memory actually are.', ARRAY[]::text[], 1, 0)
+  ('os', 'Operating Systems', 'How a computer runs more than one program at once, and what that costs. This is the start of the path: the topics below it lean on knowing what a process, a thread and memory really are.', ARRAY[]::text[], 3, 0)
 ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
   depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
 INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
-  ('oop', 'Object-Oriented Programming', 'How to organise code so it stays possible to change. This is the one topic here that is about the code you write rather than the machine underneath it.', ARRAY[]::text[], 3, 0)
+  ('networking', 'Networking', 'What actually happens between typing a web address and seeing a page. Reads much more easily once processes and sockets are familiar.', ARRAY['os']::text[], 1, 1)
 ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
   depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
 INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
-  ('ai-tooling', 'AI Tooling', 'What the tools you already use are actually doing, and how to talk about using them well. Needs nothing else first, so it is a good one to pick up on a tired evening.', ARRAY[]::text[], 6, 0)
+  ('oop', 'Object-Oriented Programming', 'How to organise code so it stays possible to change. The one topic here about the code you write rather than the machine underneath it, so it makes a good change of pace.', ARRAY['os']::text[], 5, 1)
 ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
   depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
 INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
-  ('networking', 'Networking', 'What happens between typing a web address and seeing a page. Reads much more easily once you know what a process and a socket are, which is why it sits under Operating Systems.', ARRAY['os']::text[], 0, 1)
+  ('databases', 'Databases', 'How data is stored so it can be found again quickly and survives a crash. Indexes and transactions make far more sense with the memory and disk material already in mind.', ARRAY['networking']::text[], 1, 2)
 ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
   depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
 INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
-  ('databases', 'Databases', 'How data is stored so it can be found again quickly and survives a crash. Indexes and transactions make far more sense after the memory and disk material in Operating Systems.', ARRAY['os']::text[], 2, 1)
+  ('debugging', 'Debugging', 'A method for working out why something is broken instead of guessing. Short, practical, and the topic that pays off the same day you read it.', ARRAY['oop']::text[], 5, 2)
 ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
   depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
 INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
-  ('debugging', 'Debugging', 'A method for finding out why something is broken, instead of guessing. Short, practical, and the one topic that pays off the same day you read it.', ARRAY['os', 'oop']::text[], 4, 1)
+  ('security', 'Security', 'How accounts, passwords and connections are kept safe, and the handful of attacks worth being able to explain. Most of it is networking and databases seen from the other side.', ARRAY['databases', 'debugging']::text[], 3, 3)
 ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
   depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
 INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
-  ('behavioural', 'Behavioural', 'How to tell a story about your own work so an interviewer can follow it. No technical prerequisites at all, and it is worth starting early because good answers come from remembering, not from cramming.', ARRAY[]::text[], 6, 1)
+  ('system-design', 'System Design', 'Putting the pieces together into something that serves a lot of people at once. Near the end on purpose: it is mostly the earlier topics applied at scale.', ARRAY['security']::text[], 3, 4)
 ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
   depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
 INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
-  ('security', 'Security', 'How accounts, passwords and connections are kept safe, and the handful of attacks worth being able to explain. Most of it is networking and databases seen from the attacker’s side.', ARRAY['networking', 'databases']::text[], 1, 2)
+  ('ai-tooling', 'AI Tooling', 'What the tools you already use are actually doing, and how to talk about using them well. Nothing here depends on it, so it sits at the end where you can pick it up whenever you like.', ARRAY['system-design']::text[], 1, 5)
 ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
   depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
 INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
-  ('system-design', 'System Design', 'Putting the pieces together into something that serves a lot of people at once. Last on purpose: it is mostly the earlier topics applied at scale, and it is hard to reason about without them.', ARRAY['networking', 'databases', 'oop']::text[], 3, 2)
+  ('behavioural', 'Behavioural', 'How to tell the story of your own work so an interviewer can follow it. Worth starting long before you reach it here, because good answers come from remembering rather than cramming.', ARRAY['system-design']::text[], 5, 5)
 ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
   depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 

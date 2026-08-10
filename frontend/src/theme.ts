@@ -4,10 +4,15 @@ export type Theme = 'light' | 'dark';
 
 const KEY = 'deepcs.theme';
 
-/** What the operating system asks for, used only when nothing has been chosen. */
-function preferred(): Theme {
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-}
+/**
+ * What a first-time visitor gets.
+ *
+ * Dark, rather than whatever the operating system asks for. This is a place
+ * for reading long pages at night and it is designed dark first, so following
+ * the system setting would hand most visitors the theme that got less
+ * attention. Light is one click away and the choice is remembered.
+ */
+const DEFAULT: Theme = 'dark';
 
 function stored(): Theme | null {
   try {
@@ -24,25 +29,16 @@ function stored(): Theme | null {
  * The light or dark choice, written onto `<html data-theme>` where the
  * stylesheet reads it.
  *
- * An explicit choice wins over the system setting and is remembered; with no
- * choice made, the system setting is followed and keeps being followed if it
- * changes, which is what makes the app go dark at sunset along with everything
- * else on the machine.
+ * A saved choice wins and is remembered between visits. With none saved the
+ * app is dark, matching the `data-theme` already on the document so the first
+ * paint does not flash.
  */
 export function useTheme(): [Theme, () => void] {
-  const [theme, setTheme] = useState<Theme>(() => stored() ?? preferred());
+  const [theme, setTheme] = useState<Theme>(() => stored() ?? DEFAULT);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
-
-  useEffect(() => {
-    if (stored()) return;
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const follow = (event: MediaQueryListEvent) => setTheme(event.matches ? 'dark' : 'light');
-    media.addEventListener('change', follow);
-    return () => media.removeEventListener('change', follow);
-  }, []);
 
   const toggle = () => {
     setTheme((current) => {
