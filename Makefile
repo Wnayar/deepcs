@@ -43,8 +43,58 @@ migrate:
 
 # Needs `make up` first: the suites run against the real Postgres and Redis
 # rather than mocks, which is the rule in docs/system/00-overview.md §8.
+#
+# The six variables below are why this target is not simply `pnpm -r test`.
+# Every integration suite is guarded on one of them with
+#   describe.skipIf(!process.env.CI && process.env.X === undefined)
+# so that a checkout with nothing running still passes instead of failing with
+# connection errors. CI sets CI=true and gets all of them; locally, without
+# these, `make test` silently skipped 42 of the 140 tests and reported success
+# for the 98 that are left — a green run that had not touched a database.
+#
+# Values, not just presence: the suites connect to them. These are compose's
+# published ports on the host, which is where the tests run.
+#
+# `?=` inside the shell rather than in make, so an environment that already
+# names one of these wins. Pointing the suites at a different database is a
+# reasonable thing to want; having them quietly not run is not.
+TEST_ENV = \
+	DATABASE_URL="$${DATABASE_URL:-postgresql://deepcs:deepcs@127.0.0.1:5432/deepcs}" \
+	REDIS_URL="$${REDIS_URL:-redis://127.0.0.1:6379}" \
+	USERS_URL="$${USERS_URL:-http://127.0.0.1:8081}" \
+	QUESTIONS_URL="$${QUESTIONS_URL:-http://127.0.0.1:8082}" \
+	MATCHING_URL="$${MATCHING_URL:-http://127.0.0.1:8083}" \
+	VITE_GATEWAY_URL="$${VITE_GATEWAY_URL:-http://127.0.0.1:8080}"
+
+# What the suites actually drive. The last one is the Gateway rather than its
+# health endpoint on purpose: `/roadmap` crosses the Gateway, Questions and
+# Postgres and returns seeded rows, so it answers "is the chain up and
+# migrated", which no single /health/ready can.
+TEST_WAIT_URLS = \
+	http://127.0.0.1:8081/health/ready \
+	http://127.0.0.1:8082/health/ready \
+	http://127.0.0.1:8083/health/ready \
+	http://127.0.0.1:8084/health/ready \
+	http://127.0.0.1:8080/roadmap
+
+# `make up` returns once compose has created the containers, which is several
+# seconds before the Node process inside each one is listening. Running the two
+# back to back without this wait fails the frontend suites, which drive the
+# whole chain and assert on timing. That was invisible until the variables
+# above stopped those suites from skipping.
 test:
-	pnpm -r test
+	@for url in $(TEST_WAIT_URLS); do \
+		i=0; \
+		until curl -fsS --max-time 2 "$$url" >/dev/null 2>&1; do \
+			i=$$((i + 1)); \
+			if [ $$i -ge 60 ]; then \
+				echo "timed out waiting for $$url - is 'make up' running?" >&2; \
+				exit 1; \
+			fi; \
+			sleep 1; \
+		done; \
+	done
+	$(TEST_ENV) pnpm -r test
 
 # The k6 load run. Needs `make up`, and takes about five minutes: it ramps 250
 # collab sockets, holds them, and prints k6's client-side latency next to
