@@ -299,6 +299,39 @@ describe.skipIf(!process.env.CI && process.env.QUESTIONS_URL === undefined)('col
     }
   }, 20_000);
 
+  /**
+   * What `/metrics` reports, and the reason phase 7 can claim no leaked
+   * sockets: the counts come from the manager's own bookkeeping, so a socket
+   * that closed while its room forgot to release it is exactly what would
+   * leave this above zero.
+   */
+  it('counts a socket and its room while connected, and neither afterwards', async (ctx) => {
+    const questionId = await seedQuestionId();
+    if (!questionId) return ctx.skip();
+
+    pool ??= createPool({ connectionString: DATABASE_URL, max: 4 });
+    redisA ??= createRedis(REDIS_URL);
+
+    const sessionId = randomUUID();
+    const instance = await startInstance(18191, redisA);
+
+    try {
+      expect(instance.rooms.stats()).toEqual({ sockets: 0, rooms: 0 });
+
+      const client = connectClient(18191, sessionId, questionId);
+      await client.ready();
+      expect(instance.rooms.stats()).toEqual({ sockets: 1, rooms: 1 });
+
+      // Leaving runs off the close event and snapshots on the way out, so this
+      // waits for the count rather than assuming it has already dropped.
+      await client.close();
+      await until(() => instance.rooms.stats().rooms === 0);
+      expect(instance.rooms.stats()).toEqual({ sockets: 0, rooms: 0 });
+    } finally {
+      await instance.app.close();
+    }
+  }, 20_000);
+
   it('survives a malformed frame instead of taking the process down', async (ctx) => {
     const questionId = await seedQuestionId();
     if (!questionId) return ctx.skip();

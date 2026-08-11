@@ -7,7 +7,7 @@
 # once and leave alone, `web` is a Vite server you restart constantly. Running
 # both from one target would mean stopping the database to restart the UI.
 
-.PHONY: up web down logs migrate test
+.PHONY: up web down logs migrate test load
 
 up:
 	docker compose up -d --build
@@ -34,3 +34,9 @@ migrate:
 # rather than mocks, which is DESIGN.md §8's rule.
 test:
 	pnpm -r test
+
+# The phase 7 load run (DESIGN.md §8). Needs `make up`, and takes about five
+# minutes: it ramps 250 collab sockets, holds them, and prints k6's client-side
+# latency next to Collab's own socket count and memory.
+load:
+	./load/run.sh

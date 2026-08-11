@@ -51,7 +51,7 @@ to need full context, alternatives, and accepted tradeoffs are ADRs (§9).
   into session summaries and live stats — which is where at-least-once delivery
   forces idempotency (§6).
 - A system that runs on Kubernetes locally at no cost, and is deployed to a
-  live URL at the end, inside a hard cost ceiling
+  live URL inside a hard cost ceiling
   (§7) — the constraint that shapes more of this design than any other.
 
 ---
@@ -831,9 +831,18 @@ export const options = {
 - **Thresholds** turn the run into a pass/fail check, which is what lets it live
   in CI instead of being something someone remembers to eyeball.
 - **`edit_latency` has to be hand-written**, because k6 has no concept of edit
-  propagation: the script stamps a timestamp into each Yjs update it sends and
-  records the delta when the echo arrives back over the socket. The headline
-  number does not exist unless this metric is built.
+  propagation: the script stamps a timestamp into the text it inserts, and the
+  *other* VU in that session subtracts it from its own clock when the insert
+  arrives. The headline number does not exist unless this metric is built.
+
+  **Corrected 2026-08-11, building phase 7.** This said the delta was recorded
+  "when the echo arrives back over the socket". There is no echo: `broadcast`
+  in services/collab/src/rooms.ts sends an update to every socket in the room
+  *except* the one it came from, so a sender never sees its own edit return,
+  and a script written to that description would have measured nothing at all.
+  Reading it from the partner is also the better measurement — it is the delay
+  a person actually experiences, rather than a round trip to a server and back
+  to the person who already knows what they typed.
 - **Report p95/p99, never the average.** If 95 requests take 10 ms and 5 take
   2 s, the average is 110 ms and not one request was anywhere near it. p95 means
   95% of requests were faster than the stated figure — and the tail is both what
@@ -1039,10 +1048,36 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
 | 10 | **Deploy.** The services to Cloud Run + frontend to CDN; CI deploys per service on merge; logs + health + `/metrics` → Grafana; the smaller k6 run against the real thing; README + ADRs + demo GIF | live URL; headline load number in README with the environment stated; deploying Questions alone doesn't restart Collab |
 | 11 | **[built · learning]** Terraform: import the manual setup (services + flags, service accounts, invoker bindings, registry, secrets, bucket, scheduler job, budget alerts). After phase 10, because it imports infrastructure that has to exist first | `terraform apply` rebuilds the environment |
 
+**Superseded 2026-08-12: the project ends at phase 8.** Phase 8 (Kubernetes
+locally) is next and last. Phase 10 (the Cloud Run deploy) and phase 11
+(Terraform) are **designed and costed, deliberately not executed** — the design
+stays in §7 because it is the reasoning, not the artefact, and what it would
+cost to run is in [docs/cost.md](docs/cost.md).
+
+The reason is the one §7's ceiling was always pointing at, now with numbers
+behind it. A live URL is free only while trial credits last; after that,
+`asia-southeast1` is a Tier 2 region where the free allowance is worth about 36
+instance-hours a month, an open WebSocket bills for its whole life, and the
+system would need a card attached to stay up. That is a poor trade for a
+portfolio demo that `kubectl` can run on any laptop, for ever, at no cost. The
+deployment being *specified in enough detail to price* is the deliverable;
+running it is not.
+
+**What this costs, stated as plainly as the reorder it replaces:** there is no
+URL to send anybody, and there never will be. The README carries a recording
+instead. Anyone assessing this repo has to clone it, which is a real filter and
+is accepted deliberately.
+
+The paragraphs below are the earlier reasoning, kept because the sequence of
+decisions is the interesting part. The numbers in this table are identities,
+not positions — every doc, comment and commit message in the repo cites them —
+so they stay fixed regardless of what is built. Phases 0 to 7 were built in the
+order they are numbered.
+
 **The project is feature-complete at phase 6**, which is where the event
 pipeline and `/stats` land. Both are stated scope (§1, §2), so phase 6 is not
 optional and nothing after it is load-bearing for the product. *Publicly*
-demoable means phase 10, and that is the deliberate cost of this ordering.
+demoable means phase 10, which is now the next phase.
 
 **Why the deploy moved last.** It was phase 6, ahead of everything additive. The
 trade it was making turned out to be a bad one: a live URL is the only part of
@@ -1056,6 +1091,31 @@ live URL is still the goal; it is now the last thing rather than the middle one.
 What is honestly lost is worth naming rather than glossing: until phase 10 there
 is no URL to send anybody, and nobody is going to run `kind create cluster` to
 look at a project. The README carries the demo recording until then.
+
+**And why it moved back to the front, 2026-08-11.** The paragraph above prices
+the deploy as *attention*: budget alarms, kill switches, free-tier quotas, an
+audit of anything that generates traffic. That price has largely been paid
+already and it was paid in phase 0 — the kill-switch function, the budget
+alerts and the enabled-API allowlist exist and are still standing, so what is
+left is the deploy itself rather than the apparatus around it. Against a cost
+that shrank, the thing the deferral gave up has a date on it: a URL is the only
+part of this a stranger experiences, and it is wanted now. Phases 8 and 9 are
+both labelled learning detours in the table, and a detour is what moves when
+something dated is queued behind it.
+
+Only the deploy moves. What follows it is the additive backlog below, in the
+priority that table already argues for — which is not disturbed by this, except
+that phase 11 is no longer waiting on anything, since Terraform imports what the
+deploy creates and could never have run before it.
+
+The cost of *this* reordering, stated as plainly as the last one: phase 8's
+"zero dropped requests during a rolling update, and here is why the readiness
+probes make that work" was the sharpest operational claim in the plan, and it
+now lands later. Cloud Run migrates traffic between revisions and will
+demonstrate something adjacent, but it is not the same claim: the mechanism
+there belongs to Google rather than to anything in `k8s/`. And a deployed
+system spends real quota from the moment it exists, so §7's ceiling stops being
+a design constraint and becomes a live one.
 
 **Why the event pipeline moved ahead of Kubernetes.** They swapped after the CV
 went out. Ordering by cost and learning value is the right rule while nothing
