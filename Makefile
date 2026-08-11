@@ -7,6 +7,11 @@
 # once and leave alone, `web` is a Vite server you restart constantly. Running
 # both from one target would mean stopping the database to restart the UI.
 #
+# Two more that need `make up` running first, because both drive the real stack:
+#
+#   make test   the suites, against real Postgres and Redis rather than mocks
+#   make load   the k6 load run, about six minutes
+#
 # There is a second way to run the same system, on a local Kubernetes cluster:
 #
 #   make k8s-up     the whole stack on a kind cluster, gateway on :8090
@@ -96,7 +101,7 @@ test:
 	done
 	$(TEST_ENV) pnpm -r test
 
-# The k6 load run. Needs `make up`, and takes about five minutes: it ramps 250
+# The k6 load run. Needs `make up`, and takes about six minutes: it ramps 250
 # collab sockets, holds them, and prints k6's client-side latency next to
 # Collab's own socket count and memory.
 load:
