@@ -1,0 +1,78 @@
+# Postgres, in the cluster, with no persistence at all.
+#
+# No PersistentVolumeClaim and no volume of any kind: the data directory is the
+# container's own filesystem, so deleting the pod deletes the database. That is
+# the intended behaviour. This cluster exists to demonstrate two things about
+# rolling updates and pod kills, and both start from `make k8s-up`, which
+# re-runs the migration Job — including the seeds — every time. A volume would
+# only make it possible for a run to inherit half a previous one's state.
+#
+# It is also why there is one replica and no rolling update strategy. Two
+# Postgres pods behind one Service would be two unrelated databases handing out
+# alternate answers, which is a worse failure than being briefly down.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: deepcs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  # Recreate, not RollingUpdate: the default would start the new pod before
+  # stopping the old one, and both would bind the same Service.
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_USER
+              value: deepcs
+            - name: POSTGRES_DB
+              value: deepcs
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: deepcs-secrets
+                  key: POSTGRES_PASSWORD
+          # The same `pg_isready` compose uses. Without a readiness probe the
+          # Service would carry traffic the moment the container started, and
+          # Postgres accepts connections several seconds after that — so the
+          # migration Job would fail on a database that was merely still
+          # starting up.
+          readinessProbe:
+            exec:
+              command: ['pg_isready', '-U', 'deepcs', '-d', 'deepcs']
+            periodSeconds: 2
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: deepcs
+spec:
+  # ClusterIP, like everything except the Gateway. Nothing outside the cluster
+  # can reach the database, which is the same property compose gets from not
+  # publishing the port — except that compose does publish 5432, because tests
+  # and `make migrate` run on the host. Here they do not.
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: postgres

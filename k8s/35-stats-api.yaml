@@ -1,0 +1,90 @@
+# The read side of Stats: `GET /stats` and a session's summary.
+#
+# Same image as the CronJob in 40-stats-cronjob.yaml, started differently. That
+# image's default command is the job — it drains the event log and exits — so
+# this one overrides it with the second entrypoint tsup builds.
+#
+# Nothing else could serve these rows: they live in the `stats` schema and only
+# stats_svc may read it (ADR-09). The service name is `stats-api` rather than
+# `stats` so that a Gateway pointed at http://stats:8085 cannot silently reach
+# the job instead — the same reason compose names them apart.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stats-api
+  namespace: deepcs
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: stats-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: stats-api
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: stats-api
+          image: deepcs/stats:local
+          imagePullPolicy: IfNotPresent
+          # The image's CMD runs dist/index.js, which is the job. This is the
+          # other tsup entrypoint (services/stats/tsup.config.ts).
+          command: ['node', 'services/stats/dist/server.js']
+          ports:
+            - containerPort: 8085
+              name: http
+          envFrom:
+            - configMapRef:
+                name: deepcs-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: deepcs-secrets
+                  key: stats
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 1
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ['sleep', '5']
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stats-api
+  namespace: deepcs
+spec:
+  selector:
+    app: stats-api
+  ports:
+    - port: 8085
+      targetPort: http

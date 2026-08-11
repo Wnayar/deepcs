@@ -1,0 +1,83 @@
+# Questions: the bank, the roadmap and the lesson steps.
+# Same Deployment shape as the Gateway, explained in 30-gateway.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: questions
+  namespace: deepcs
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: questions
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: questions
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: questions
+          image: deepcs/questions:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8082
+              name: http
+          envFrom:
+            - configMapRef:
+                name: deepcs-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: deepcs-secrets
+                  key: questions
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 1
+            failureThreshold: 60
+          # Readiness here reports Postgres and not Redis, and the service
+          # decides that, not this file: a cold question cache makes Questions
+          # slower, not broken, so a Redis outage must not pull every replica
+          # out of rotation. See services/questions/src/index.ts.
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ['sleep', '5']
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: questions
+  namespace: deepcs
+spec:
+  selector:
+    app: questions
+  ports:
+    - port: 8082
+      targetPort: http

@@ -1,0 +1,98 @@
+# Collab: the CRDT documents and the WebSockets attached to them.
+#
+# The one Deployment where the shutdown settings do real work, and the one the
+# pod-kill test targets.
+#
+# Two replicas mean the two people in a session can land on different pods, so
+# this is also where the cross-instance path gets exercised rather than merely
+# existing: each room subscribes to a Redis channel, and an edit applied on one
+# pod reaches the other through it. A single replica would make every session
+# local and the pub/sub code would never run.
+#
+# terminationGracePeriodSeconds is 45 rather than 30 because the SIGTERM path
+# does more than close sockets: Fastify's onClose hook snapshots every room the
+# pod is still holding to Postgres before the process exits
+# (services/collab/src/index.ts). Five of that 45 is the preStop pause, and the
+# snapshot has the rest. If the grace period expired first the pod would be
+# SIGKILLed mid-write and the edits since the last 30-second snapshot would be
+# the ones lost — which is exactly the claim the pod-kill run tests.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: collab
+  namespace: deepcs
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: collab
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: collab
+    spec:
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: collab
+          image: deepcs/collab:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8084
+              name: http
+          envFrom:
+            - configMapRef:
+                name: deepcs-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: deepcs-secrets
+                  key: collab
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 1
+            failureThreshold: 60
+          # Both dependencies are load-bearing and both are in this probe:
+          # Postgres holds the snapshot a room is rebuilt from, and Redis is
+          # the only path between two pods holding the same session.
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ['sleep', '5']
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: collab
+  namespace: deepcs
+spec:
+  selector:
+    app: collab
+  ports:
+    - port: 8084
+      targetPort: http

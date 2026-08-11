@@ -132,8 +132,10 @@ explicitly framed as the exploration that decided against deploying.
 
 ## Part 2 — Kubernetes, locally (the last build work)
 
-Not started. `kind` v0.33 is installed at `~/.local/bin/kind`; `kubectl` v1.34
-is on the PATH. Docker is running and the compose stack works.
+**Done.** `k8s/` holds the manifests, `make k8s-up` / `k8s-check` / `k8s-down`
+drive it, and the results are written up in `docs/system/09-running-it.md` and
+`docs/learning/kubernetes.md`. What follows is the original brief, kept because
+the two notes at the end record where reality differed from it.
 
 ### What to build
 
@@ -165,11 +167,34 @@ Write `docs/system/09-running-it.md` and `docs/learning/kubernetes.md` from what
 actually happens, not from what should happen. If a claim does not survive the
 run, the doc says so.
 
-### Afterwards
+### Where reality differed from this brief
+
+Two things, both written up in `09-running-it.md`:
+
+1. **The k6 script cannot measure dropped requests.** `load/collab.js` sends its
+   HTTP in `setup()` and `teardown()` and holds WebSockets in between, so during
+   a rolling update there are no requests in flight to drop. Counting them needed
+   a separate prober, which is `k8s/disruption-check.sh` (`make k8s-check`). The
+   k6 run still answers the other half, what a disruption does to a live socket.
+2. **"A killed pod interrupts nobody" is too strong.** The edits survive — this
+   was verified directly, by killing the pod holding a room seconds after a write
+   and reading the marker back. The socket does not: it closes, and the client
+   reconnects. The claim written down is "a reconnect, not any edits".
+
+Also worth knowing: `edit_latency` from the k6 script is only meaningful against
+a *single* Collab instance. With two, a cross-instance state reply re-delivers
+the whole document and the script counts old markers as fresh edits, which puts
+p95 at 18.72s against a 5ms median. Not a defect; the reasoning is in §6 of
+`09-running-it.md`.
+
+### Afterwards — still to do
 
 Update the CV bullets in `~/deepcs-resume-bullets.txt` (also on the Windows
 desktop) with the measured result: the last bullet's "in progress" becomes the
-rolling-update and pod-kill claim.
+rolling-update and pod-kill claim. Use the numbers and the exact wording from
+`docs/system/09-running-it.md` §4 and §5 — in particular "a reconnect, not any
+edits" rather than "interrupts nobody", and keep the machine attached to any
+latency figure.
 
 ---
 

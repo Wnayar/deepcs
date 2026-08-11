@@ -6,8 +6,19 @@
 # They are separate on purpose: `up` is a long-running Docker stack you start
 # once and leave alone, `web` is a Vite server you restart constantly. Running
 # both from one target would mean stopping the database to restart the UI.
+#
+# There is a second way to run the same system, on a local Kubernetes cluster:
+#
+#   make k8s-up     the whole stack on a kind cluster, gateway on :8090
+#   make k8s-check  the disruption measurements, against a cluster that is up
+#   make k8s-down   delete the cluster
+#
+# Compose is the one to develop against — it bind-mounts src/ and reloads. The
+# cluster runs the production images and exists to show what compose cannot:
+# rolling updates and pod failure. They publish different ports (8080 and 8090)
+# so both can be up at once.
 
-.PHONY: up web down logs migrate test load
+.PHONY: up web down logs migrate test load k8s-up k8s-check k8s-down
 
 up:
 	docker compose up -d --build
@@ -40,3 +51,22 @@ test:
 # Collab's own socket count and memory.
 load:
 	./load/run.sh
+
+# The same system on a local Kubernetes cluster. Needs `kind` and `kubectl`,
+# and does not need `make up` — it is the other way to run the stack, not an
+# addition to it. Five to ten minutes the first time (it builds seven images
+# and pulls an ingress controller), about a minute after that.
+k8s-up:
+	./k8s/up.sh
+
+# Counts dropped requests through a rolling update and a pod kill. Needs
+# `make k8s-up`, and takes about three minutes. Not part of `make load`: that
+# one measures collaboration sockets against compose, this one measures request
+# survival against the cluster, and they answer different questions.
+k8s-check:
+	./k8s/disruption-check.sh
+
+# Deletes the cluster outright. To restart only deepcs and keep the cluster,
+# see the note at the top of k8s/down.sh.
+k8s-down:
+	./k8s/down.sh

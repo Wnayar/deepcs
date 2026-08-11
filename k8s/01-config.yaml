@@ -1,0 +1,75 @@
+# The cluster's half of `.env.example`: plain values in a ConfigMap, anything
+# with a password in it in a Secret. Every Deployment pulls the whole ConfigMap
+# with `envFrom` and picks its own database URL out of the Secret by key.
+#
+# A service reading a variable meant for another one is harmless — Matching
+# holding a STATS_URL it never calls costs nothing — and one list that every
+# service gets is far easier to keep true than six lists that drift.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deepcs-config
+  namespace: deepcs
+data:
+  LOG_LEVEL: info
+
+  # NODE_ENV is development even though these are the production-target images,
+  # and that is not an oversight. The Gateway refuses to boot when
+  # FIREBASE_AUTH_EMULATOR_HOST is set and NODE_ENV is production
+  # (services/gateway/src/auth.ts): the emulator issues unsigned tokens, so
+  # accepting them in production means accepting forged identities. This
+  # cluster runs the emulator, so it is by definition not production, and
+  # saying so is what keeps that guard able to fire somewhere it matters.
+  NODE_ENV: development
+
+  # "demo-" is a magic prefix: the emulators refuse to contact production
+  # Google for a project id starting with it, which is what makes this safe to
+  # run with no credentials anywhere in the cluster.
+  FIREBASE_PROJECT_ID: demo-deepcs
+  FIREBASE_AUTH_EMULATOR_HOST: firebase-auth:9099
+
+  # The single origin CORS is locked to. The frontend still runs on the host
+  # with `make web`, so this is a host URL, not a cluster one.
+  CORS_ORIGIN: http://localhost:5173
+
+  REDIS_URL: redis://redis:6379
+
+  # Service-to-service calls, resolved by the cluster's DNS from the Service
+  # names in 3x-*.yaml. These are the calls that never pass through the
+  # Gateway, because they are server-to-server rather than client-facing.
+  #
+  # STATS_URL points at stats-api and not at stats, because Stats is one image
+  # run two ways: `stats-api` is the read server, and the CronJob is the job
+  # that drains the event log. The Gateway wants the server.
+  USERS_URL: http://users:8081
+  QUESTIONS_URL: http://questions:8082
+  MATCHING_URL: http://matching:8083
+  STATS_URL: http://stats-api:8085
+---
+# Every service connects as its own Postgres role, so there is one URL per
+# service rather than one shared credential (ADR-09). A query that crosses a
+# schema is refused by Postgres, and that is only true because these six differ.
+#
+# `owner` is the seventh, used by nothing but the migration Job: it is the only
+# role allowed to create schemas and hand out grants, which is exactly what the
+# six below are forbidden from doing.
+#
+# stringData, not data: Kubernetes base64-encodes it on the way in, so this
+# file stays readable. These are the same local development passwords compose
+# uses, committed for the same reason `.env.example` names them — the cluster
+# has no route to anything real, and a value nobody can read is a value nobody
+# can check.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: deepcs-secrets
+  namespace: deepcs
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: deepcs
+  owner: postgresql://deepcs:deepcs@postgres:5432/deepcs
+  users: postgresql://users_svc:users_svc@postgres:5432/deepcs
+  questions: postgresql://questions_svc:questions_svc@postgres:5432/deepcs
+  matching: postgresql://matching_svc:matching_svc@postgres:5432/deepcs
+  collab: postgresql://collab_svc:collab_svc@postgres:5432/deepcs
+  stats: postgresql://stats_svc:stats_svc@postgres:5432/deepcs

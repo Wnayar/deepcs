@@ -1,0 +1,84 @@
+# The Firebase Auth emulator, from the image in docker/firebase-emulator/.
+#
+# Two things about it differ from compose and both are deliberate.
+#
+# The accounts do not survive a restart here. The emulator exports its users on
+# shutdown, but only on a clean SIGINT exit, which is why its Dockerfile sets
+# STOPSIGNAL SIGINT. Kubernetes does not read a Docker STOPSIGNAL — it sends
+# SIGTERM to PID 1 and nothing else — so the export never runs, and there is no
+# volume to write it to in any case. Nothing depends on it: the k6 run mints
+# its own tokens (load/collab.js) and a browser signs up again in a second.
+#
+# It is also the slowest thing in the cluster to start: a JVM plus the
+# firebase-tools CLI, several seconds even with the emulator UI baked into the
+# image. Hence the startupProbe below rather than a long initialDelaySeconds on
+# the readiness probe, which would delay every subsequent check too.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: firebase-auth
+  namespace: deepcs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: firebase-auth
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: firebase-auth
+    spec:
+      containers:
+        - name: firebase-auth
+          # Built by k8s/up.sh from docker/firebase-emulator/ and pushed into
+          # the node with `kind load docker-image`. IfNotPresent, not Always:
+          # this tag exists only inside this cluster, so Always would send
+          # kubelet to Docker Hub looking for a repository nobody published.
+          image: deepcs/firebase-auth:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9099
+              name: auth
+            - containerPort: 4000
+              name: ui
+          # 127.0.0.1, never `localhost`. Inside this container `localhost`
+          # resolves to ::1 first and the emulator binds IPv4 0.0.0.0 only, so
+          # a `localhost` probe gets ECONNREFUSED from a healthy emulator.
+          #
+          # Grepping the body rather than checking the port is open: the root
+          # endpoint returns {"authEmulator":{"ready":true}} only once it can
+          # actually mint tokens.
+          startupProbe:
+            exec:
+              command: ['sh', '-c', 'wget -qO- http://127.0.0.1:9099/ | grep -q ready']
+            periodSeconds: 2
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: ['sh', '-c', 'wget -qO- http://127.0.0.1:9099/ | grep -q ready']
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: firebase-auth
+  namespace: deepcs
+spec:
+  selector:
+    app: firebase-auth
+  ports:
+    - name: auth
+      port: 9099
+      targetPort: auth
+    - name: ui
+      port: 4000
+      targetPort: ui

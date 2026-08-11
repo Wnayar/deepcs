@@ -1,0 +1,29 @@
+# The cluster `make k8s-up` creates — e.g.
+#   kind create cluster --config k8s/kind-cluster.yaml
+#
+# One node, deliberately. Both things this cluster exists to demonstrate — a
+# rolling update that drops no requests, and a killed pod that loses no edits —
+# are properties of readiness probes and Service endpoints. Neither involves a
+# second node. Extra nodes would add a container each and another full copy of
+# every image for `kind load docker-image` to push.
+#
+# The node image is not pinned: kind ships a default matching its own version,
+# so pinning here would only create a pair that can disagree.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: deepcs
+
+nodes:
+  - role: control-plane
+
+    # How a browser and k6 reach the Ingress. Without this the cluster is a
+    # Docker container with no published port and the only way in is
+    # `kubectl port-forward`, which is a debugging tool, not a front door.
+    #
+    # 8090 on the host, not 8080: compose already publishes the Gateway on
+    # 8080, and the two are meant to be runnable at once so they can be
+    # compared without tearing one down.
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 8090
+        protocol: TCP

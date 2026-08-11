@@ -1,0 +1,113 @@
+# The Gateway: the one service with a route in from outside (50-ingress.yaml).
+#
+# ── Why every Deployment here is shaped this way ─────────────────────────────
+#
+# This file carries the explanation and the other five repeat the shape, since
+# the point of the exercise is that a rolling update drops no requests. Four
+# settings do that, and leaving out any one of them breaks it:
+#
+#   replicas: 2               One pod cannot be replaced without a gap. This is
+#                             the whole prerequisite; the rest is detail.
+#
+#   maxUnavailable: 0         Never go below the desired count. The default is
+#                             25%, which on two replicas rounds down to one pod
+#                             taken out of service before its replacement is
+#                             ready — a window where half the capacity is gone.
+#
+#   readinessProbe            What "ready" means. A pod that fails
+#                             /health/ready is removed from the Service
+#                             endpoints, so maxUnavailable: 0 is only a real
+#                             promise because this probe can say no.
+#
+#   preStop: sleep 5          The part that is easy to miss. On delete,
+#                             Kubernetes sends SIGTERM and removes the pod from
+#                             the endpoints *at the same time*, in parallel, and
+#                             endpoint removal has to propagate to every kube-proxy
+#                             and to the ingress controller before it takes
+#                             effect. Without this pause the process starts
+#                             refusing connections while requests are still
+#                             being routed to it, and those are the dropped
+#                             requests the whole run is trying not to have. The
+#                             pod sits still for five seconds, keeps serving,
+#                             and only then gets its SIGTERM.
+#
+# terminationGracePeriodSeconds counts from SIGTERM, so it has to be longer
+# than the preStop pause plus however long in-flight work takes to finish.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: deepcs
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gateway
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: gateway
+          image: deepcs/gateway:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: deepcs-config
+          # No DATABASE_URL, and its absence is load-bearing. The Gateway holds
+          # no domain data (the overview §6), which is also why authorization
+          # cannot live here — it has nothing to authorize against.
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 1
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ['sleep', '5']
+          # Requests only, no CPU limit. A limit is enforced by throttling the
+          # process, and a throttled service under load reports latency caused
+          # by this file rather than by the code — which would make every number
+          # the k6 run produces a measurement of the wrong thing.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+  namespace: deepcs
+spec:
+  selector:
+    app: gateway
+  ports:
+    - port: 8080
+      targetPort: http

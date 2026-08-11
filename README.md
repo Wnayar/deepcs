@@ -17,14 +17,22 @@ make test    # the suites, against the real Postgres and Redis
 make load    # the k6 load run against the running stack
 ```
 
-From phase 8 there is also a local Kubernetes cluster (`make k8s-up`), which is
-where rolling updates and pod failure are demonstrated.
+There is a second way to run the same system, on a local Kubernetes cluster:
+
+```bash
+make k8s-up    # the whole stack on a kind cluster, gateway on :8090
+make k8s-down  # delete the cluster
+```
+
+Compose is the one to develop against: it bind-mounts `src/` and reloads. The
+cluster runs the production images and is where rolling updates and pod failure
+are demonstrated. Both can be up at once, on 8080 and 8090.
 
 ## There is no deployed version, and that is a decision
 
 This runs on your machine and nowhere else. The deployment was designed (§7 of
-The overview) and priced line by line ([docs/cost.md](docs/cost.md)) before being
-declined: keeping a demo online past a free trial means attaching a payment card
+The overview) and priced line by line ([docs/future/cost.md](docs/future/cost.md))
+before being declined: keeping a demo online past a free trial means attaching a payment card
 to it, and the behaviours worth showing — a rolling update that drops no
 requests, a killed pod that interrupts nobody — need an orchestrator rather than
 a hosted one. Knowing what it would cost, and why, is the deliverable.

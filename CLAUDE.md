@@ -74,6 +74,12 @@ on :5173. `make test` needs the stack up, because the suites use real Postgres
 and Redis rather than mocks. `make load` needs it up too, and takes about six
 minutes: it is the k6 load run against the running stack.
 
+The other way to run it is a local Kubernetes cluster: `make k8s-up` (gateway on
+:8090, so compose and the cluster can be up at once), `make k8s-check` for the
+rolling-update and pod-kill measurements, `make k8s-down` to delete it. After a
+code change re-run `make k8s-up`, not `kubectl apply` — a rebuilt image does not
+reach the node without `kind load`, and `k8s-up` does both.
+
 ## Project context
 
 The repo is in a finished state, not a building one: it runs locally under
@@ -89,8 +95,8 @@ used to be X", it belongs in a decision file or nowhere.
   the gateway is built, why one database with a schema and role per service, and
   why it runs on Kubernetes locally rather than being deployed.
 - [docs/learning/](./docs/learning/) — how the tooling works, for reference
-  rather than for decisions: Docker, CI, and the code-level idioms this repo
-  leans on.
+  rather than for decisions: Docker, Kubernetes, CI, and the code-level idioms
+  this repo leans on.
 - [docs/future/](./docs/future/) — things not built. `cost.md` is the exploration
   that decided against deploying, and it is the record of what it would cost.
 

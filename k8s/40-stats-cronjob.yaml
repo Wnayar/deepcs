@@ -1,0 +1,56 @@
+# Stats, as the job it is.
+#
+# There is no listen() in this entrypoint and there never will be: its trigger
+# is time, not a request. It starts, drains the Redis event stream into the
+# `stats` schema, and exits — and the exit code is the contract, 0 for a run
+# that succeeded and anything else for one Kubernetes should retry.
+#
+# A CronJob is the direct expression of that. The alternative shape — a
+# long-lived consumer Deployment — would be a process kept running so a timer
+# inside it can fire, which is a process paid for around the clock to do a few
+# seconds of work.
+#
+# concurrencyPolicy: Forbid, not the default Allow. Two runs draining the same
+# stream at once would each read entries the other has not acknowledged. The
+# writes are keyed so that reprocessing an event changes nothing, so this is
+# not a correctness fix; it is a way of not doing the same work twice.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: stats
+  namespace: deepcs
+spec:
+  # Every five minutes. Fast enough that /stats is never far behind, slow
+  # enough that the run is nearly always draining an empty log and exiting.
+  schedule: '*/5 * * * *'
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  # Skip a run rather than fire it late if the cluster was asleep — a laptop
+  # cluster is suspended and resumed constantly, and without this a resume
+  # triggers every run that was missed while it was down.
+  startingDeadlineSeconds: 60
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: stats
+              # No `command`: the image's default is already this job.
+              image: deepcs/stats:local
+              imagePullPolicy: IfNotPresent
+              envFrom:
+                - configMapRef:
+                    name: deepcs-config
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: deepcs-secrets
+                      key: stats
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi

@@ -1,0 +1,85 @@
+# Matching: the queue, the atomic pair claim, and the session rows.
+# Same Deployment shape as the Gateway, explained in 30-gateway.yaml.
+#
+# Two replicas are safe here for a reason worth naming: the claim that pairs
+# two people is a single atomic Redis operation (ADR-03), so two Matching pods
+# racing for the same waiting partner produce one session and one loser, not
+# two sessions. Without that property this would have to be a single replica,
+# and then it could not take part in a rolling update at all.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matching
+  namespace: deepcs
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: matching
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: matching
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: matching
+          image: deepcs/matching:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8083
+              name: http
+          envFrom:
+            - configMapRef:
+                name: deepcs-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: deepcs-secrets
+                  key: matching
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 1
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ['sleep', '5']
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matching
+  namespace: deepcs
+spec:
+  selector:
+    app: matching
+  ports:
+    - port: 8083
+      targetPort: http
