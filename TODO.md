@@ -2,8 +2,10 @@
 
 Temporary file. Delete it when both parts are done.
 
-Branch: `refine/local-only`, based on `main`. Committed and consistent; nothing
-is half-edited. Working tree clean.
+This work was done on `refine/local-only`, which is intended to be merged into
+`main`. Check with `git log --oneline -6` where you actually are, and start a
+fresh branch off whatever contains the commit "Restructure the docs". Nothing is
+half-edited; the tree is consistent at every commit.
 
 ---
 
