@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 /**
  * How long to wait on a sibling service before giving up. Unbounded `fetch`
- * would let a hung Users or Questions hold this request — and its Cloud Run
- * concurrency slot — open indefinitely.
+ * would let a hung Users or Questions hold this request — and its concurrency
+ * slot — open indefinitely.
  */
 const REQUEST_TIMEOUT_MS = 5_000;
 

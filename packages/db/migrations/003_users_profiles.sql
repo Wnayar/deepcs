@@ -1,4 +1,4 @@
--- The profile row (DESIGN.md §5, Users).
+-- The profile row (the overview §5, Users).
 --
 -- `firebase_uid` is the join key for the entire system, and it is deliberately
 -- opaque: ADR-04 accepts vendor lock-in on identity precisely because the app

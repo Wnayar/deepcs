@@ -58,7 +58,7 @@ thing to notice, not the query.
 
 ## 3. The design said Stats could not be a server. It was half right · ~5 min
 
-DESIGN.md §3 said Stats "can't be a server at all", §2 and §6 both put a public
+The overview §3 said Stats "can't be a server at all", §2 and §6 both put a public
 stats endpoint in scope, and ADR-09 says only `stats_svc` may read the `stats`
 schema. All three cannot hold, and building the phase is what surfaced it.
 
@@ -68,7 +68,7 @@ conclusion overreaches. Serving a summary is request-driven like every other
 read and scales to zero perfectly well.
 
 So Stats is one image with two entrypoints: `index.ts` drains and exits,
-`server.ts` answers reads. In Cloud Run that is the same image deployed twice,
+`server.ts` answers reads. On the cluster that is the same image run twice,
 once as a job and once as a service. The job stays the image default, so CI's
 existing smoke test keeps meaning what it meant.
 

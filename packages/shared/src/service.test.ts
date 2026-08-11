@@ -135,9 +135,9 @@ describe('createService', () => {
 
   /**
    * The regression test for the reason `trustProxy` is set at all. Without it
-   * `req.ip` is the socket's peer — which behind Cloud Run is Google's front
-   * end, not the caller — and every anonymous request would share one per-IP
-   * rate-limit bucket.
+   * `req.ip` is the socket's peer — which behind any proxy is the proxy, not
+   * the caller — and every anonymous request would share one per-IP rate-limit
+   * bucket.
    */
   it('reads the client address from X-Forwarded-For', async () => {
     const { app } = createService({ name: 'gateway', port: SERVICES.gateway.port! });

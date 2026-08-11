@@ -72,23 +72,27 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 `migrate` service every other service waits on). `make web` starts the frontend
 on :5173. `make test` needs the stack up, because the suites use real Postgres
 and Redis rather than mocks. `make load` needs it up too, and takes about six
-minutes: it is the phase 7 k6 run against the running stack.
+minutes: it is the k6 load run against the running stack.
 
 ## Project context
 
-- [DESIGN.md](./DESIGN.md) — the architecture and reasoning; every other doc cites it by section
-- [docs/phases/0-repo-tour.md](./docs/phases/0-repo-tour.md) — what every file in the repo is for
-- [docs/phases/0-prebuild-decisions.md](./docs/phases/0-prebuild-decisions.md) — decisions already made, with the reasoning, before re-litigating one
-- [docs/phases/1-auth-and-gateway.md](./docs/phases/1-auth-and-gateway.md) — how auth, the rate limiter and the schema boundary work, and how to demonstrate each
-- [docs/phases/2-questions-bank.md](./docs/phases/2-questions-bank.md) — the question bank: cursor pagination, the read-through cache, and why `reference_md` never reaches a browser
-- [docs/phases/3-matching.md](./docs/phases/3-matching.md) — the atomic pair claim, why external calls run before any mutation, and idempotent join/retry
-- [docs/phases/4-collab.md](./docs/phases/4-collab.md) — collab: why two instances have to agree on a document's *identity* and not just its text, the pre-await frame queue, and snapshot/reconnect
-- [docs/phases/5-frontend.md](./docs/phases/5-frontend.md) — the React app, and the reveal rule: why the answer and the authority to release it live in different services
-- [docs/phases/5b-roadmap.md](./docs/phases/5b-roadmap.md) — the roadmap that replaced Learn and the bank, and the standing rule it came from: fix content in the seed, never at render time
-- [docs/phases/6-events.md](./docs/phases/6-events.md) — the event log: why acking after the commit is the whole safety argument, and the two different ways an event is made safe to reprocess
-- [docs/phases/7-load-and-soak.md](./docs/phases/7-load-and-soak.md) — the load run: why edit latency is read at the partner and not the sender, and which of its numbers a laptop is allowed to claim
-- [docs/cost.md](./docs/cost.md) — what deploying costs, explained from nothing: why an open WebSocket is what spends the budget and a page view is not, the Neon sleep trap, the Tier 2 region penalty, and every cost in one table
-- [docs/frontend.md](./docs/frontend.md) — how the frontend works from nothing: the empty HTML shell, what the build actually produces, the two backends the browser talks to, and the three rules that break in a browser but not in curl
+The repo is in a finished state, not a building one: it runs locally under
+`docker compose` and on a local Kubernetes cluster, and there is no deployment.
+Documentation describes how things work now. If you find yourself writing "this
+used to be X", it belongs in a decision file or nowhere.
+
+- [docs/system/](./docs/system/) — **read this to understand the repo.**
+  `00-overview.md` is the whole system: the six services, what each owns, how a
+  request travels through them, and how it is run and tested.
+- [docs/adr/](./docs/adr/) — the decisions worth knowing, one file each: why the
+  split is six services, why a CRDT rather than OT, why identity is bought and
+  the gateway is built, why one database with a schema and role per service, and
+  why it runs on Kubernetes locally rather than being deployed.
+- [docs/learning/](./docs/learning/) — how the tooling works, for reference
+  rather than for decisions: Docker, CI, and the code-level idioms this repo
+  leans on.
+- [docs/future/](./docs/future/) — things not built. `cost.md` is the exploration
+  that decided against deploying, and it is the record of what it would cost.
 
 ### Comment style
 
@@ -98,16 +102,16 @@ minutes: it is the phase 7 k6 run against the running stack.
   comment directly above with a concrete example — e.g. one example request
   above a route handler — so reading the code teaches how to call it. A line
   or two, not a paragraph.
-- Skip inline citations (DESIGN.md section numbers, ADR numbers) in comments
+- Skip inline citations (the overview section numbers, ADR numbers) in comments
   that explain *what to do* or *how to call something*. Save citations for
   comments whose whole point is *why* a decision was made.
 
-### Working conventions established in phase 1
+### Working conventions
 
 - **Postgres access is `pg` + hand-written parameterized SQL** (ADR-10). No ORM.
   Migrations are numbered `.sql` files in `packages/db/migrations`, applied by
   `pnpm --filter @deepcs/db migrate`. Drizzle is deferred, not rejected — it is
-  item 1 in DESIGN.md §10's additive backlog. Don't introduce it ad hoc.
+  item 1 in the overview §10's additive backlog. Don't introduce it ad hoc.
 - **Every service connects as its own Postgres role** and queries are fully
   schema-qualified (`users.profiles`). A query that crosses a schema is a bug the
   database will reject, not a shortcut.
@@ -118,14 +122,14 @@ minutes: it is the phase 7 k6 run against the running stack.
 - **Tests use real Postgres and Redis, not mocks** (§8). CI provides both as
   service containers.
 
-### Working conventions established later
+### More conventions
 
 - **Fix content at the source, never at render time.** If stored text is in the
   wrong shape, change the seed and re-run the migration. A fix applied while
   rendering has to be remembered at every place that text is displayed, and the
   place that gets forgotten is the one nobody looks at. This rule is why
   `frontend/src/reference.ts` no longer exists; see
-  [docs/phases/5b-roadmap.md](./docs/phases/5b-roadmap.md) thing 1.
+  [docs/system/00-overview.md](./docs/system/00-overview.md) §2.
 - **No em dashes in anything a reader sees**, including seeded lesson and
   question text. A test asserts this against the database. Code comments and
   these docs are exempt.
@@ -161,7 +165,7 @@ minutes: it is the phase 7 k6 run against the running stack.
 
 - **The browser is told, not asked.** A client that needs to know about an event
   another user caused subscribes to `GET /match/events` rather than polling.
-  Polling kept Neon's compute awake and every service warm for people who were
+  Polling kept the database awake and every service warm for people who were
   only waiting, and slowing it down enough to afford made the news late. The one
   remaining timer is the crash-recovery check in `Match.tsx`, which detects a
   lost pair claim, not a match.
@@ -170,24 +174,18 @@ minutes: it is the phase 7 k6 run against the running stack.
   fail a user's request. Adding a seventh means adding it to `EventType`, to the
   `switch` in `services/stats/src/consumer.ts`, and to a table keyed so that
   reprocessing it changes nothing.
-- **Phase numbers are identities, not positions.** They are cited by every doc,
-  comment and commit message, so a reordering moves the sequence and leaves the
-  numbers alone. Phases 0 to 7 were built in numeric order.
-- **The project ends at phase 8** (decided 2026-08-12, superseding a same-week
-  reorder that had put the deploy next). Phase 8 is Kubernetes locally, and it
-  is the last phase. Phase 10 (Cloud Run) and phase 11 (Terraform) are
-  *designed and costed, deliberately not executed*: the deployment is specified
-  in DESIGN.md §7 and priced in [docs/cost.md](./docs/cost.md), and running it
-  would mean attaching a card to a portfolio demo once trial credits expire.
-  The deliverable is the specification, not the URL. Say "designed, not built"
-  — never "in progress" — about anything in that category.
+- **Nothing is deployed, and nothing should be.** Two ways to run it: `docker
+  compose`, and a local `kind` cluster. The reasoning is recorded
+  in [docs/adr/05-kubernetes-locally-no-deployment.md](./docs/adr/05-kubernetes-locally-no-deployment.md)
+  and priced in [docs/future/cost.md](./docs/future/cost.md). If a change would
+  reintroduce a cloud dependency, it is out of scope.
 - **Claims about this project have to be checkable**, because the whole repo is
   built on stating what was measured and in which environment. Nothing is
   "deployed" until it is, load numbers travel with the machine that produced
   them, and the k6 figures are laptop figures. This rule has already had to
   correct a CV draft.
-- **The k6 script is written once, in phase 7, and re-run twice.** Phase 8 runs
-  it during a rolling update and a pod kill; phase 10 runs it smaller against
-  Cloud Run. Only phase 10 may make a capacity claim, because a local run
-  measures a laptop. A local run can still claim zero dropped requests during a
-  deploy, which is hardware-independent.
+- **There is one k6 script** (`load/`), run against compose and against the
+  cluster during a rolling update and a pod kill. No run may make a capacity
+  claim, because every run measures this laptop. What a local run can claim is zero dropped
+  requests during a rolling update, which is a property of the readiness probes
+  and is hardware-independent.

@@ -12,16 +12,17 @@ export const REQUEST_ID_HEADER = 'x-request-id';
 /**
  * Read the caller's identity in a downstream service.
  *
- * **Absent means anonymous, never "trust whatever arrived."** DESIGN.md §6 flags
+ * **Absent means anonymous, never "trust whatever arrived."** the overview §6 flags
  * this as the header-forgery mistake reached from the other direction: the
  * question bank and /stats are public, so `X-User-Id` is legitimately missing on
  * some requests, and a downstream service that treats missing as "skip the
  * check" is exactly as broken as one that trusts a forged value.
  *
  * The header is trustworthy *only* because the Gateway strips any inbound copy
- * before setting its own, and because Cloud Run's internal ingress means these
- * services are unreachable from the public internet (phase 10). Both halves are
- * required — either one alone leaves the header forgeable.
+ * before setting its own, and because only the Gateway is reachable from
+ * outside: under compose nothing else is published to a browser, and on the
+ * cluster only the Gateway has an Ingress. Both halves are required — either
+ * one alone leaves the header forgeable.
  */
 export function getUserId(req: FastifyRequest): string | null {
   const raw = req.headers[USER_ID_HEADER];

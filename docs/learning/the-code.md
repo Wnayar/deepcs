@@ -20,7 +20,7 @@ and come back to whatever stopped you.
 
 **Docker is a separate doc.** This one covers the code that runs inside the
 container. [`docker.md`](docker.md) covers the container itself —
-the `Dockerfile`, `docker-compose.yml`, and how both connect to Cloud Run.
+the `Dockerfile` and `docker-compose.yml`, and how a container is actually run.
 
 ---
 
@@ -614,7 +614,7 @@ your process to stop.
 Your services touch four corners of it, and all four are about the boundary
 between the process and whatever started it — reading config on the way in,
 being told to shut down, and reporting success on the way out. That boundary is
-exactly what Cloud Run interacts with, which is why these small things matter
+exactly what the orchestrator interacts with, which is why these small things matter
 more than they look.
 
 ## `process.env`
@@ -637,7 +637,7 @@ The operating system asks a process to stop by sending a **signal**.
 process.once('SIGTERM', () => { ... });
 ```
 
-- `SIGTERM` — "please stop." What Cloud Run and `docker stop` send. Catchable.
+- `SIGTERM` — "please stop." What Kubernetes and `docker stop` send. Catchable.
 - `SIGINT` — what Ctrl-C sends. Catchable.
 - `SIGKILL` — immediate termination. **Not** catchable; no code runs.
 
@@ -657,7 +657,7 @@ process.exit(1);   // failure
 
 `0` means success, anything else means failure. This is the contract every shell,
 CI runner and container orchestrator reads. For the Stats job it's the *entire*
-interface — Cloud Run Jobs decides whether to retry based on that number.
+interface — a job runner decides whether to retry based on that number.
 
 ## `process.hrtime.bigint()`
 
@@ -826,7 +826,7 @@ run().then(
 ```
 
 Call it, exit 0 on success, log and exit 1 on failure. The exit code is what
-Cloud Run Jobs reads to decide whether the run succeeded.
+a job runner reads to decide whether the run succeeded.
 
 ## `packages/shared/src/service.ts`
 
@@ -962,7 +962,7 @@ leave ten SIGTERM listeners on one process.
 }
 ```
 
-Cloud Run injects `PORT` and expects the container to honour it; the value in
+an orchestrator injects `PORT` and expects the container to honour it; the value in
 `SERVICES` is only the local default. Then bind all interfaces, and hand back
 both pieces via shorthand.
 

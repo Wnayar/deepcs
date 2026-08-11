@@ -2,7 +2,7 @@
 --
 -- Both columns land on the existing row rather than in tables of their own.
 -- `reveal_consents` could be a `session_consents` join table, but a session has
--- exactly two participants and always will (DESIGN.md scopes out group
+-- exactly two participants and always will (the overview scopes out group
 -- sessions), so the join table would buy normalisation nobody ever reads. An
 -- array of uids is the whole state: empty, one uid, or both.
 --

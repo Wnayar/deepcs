@@ -1,7 +1,7 @@
 import type Redis from 'ioredis';
 
 /**
- * Token-bucket rate limiting (DESIGN.md §5, ADR-08).
+ * Token-bucket rate limiting (the overview §5, ADR-08).
  *
  * Each client gets a bucket of N tokens; a request spends one; tokens refill at
  * a steady rate. Bursts are allowed, sustained flooding is not.
@@ -70,8 +70,8 @@ end
 redis.call('HSET', KEYS[1], 'tokens', tokens, 'ts', now)
 
 -- Expire after the time a full refill takes, so idle buckets do not accumulate
--- in Redis forever. Upstash bills by command and caps storage (§7), and an
--- unbounded key space for per-IP buckets is how that cap gets hit.
+-- in Redis forever. Redis holds every key in memory, and an unbounded key
+-- space for per-IP buckets is how a small instance runs out of it.
 redis.call('EXPIRE', KEYS[1], math.ceil(capacity / refill) + 1)
 
 local retry_after_ms = 0
@@ -122,9 +122,9 @@ export function createRateLimiter(redis: Redis): RateLimiter {
   /**
    * `defineCommand` registers the script once and calls it by SHA thereafter,
    * falling back to a full EVAL automatically if Redis has forgotten it — which
-   * happens after a restart, and on Upstash whenever a request lands on a node
-   * that has not seen it. Doing this by hand is the usual source of a rate
-   * limiter that works until the first failover.
+   * happens after a restart, and on any replica that has not seen the script
+   * before. Doing this by hand is the usual source of a rate limiter that works
+   * until the first failover.
    */
   redis.defineCommand('tokenBucket', { numberOfKeys: 1, lua: SCRIPT });
 

@@ -20,7 +20,7 @@ of it is lookup material. Pick the path that matches why you're here:
 | debug a container that won't start | Part 7 | as needed |
 | understand *why* the Dockerfile is shaped like that | Part 3 | 10 min |
 | decode one specific line you're stuck on | Part 2 (instructions) or Part 5 (line-by-line) | lookup |
-| know what phase 10 adds | Part 8 | 5 min |
+| know what Kubernetes adds | Part 8 | 5 min |
 
 Part 1 and the interview section are the only two that are worth reading straight
 through. They're written to stand alone — Part 1 gives you the model, the
@@ -74,7 +74,8 @@ separate machines, often days apart.
 
 **Registry** — a server that stores images so other machines can download them.
 `docker pull postgres:17-alpine` fetches from Docker Hub, the public default.
-Google's equivalent is **Artifact Registry**. Storage only; it never runs
+Google's equivalent is Artifact Registry, and AWS's is ECR. Storage only; a
+registry never runs
 anything.
 
 **Build context** — the directory you point `docker build` at. `docker build`
@@ -116,44 +117,41 @@ and Redis.
 Cloud.** Google never reads your Dockerfile, never runs `pnpm install`, never sees
 your TypeScript.
 
-The intended chain, once phase 10 exists:
+The chain, all of it on this machine:
 
-1. You push code. **CI builds** the six images on GitHub's runners.
-2. CI **pushes** them to **Artifact Registry**. Storage; nothing executes there.
-3. `gcloud run deploy` tells **Cloud Run**: *here is an image on that shelf, start
-   it.* Cloud Run pulls it and runs containers from it.
+1. **CI builds** the six images on GitHub's runners and proves each one boots.
+2. Locally, `docker compose up` builds and runs them.
+3. On the cluster, `kind load docker-image` puts a built image where the nodes
+   can see it, and Kubernetes starts containers from it.
 
-So "is it rebuilt on Google Cloud?" — no. The image is a finished artifact that
-already contains Node and every dependency. Cloud Run's job is to pull it and
-start it, and to start *more copies* when traffic rises — which works precisely
-because containers from one image share nothing.
+Nothing is rebuilt at run time. The image is a finished artifact that already
+contains Node and every dependency; the runtime's job is to start it, and to
+start *more copies* when load rises, which works precisely because containers
+from one image share nothing.
 
 ## Two environments, two halves of one file
 
 The Dockerfile has several **stages**, and local and production use different
 ones:
 
-| | Local development | Production (phase 10) |
+| | Development | The built image |
 |---|---|---|
-| Started by | `docker compose up` | Cloud Run |
+| Started by | `docker compose up` | Kubernetes, and CI's smoke test |
 | Dockerfile stage | `dev` | `runner` |
 | Contains | all source, pnpm, tsup, dev deps | only compiled `dist/` + prod deps |
 | Size (measured) | 583 MB | 251 MB |
 | Code updates | `src/` mounted live; `tsx watch` restarts on save | never — the image is immutable |
-| Postgres / Redis | containers on your laptop | managed (Neon / Upstash) |
-| Auth | Firebase emulator container | real Firebase |
 
-`docker-compose.yml` and the `dev` stage are local-only, forever. Only `runner`
-ships — which is why the Dockerfile ends with a stage that throws away the
-compiler and keeps just the output.
+The `dev` stage exists so that editing a file does not mean rebuilding an image.
+The `runner` stage is what everything else uses, which is why the Dockerfile
+ends by throwing away the compiler and keeping just the output.
 
 ## Where this repo actually is right now
 
 CI builds all six images and smoke-tests that each starts and answers
 `/health/ready` — or for Stats, that it exits 0. Then it stops. **Nothing is
-pushed anywhere and nothing is deployed yet**; steps 2 and 3 above are phase 10,
-deferred until there's a GCP project with a tested billing guard in front of it.
-Today you're looking at the "build it and prove it boots" half only.
+pushed to a registry and nothing is deployed**, by design: this project runs
+locally, under compose and on a `kind` cluster.
 
 ## How small the syntax actually is
 
@@ -477,7 +475,7 @@ no dev dependencies.
 
 The `runner` image adds **17 MB** on top of the base — that's your entire
 application and its production dependencies. The `dev` stage adds 349 MB, almost
-all of it tooling that only ever runs at build time. Cloud Run pulls the image on
+all of it tooling that only ever runs at build time. A cluster pulls the image on
 a cold start, so that difference is startup latency a user waits through.
 
 **Only the stages you need get built.** `docker build --target runner` builds
@@ -496,8 +494,8 @@ a shared network with the right dependencies and env vars" is not something you
 want to type by hand.
 
 Compose is for local development here. Nothing in
-[`docker-compose.yml`](../../docker-compose.yml) runs in production — Cloud Run
-takes that role in phase 10.
+[`docker-compose.yml`](../../docker-compose.yml) is what runs them here, and
+Kubernetes takes that role on the cluster.
 
 ## `services:` — each key is one container
 
@@ -913,7 +911,7 @@ x-service: &service
 The block all six services merge in. Every hostname here — `postgres`, `redis`,
 `firebase-auth` — is a service key resolved by Compose's DNS. Credentials are
 hardcoded because this database only ever exists on your laptop; the real ones
-arrive as Cloud Run secrets in phase 10.
+arrive as Kubernetes Secrets on the cluster.
 
 ```yaml
   postgres:
@@ -1242,66 +1240,53 @@ That's the invalidation rule from Part 3, visible.
 
 ---
 
-# Part 8 — What's coming
+# Part 8 — What Kubernetes adds
 
-**The big picture.** None of this is in the repo yet. It exists so that when
-phase 10 adds the deploy step, you recognise the shape. The key thing to
-understand now is the split: **images are built once, in CI, and merely started
-on Google Cloud.** Google Cloud never reads your Dockerfile.
-
-## The chain, end to end
-
-Currently [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) does the
-first half only. It builds each changed service's `runner` image with
-`push: false`, then `docker run`s it and checks `/health/ready` answers — or for
-Stats, that it exits 0. Then it stops. The comment at the bottom of that file is
-explicit that the rest is deliberately absent until there's a GCP project with a
-tested billing guard in front of it.
-
-The full chain will be:
-
-1. **Build**, in CI, on GitHub's machines. Six images. This part exists.
-2. **Tag** each one with its registry address and the commit SHA:
-   `asia-southeast1-docker.pkg.dev/<project>/deepcs/gateway:<sha>`. The registry
-   host is part of the image name — that's how `docker push` knows where to send
-   it.
-3. **Push** to **Artifact Registry**. Storage only; nothing runs.
-4. **Deploy**: `gcloud run deploy gateway --image <that address>`. Cloud Run
-   pulls the image and starts containers from it.
-
-So the answer to "is it rebuilt on Google Cloud" is no. It's built once, shipped
-as a finished artifact, and started. That portability is the entire reason
-containers exist — the cloud needs to know nothing about Node, pnpm, or your repo
-layout, only "start this image".
-
-## What Cloud Run does to your container
-
-Three things, and `the-code.md` Part 3 already covered the code side of
-each:
-
-- **Injects `PORT`** and expects you to listen on it. Hence
-  `process.env.PORT ? Number(...) : port` — the `SERVICES` value is only a local
-  default.
-- **Sends `SIGTERM`** before shutting an instance down, on deploys and on
-  scale-in. The handler in `service.ts` is what turns that into a clean shutdown
-  instead of dropped connections — and the PID 1 check at the end of Part 5 is
-  what confirms the signal actually reaches it.
-- **Reads the exit code** for Jobs. Stats runs as a Cloud Run Job, and 0 versus
-  non-zero is what decides whether it retries.
+Everything so far is one machine running containers directly. The cluster
+(phase 8) keeps the same images and changes who starts them.
 
 ## What replaces Compose
 
-Nothing, directly — and that's the thing to notice. Compose's jobs get taken over
-by different pieces: the network becomes service URLs and IAM; `environment:`
-becomes Cloud Run env vars and Secret Manager; `depends_on` has no equivalent at
-all, because Postgres and Redis become managed services (Neon, Upstash) that are
-simply already running. Health checks become Cloud Run's own probes against the
-same `/health/live` and `/health/ready` routes.
+`docker-compose.yml` has no equivalent as a single file. Each part of it maps to
+a different Kubernetes object, and that split is the actual lesson:
 
-The `dev` stage and `docker-compose.yml` stay local-only, forever. Only `runner`
-ships.
+| In compose | On the cluster |
+|---|---|
+| a service's `build` + `image` | a **Deployment**, which says "keep N copies of this image running" |
+| `ports:` | a **Service**, a stable address in front of whichever pods currently exist |
+| reaching another service by name | the same, because a Service name is a DNS name |
+| `environment:` | a **ConfigMap** for plain values, a **Secret** for credentials |
+| `healthcheck:` | **readiness** and **liveness probes**, and they mean different things |
+| `depends_on: service_healthy` | nothing. Pods start in any order and are expected to retry |
+| `restart: unless-stopped` | the default, and it is the Deployment doing it rather than the daemon |
 
----
+The last two are where the thinking is. Compose lets you say "start B only once
+A is healthy"; Kubernetes does not, because in a cluster A can vanish and come
+back at any moment, so every service has to tolerate its dependencies being
+absent rather than being sequenced around them. The code already assumes this:
+`/health/ready` reports a dependency being down instead of the process refusing
+to start.
+
+## The two probes, which are not the same check
+
+- **Liveness** answers "is this process wedged?" Failing it gets the container
+  killed and restarted.
+- **Readiness** answers "may traffic be routed here yet?" Failing it removes the
+  pod from its Service's endpoints, and nothing restarts.
+
+Conflating them is how a service that is merely still connecting to Postgres
+gets killed repeatedly instead of being given a moment. It is also the mechanism
+behind the one claim phase 8 exists to make: during a rolling update, a new pod
+receives no traffic until it reports ready, and the old pod is not removed until
+the new one does, so no request lands anywhere that cannot serve it.
+
+## Where the image comes from
+
+There is no registry in this setup. `kind load docker-image` copies an image
+you built locally into the cluster's nodes, which is enough because the nodes
+are containers on this same machine. A real deployment would push to a registry
+and have the nodes pull; that difference is one command, and it is the only
+place this setup diverges from a hosted one.
 
 # Explaining this in an interview
 
@@ -1312,7 +1297,7 @@ is 2–3 sentences; that's the right length for an answer.
 
 **"Why containers at all?"**
 The service needs a specific Node version and exact dependency versions. My
-laptop, CI, and Cloud Run are three different machines — installing on each gives
+laptop, CI, and a cluster node are three different machines — installing on each gives
 three subtly different environments. A container ships the filesystem *with* the
 app, so the same bits that passed CI are the bits that run in production.
 
@@ -1328,7 +1313,7 @@ The build stage needs pnpm, tsup, TypeScript and every dev dependency; the runti
 needs none of that. So the final stage starts from a clean base and copies in only
 the compiled `dist/` and production `node_modules`. Measured on my repo: the dev
 image is 583 MB, the shipping image is 251 MB — only 17 MB above the bare
-`node:24-alpine` base. That difference is cold-start latency on Cloud Run.
+`node:24-alpine` base. That difference is how long a new pod takes to be ready.
 
 **"Why copy the `package.json` files before the source code?"**
 Docker caches per layer, and invalidating one invalidates everything after it. If
@@ -1340,12 +1325,12 @@ the cached install.
 **"Why not build the image on Google Cloud?"**
 There's no reason to. The image is a finished, portable artifact — it already
 contains Node and every dependency. CI builds it once and pushes it to Artifact
-Registry; Cloud Run pulls it and starts it. Building in two places would mean the
+the cluster; the nodes start it. Building in two places would mean the
 thing I tested and the thing that ships were built separately, which defeats the
 point.
 
 **"How do you handle a deploy without dropping requests?"**
-Cloud Run sends `SIGTERM` before stopping an instance. The service catches it,
+Kubernetes sends `SIGTERM` before stopping a pod. The service catches it,
 stops accepting new connections, and lets in-flight requests finish before
 exiting. The subtlety is that the signal has to actually reach Node — if a shell
 sat in front of it as PID 1, busybox wouldn't forward the signal and the handler
@@ -1391,11 +1376,11 @@ decision, not an omission.
 - **Writing your own base image** from `FROM scratch`, and **distroless** images.
   `node:24-alpine` is the right trade for a long time.
 - **Multi-architecture builds** (`buildx`, `--platform`), unless you hit an
-  arm64-vs-amd64 mismatch between an Apple laptop and Cloud Run. Then it becomes
+  arm64-vs-amd64 mismatch between an Apple laptop and a cluster node. Then it becomes
   urgent and the fix is one flag.
 - **`docker network`, `docker volume`** as manual commands. Compose creates and
   names both for you.
-- **Kubernetes, Helm, Swarm.** Cloud Run is deliberately the thing that means you
+- **Helm, Swarm, operators.** Raw manifests are deliberately the thing that means you
   don't need them.
 - **Layer-squashing and image-size micro-optimisation.** The multi-stage split
   already got the large win.

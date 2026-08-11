@@ -1,13 +1,23 @@
-# What deploying this costs, from nothing
+# Cost exploration: what deploying this would have cost
 
-This assumes you know none of the vocabulary. Every term is defined where it
-first appears. Read it top to bottom once; the picture in Part 1 is what
-everything else refers back to.
+**This project is not deployed, and this document is why.** It is kept because
+the exploration is the useful part: it works out what a cloud deployment of this
+exact system would cost, which meters it would be billed on, and where the money
+would actually go. The decision it produced is recorded in the overview ADR-05.
 
-The short version, so you know where this is going: **the thing that costs money
-is time with a connection open, not the number of people using the app.** Why
-that is true takes about four pages to explain properly, and getting it wrong is
-what produces a surprise bill.
+It assumes you know none of the vocabulary. Every term is defined where it first
+appears. Read it top to bottom once; the picture in Part 1 is what everything
+else refers back to.
+
+The short version: **the thing that costs money is time with a connection open,
+not the number of people using the app.** That is a fact about how serverless
+platforms meter work, and it stays true whether or not anything is ever
+deployed. Why it is true takes about four pages to explain properly, and getting
+it wrong is what produces a surprise bill.
+
+Everything below is written in the present tense, as it was when the pricing was
+checked (2026-08-11 and 2026-08-12). Read it as "what would happen if this were
+deployed", not as a description of anything running.
 
 ---
 
@@ -565,7 +575,9 @@ something you can vet rather than trust. Prices checked against each vendor's
 own pricing page on 2026-08-12.
 
 Region matters throughout: `asia-southeast1` is a **Tier 2** Cloud Run region,
-and the free allowance is a spending discount valued at **Tier 1** rates.
+and the free allowance is a spending discount valued at **Tier 1** rates. The
+"our plan now" column describes the deployment as it was specified in the overview
+§7, not anything that exists.
 
 ## Google Cloud
 

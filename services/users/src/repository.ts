@@ -13,7 +13,7 @@ export interface UpsertResult {
   /**
    * True only when this call was the one that created the row.
    *
-   * This is the entire reason the upsert is written the way it is. DESIGN.md §5:
+   * This is the entire reason the upsert is written the way it is. The overview §5:
    * "there is no signup endpoint", so this flag is the only place
    * `user.signed_up` can be emitted from (phase 6). Get it wrong and the event
    * fires on every request and the sign-up count in /stats means nothing.
@@ -22,7 +22,7 @@ export interface UpsertResult {
 }
 
 /**
- * Lazy upsert (DESIGN.md §5).
+ * Lazy upsert (the overview §5).
  *
  * The client calls GET /users/me immediately after sign-in and this runs. The
  * `RETURNING` is load-bearing: `ON CONFLICT ... DO NOTHING` returns **no row**

@@ -29,7 +29,7 @@ app.get('/', async () => ({ service: 'users', phase: 1 }));
 app.get('/health/deps', deps);
 
 /**
- * The post-sign-in call (DESIGN.md §5). Creates the profile row on first sight
+ * The post-sign-in call (the overview §5). Creates the profile row on first sight
  * of a UID and returns it thereafter.
  *
  * **Ordering matters and is enforced here.** Matching validates a UID against

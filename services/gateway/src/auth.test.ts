@@ -123,7 +123,7 @@ describe('the production guard', () => {
   });
 
   it('refuses to construct a verifier with the emulator enabled in production', () => {
-    // DESIGN.md §7: the emulator issues UNSIGNED tokens, so this flag must be
+    // the overview §7: the emulator issues UNSIGNED tokens, so this flag must be
     // impossible to set in production. "Impossible" is enforced by refusing to
     // boot — a Gateway that started this way would accept tokens anyone could
     // forge in a text editor, and would look perfectly healthy doing it.

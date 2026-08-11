@@ -5,14 +5,14 @@ dist/
 # Catch every other .env variant; .env.example is the one committed template.
 .env.*
 !.env.example
-# Credential material. serviceAccountKey.json is the default filename the GCP
-# console gives a downloaded service account key — the realistic phase 6 risk.
+# Credential material, in case any is ever added. Nothing local needs a
+# certificate or a private key today.
 *.pem
 *.key
-serviceAccountKey.json
 *.log
 coverage/
 .DS_Store
+# The Auth emulator's local state and logs.
 .firebase/
 firebase-debug.log
 ui-debug.log

@@ -1,5 +1,5 @@
 /**
- * The six deployables (DESIGN.md §3) and the ports they listen on locally.
+ * The six deployables (the overview §3) and the ports they listen on locally.
  *
  * Stats is one image with two entrypoints, which is worth explaining because
  * §3 says flatly that it "can't be a server at all". That argument is about the
@@ -10,8 +10,8 @@
  * the `stats` schema and only `stats_svc` may read it (ADR-09).
  *
  * So: `job.ts` drains and exits, `index.ts` serves reads and scales to zero
- * like any other service. In Cloud Run that is one image deployed twice, once
- * as a job and once as a service.
+ * like any other service. That is one image run two ways: as a scheduled job,
+ * and as a long-lived server.
  */
 export const SERVICES = {
   gateway: { port: 8080 },

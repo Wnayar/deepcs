@@ -5,15 +5,15 @@ import { createRedisEventLog } from '@deepcs/shared/events';
 import { applyBatch } from './consumer.js';
 
 /**
- * Stats is a JOB, not a server (DESIGN.md §5, ADR-01).
+ * Stats is a JOB, not a server (the overview §5, ADR-01).
  *
  * There is no `listen()` here and there never will be. Its trigger is time, not
- * a request, and a scaled-to-zero Cloud Run *service* has no running process
- * for a timer to fire inside — so it cannot be a server at all. Cloud Scheduler
- * starts it every 5 minutes, it drains the event log, it exits.
+ * a request, and a service that is not running between requests has no process
+ * for a timer to fire inside — so it cannot be a server at all. A scheduler
+ * starts it, it drains the event log, it exits.
  *
- * The exit code is the contract: 0 tells Cloud Run Jobs the run succeeded,
- * anything else marks it failed and makes it retryable.
+ * The exit code is the contract: 0 tells whatever started it that the run
+ * succeeded, anything else marks it failed and makes it retryable.
  */
 const log = createJobLogger('stats');
 

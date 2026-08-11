@@ -3,8 +3,8 @@ node_modules/
 pnpm-lock.yaml
 
 # Prose. Prettier pads every markdown table cell to align columns, so editing
-# one row rewrites the whole block and the diff stops being readable. Same
-# reason DESIGN.md was excluded from the start.
-DESIGN.md
+# one row rewrites the whole block and the diff stops being readable. The
+# overview moved into docs/, which is covered by the directory below.
 docs/
 CLAUDE.md
+TODO.md

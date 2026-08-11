@@ -22,7 +22,7 @@ const pool = createPool();
 const redis = createRedis();
 const queue = createQueue(redis);
 // Matching owns the queue and the session lifecycle, so four of the six domain
-// events are emitted here (DESIGN.md §5).
+// events are emitted here (the overview §5).
 const events = createRedisEventLog(redis);
 
 // Both, and neither is optional here: the queue *is* Redis, and the session
@@ -231,8 +231,8 @@ app.post('/match/join', async (req, reply) => {
  *
  * It replaced polling. Being matched is caused by somebody else's request, and
  * HTTP gives a server no way to speak first, so a client that wants to know had
- * to keep asking. Asking every few seconds kept Neon's compute awake and every
- * service warm for people who were doing nothing, and slowing it down to fix
+ * to keep asking. Asking every few seconds kept the database awake and every
+ * service busy for people who were doing nothing, and slowing it down to fix
  * that meant learning about your partner up to twenty seconds late while they
  * sat alone in the editor. Neither problem exists here: nothing is spent while
  * nothing happens, and the message arrives when it arrives.

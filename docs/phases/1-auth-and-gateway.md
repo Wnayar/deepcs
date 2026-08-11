@@ -1,6 +1,6 @@
 # Phase 1 — Auth, the Gateway, and the schema boundary
 
-**What this phase proves** (DESIGN.md §10):
+**What this phase proves** (the overview §10):
 
 - an emulator token → a protected call succeeds
 - a tampered or expired token → 401
@@ -257,9 +257,10 @@ design* — be that person. Deleting it unconditionally, before any other work,
 means the only way the header exists downstream is because the Gateway put it
 there.
 
-That guarantee has **two** halves and both are required. The other is Cloud Run's
-internal ingress (phase 6), which makes the four downstream services unreachable
-from the public internet. Either half alone leaves the header forgeable.
+That guarantee has **two** halves and both are required. The other is that only
+the Gateway is reachable from outside: under compose nothing else publishes a
+port a browser can use, and on the cluster only the Gateway has an Ingress while
+the rest are ClusterIP Services. Either half alone leaves the header forgeable.
 
 The other side of the same idea lives in
 [`headers.ts:26`](../../packages/shared/src/headers.ts#L26): downstream, absent
@@ -281,7 +282,7 @@ Emulator mode therefore skips the signature and checks **everything else**:
 and the presence of `sub`. Keeping those checks on the local path is what stops a
 bug in the claim logic hiding until deploy day.
 
-Because that path accepts tokens anyone can forge in a text editor, DESIGN.md §7
+Because that path accepts tokens anyone can forge in a text editor, the overview §7
 requires it be **impossible in production**. Impossible is enforced by refusing
 to boot:
 
@@ -372,7 +373,7 @@ maths entirely.
 
 **Buckets expire** →
 [`rate-limit.ts:75`](../../services/gateway/src/rate-limit.ts#L75). Per-IP
-buckets are an unbounded key space, and Upstash caps both storage and commands
+buckets are an unbounded key space, and Redis holds them in memory
 per month (§7).
 
 **The limiter fails open** →
@@ -395,7 +396,7 @@ became clear the limiter did not actually work without them:
 
 - **`trustProxy: 1`** in
   [`createService`](../../packages/shared/src/service.ts). Fastify's `req.ip`
-  is the socket's peer address, which behind Cloud Run is Google's front end
+  is the socket's peer address, which behind a proxy is the proxy
   rather than the caller — so *every* anonymous request would share one bucket
   and one client could lock out everyone. It reads `X-Forwarded-For` instead.
   `1` and not `true`: whatever sits in front appends to any header the caller
@@ -413,7 +414,7 @@ became clear the limiter did not actually work without them:
 [`rate-limit.ts:126`](../../services/gateway/src/rate-limit.ts#L126).
 `defineCommand` registers the script once and calls it by SHA thereafter, falling
 back to a full `EVAL` if Redis has forgotten it — which happens after a restart,
-and on Upstash whenever a request lands on a node that has not seen it. Doing
+and on Redis whenever a request lands on a node that has not seen it. Doing
 this by hand is the usual source of a rate limiter that works until the first
 failover.
 
@@ -527,7 +528,7 @@ falling through to `public`.
 would have been the one line silently undoing everything in this section, which
 is why the anchor comment says so explicitly.
 
-**Why this is phase 1 and not later.** DESIGN.md §10 answers it: *"a boundary
+**Why this is phase 1 and not later.** the overview §10 answers it: *"a boundary
 that isn't enforced from the first table will be violated by the third, and
 retrofitting grants means untangling queries that already cross."*
 
@@ -651,7 +652,7 @@ would only prove it agrees with itself.
 Stated so a green demo does not imply more than it covers.
 
 - **Internal ingress and invoker IAM** are listed in §10's phase 1 row but are
-  Cloud Run settings, and nothing is deployed until phase 10. They land there.
+  cluster settings, and nothing is deployed at all. They land in `k8s/`.
   Until then, the "downstream services are unreachable directly" half of the
   header-forgery guarantee is **not** in force — locally, ports 8081–8084 are
   open on your machine.

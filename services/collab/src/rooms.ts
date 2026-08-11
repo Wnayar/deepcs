@@ -96,7 +96,7 @@ export const SESSION_ENDED_CODE = 4001;
 
 /**
  * Builds the scaffold as a Yjs update: one heading per question part with the
- * part's own text under it, plus "## Our answer" and "## Scratch" (DESIGN.md:
+ * part's own text under it, plus "## Our answer" and "## Scratch" (the overview:
  * the scaffold lets two people work in parallel without colliding, and
  * "## Scratch" doubles as the chat channel). It all lives in a single shared
  * `Y.Text` named "content" — phase 5 binds Monaco to that field via y-monaco.
@@ -157,7 +157,7 @@ export interface RoomManager {
   attachSocket(socket: WebSocket, sessionId: string, questionId: string): Promise<boolean>;
 
   /** Snapshots every room this manager currently holds — the SIGTERM leg of
-   * DESIGN.md's "every 30s, on disconnect, and before SIGTERM". */
+   * The overview's "every 30s, on disconnect, and before SIGTERM". */
   snapshotAllRooms(): Promise<void>;
 
   /**

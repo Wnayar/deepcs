@@ -10,7 +10,7 @@ import * as lib0encoding from 'lib0/encoding';
 import * as syncProtocol from 'y-protocols/sync';
 
 /**
- * The load run of DESIGN.md §8: ramp real collaboration sockets onto Collab up
+ * The load run of the overview §8: ramp real collaboration sockets onto Collab up
  * to the 250-per-instance ceiling §7 configures, hold them there, and measure
  * how long an edit takes to travel from one member of a pair to the other.
  *

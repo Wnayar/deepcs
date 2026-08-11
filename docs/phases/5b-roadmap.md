@@ -1,7 +1,7 @@
 # Phase 5b — The roadmap, and fixing content at the source
 
 *Numbered 5b because it extends phase 5's frontend rather than following it. The
-numbered phases in DESIGN.md §10 have since been reordered, but this stays 5b:
+numbered phases in the overview §10 have since been reordered, but this stays 5b:
 the letter says "more of phase 5", which is what it is, and that remains true
 whatever the numbers after it do.*
 
@@ -301,9 +301,9 @@ wrong in instructive ways.
 
 **Polling from the shell.** It ran whenever anyone was signed in without a
 session. At four seconds that is 21,600 requests for a tab left open overnight,
-but the request count is the small half: Neon suspends idle compute and Cloud Run
-scales to zero, and a request every four seconds stops both. One idle reader was
-an always-on database and two always-on services, billed all month, for nobody.
+but the request count is the small half: an idle database suspends and an idle
+service has nothing to do, and a request every four seconds stops both. One idle
+reader kept a database and two services awake indefinitely, for nobody.
 
 **Polling, but bounded.** Ask only while queued, only while the tab is in front
 of a reader, and on a widening gap that gives up after fifteen minutes. That

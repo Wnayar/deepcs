@@ -1,6 +1,6 @@
 -- Seed content for questions.bank.
 --
--- Question authoring is out of scope for the whole project (DESIGN.md), so the
+-- Question authoring is out of scope for the whole project (the overview), so the
 -- bank is seeded once here rather than written through an API. Content is
 -- adapted from a personal CS-fundamentals study repo. Each notes file closes
 -- with its questions already paired to answers — "Interview Questions

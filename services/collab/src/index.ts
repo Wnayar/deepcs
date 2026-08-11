@@ -160,7 +160,7 @@ app.get(
 app.addHook('onClose', async () => {
   // Every room this instance is still holding gets one last snapshot before
   // the process exits — the SIGTERM leg of "every 30s, on disconnect, and
-  // before SIGTERM" (DESIGN.md). Best-effort: a failed snapshot here is a
+  // before SIGTERM" (the overview). Best-effort: a failed snapshot here is a
   // window of lost edits, not a crash.
   await rooms.snapshotAllRooms();
   await pool.end();
