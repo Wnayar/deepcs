@@ -73,7 +73,7 @@ CI and local quietly diverge.
 ## D5 — Region
 
 Withdrawn. It asked which cloud region to deploy into, and the answer turned out
-to be none: the system runs locally (DESIGN.md ADR-05), so there is no region to
+to be none: the system runs locally (the overview ADR-05), so there is no region to
 pick, no managed database to place, and no latency-to-users tradeoff to make.
 
 ## What I'll build while you do that

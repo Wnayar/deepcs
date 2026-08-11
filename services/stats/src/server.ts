@@ -8,7 +8,7 @@ import { readSummary, readStats } from './repository.js';
 /**
  * The read side of Stats, and the second entrypoint of this image.
  *
- * DESIGN.md §3 says Stats "can't be a server at all", and that argument is
+ * the overview §3 says Stats "can't be a server at all", and that argument is
  * right about the thing it is arguing: a timer cannot fire inside a service
  * that has scaled to zero, so *draining the log* has to be a job. It does not
  * follow that Stats can have no HTTP surface. Serving a summary is

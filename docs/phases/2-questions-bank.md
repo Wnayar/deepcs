@@ -1,6 +1,6 @@
 # Phase 2 — The question bank
 
-**What this phase proves** (DESIGN.md §10):
+**What this phase proves** (the overview §10):
 
 - the bank can be browsed and read solo — list, filter, search, cursor-paginate, get by id
 - repeat reads hit the cache — visible on the wire, not just faster
@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS questions.bank (
 CREATE INDEX IF NOT EXISTS bank_tags_idx ON questions.bank USING GIN (tags);
 ```
 
-**No `topic` column.** DESIGN.md's row shape is `parts[]`, `reference_md`,
+**No `topic` column.** The overview's row shape is `parts[]`, `reference_md`,
 `tags text[]` (GIN-indexed), `difficulty` — filtering is entirely through
 `tags`. A question's topic is just its first, most general tag — `os`,
 `networking`, `databases`, `oop`, `system-design`, `security`, `debugging`,
@@ -137,7 +137,7 @@ const SUMMARY_COLUMNS = 'id, title, difficulty, parts, tags, created_at';
 
 Every query on the public read path — `listQuestions` and `getQuestion` —
 selects exactly this list. `reference_md` isn't filtered out after the fact;
-it's never fetched from Postgres in the first place. DESIGN.md is explicit
+it's never fetched from Postgres in the first place. The overview is explicit
 about why: the reference answer is released only to Matching, over the
 internal network, once Matching has verified both participants consented to
 reveal it (ADR-06) — and that consent flow still doesn't exist: phase 3
@@ -165,7 +165,7 @@ than requested; if that extra row shows up, its id becomes `nextCursor` and
 it's trimmed from the page. No separate `COUNT` query, no "is there a next
 page" flag to keep in sync by hand.
 
-**Why `ILIKE` and not a full-text index.** DESIGN.md doesn't specify the
+**Why `ILIKE` and not a full-text index.** The overview doesn't specify the
 search mechanism, and the bank is 27 rows. A `tsvector` GIN index is the
 right answer at scale; at this scale it's solving a problem this dataset
 doesn't have. Worth revisiting if question authoring ever ships and the bank
@@ -177,7 +177,7 @@ grows past a few hundred rows.
 
 📄 [`packages/db/migrations/005_questions_seed.sql`](../../packages/db/migrations/005_questions_seed.sql)
 
-Question authoring is out of scope for this project (DESIGN.md) — there's no
+Question authoring is out of scope for this project (the overview) — there's no
 endpoint that writes a row into `questions.bank`, ever. So the bank has to be
 seeded once, by hand, the same way the schema itself is: a numbered migration
 file, applied forward, never edited in place after it's run anywhere.
@@ -195,7 +195,7 @@ onto this bank's shape: **the questions become `parts[]`, the answers become
 `reference_md`.** 27 rows across 9 topics.
 
 This is why every seeded question is multi-part rather than a single Q&A
-pair: DESIGN.md's domain is "a bank of multi-part CS fundamentals
+pair: the overview's domain is "a bank of multi-part CS fundamentals
 questions," and phase 4's Collab doc is seeded from `parts[]` — a
 single-question row would give Collab nothing to scaffold.
 
@@ -263,7 +263,7 @@ export async function cached<T>(redis, key, ttlSeconds, compute): Promise<CacheR
 ```
 
 Wired into `GET /questions` only — `GET /questions/:id` is a single indexed
-primary-key lookup, cheap enough that DESIGN.md doesn't ask for it to be
+primary-key lookup, cheap enough that the overview doesn't ask for it to be
 cached, and adding it would be scope the phase doesn't need.
 
 **The cache key is the filter set.** `` `questions:list:${JSON.stringify(filters)}` `` —
@@ -273,7 +273,7 @@ can't go stale for long by accident, long enough that repeat demo traffic
 visibly hits it.
 
 **The hit is surfaced, not just felt.** `index.ts` sets `X-Cache: HIT` or
-`X-Cache: MISS` on every `GET /questions` response. DESIGN.md's phase 2
+`X-Cache: MISS` on every `GET /questions` response. The overview's phase 2
 demoable claim is literally "cache hits visible" — a header is the only way
 that's actually true for someone running the demo, as opposed to just being
 faster.
@@ -285,7 +285,7 @@ faster.
 Stated so a green demo doesn't imply more than it covers — same reasoning as
 phase 1's Part 7.
 
-- **No browser UI.** DESIGN.md's phase 2 row says "public bank UI," but phase
+- **No browser UI.** The overview's phase 2 row says "public bank UI," but phase
   5 is where the actual React app (including the question list) gets built,
   and there's no frontend package anywhere in this repo yet. Building one now
   would mean standing up bundler/dev-server infrastructure that phase 5

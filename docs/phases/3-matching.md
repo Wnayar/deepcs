@@ -1,6 +1,6 @@
 # Phase 3 — Matching
 
-**What this phase proves** (DESIGN.md §10):
+**What this phase proves** (the overview §10):
 
 - two users who join with the same topic and difficulty get matched, and a session row exists for them
 - a Users outage fails the join cleanly — no half-created queue entry or session, not a corrupted state
@@ -124,7 +124,7 @@ needs them — this repo's migrations are additive, never edited in place
 
 Each combination gets its own Redis key — `match:queue:os:hard`,
 `match:queue:networking:easy`, and so on. "Filter by compatible topic and
-difficulty" (DESIGN.md's phrasing for what Matching does on join) happens for
+difficulty" (the overview's phrasing for what Matching does on join) happens for
 free this way: a user can only ever be matched with someone in the exact same
 queue, because there's no other queue to look in.
 
@@ -227,7 +227,7 @@ response is `waiting`.
 **Crash recovery, named explicitly rather than hidden.** The claim (Redis)
 and the session row (Postgres) are two different systems with no transaction
 spanning them. If Matching crashed between the two, a claimed partner would
-be out of the queue with no session — stuck. DESIGN.md's answer, and the one
+be out of the queue with no session — stuck. The overview's answer, and the one
 implemented here, is client-driven: a client that hasn't heard back within
 about 10 seconds of joining calls `GET /match/status`. If that comes back
 `none`, the client just calls `/match/join` again. Because joining is
@@ -244,13 +244,13 @@ straight from Postgres), `waiting` (still in the Redis queue), or `none`
 
 # Part 5 — What this phase deliberately did not build
 
-- **No consent or reveal endpoint.** DESIGN.md says Matching "owns... the
+- **No consent or reveal endpoint.** The overview says Matching "owns... the
   consent state behind the reveal rule," but nothing calls that yet — the
   reveal UI doesn't exist until phase 5. Building it now would mean guessing
   at the caller's needs; it's cheaper to add when there is one. *(Built in
   phase 5, once there was a real caller: `POST /match/sessions/:id/reveal`.)*
 - **Nothing subscribes to the match-event pub/sub channel.** `index.ts`
-  publishes to `match:session:{id}` on every match, per DESIGN.md's design,
+  publishes to `match:session:{id}` on every match, per the overview's design,
   but no consumer exists in this phase. It's there so Collab or a future
   live-status channel has something to listen for without this route changing
   later. *(Phase 4 update: Collab turned out not to need it — a client learns

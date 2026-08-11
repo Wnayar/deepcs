@@ -42,12 +42,12 @@ The other two phase-0 docs, so you know which is which:
 | [`.npmrc`](../../.npmrc) | Two pnpm settings. `auto-install-peers=true` installs peer dependencies rather than warning about them. |
 | [`tsconfig.base.json`](../../tsconfig.base.json) | The TypeScript compiler settings every package extends. `strict` plus `noUncheckedIndexedAccess` (indexing an array gives you `T \| undefined`, because `arr[5]` on a 3-element array really is undefined). |
 | [`eslint.config.js`](../../eslint.config.js) | Lint rules, including a block declaring Node globals for the plain-JS migration runner, which never goes through TypeScript. |
-| [`.prettierrc.json`](../../.prettierrc.json) / [`.prettierignore`](../../.prettierignore) | Formatting. `DESIGN.md` is excluded — Prettier reflows markdown tables and mermaid blocks in ways that make diffs unreadable. |
+| [`.prettierrc.json`](../../.prettierrc.json) / [`.prettierignore`](../../.prettierignore) | Formatting. `the overview` is excluded — Prettier reflows markdown tables and mermaid blocks in ways that make diffs unreadable. |
 | [`.gitignore`](../../.gitignore) | Keeps `node_modules/`, `dist/` and **`.env`** out of git. That third one is the one that matters: `.env` is where any credential you add would live. |
 | [`.dockerignore`](../../.dockerignore) | Keeps the same things out of the **build context** — the tarball of your working directory that Docker uploads to the daemon before building. Without it you'd ship `node_modules` and `.env` into the build. |
 | [`.env.example`](../../.env.example) | The template you copy to `.env`. Every key is documented with which phase starts needing it. Commented-out lines are phase-6 things you'll collect during cloud setup. |
-| [`README.md`](../../README.md) | Four lines, pointing at DESIGN.md. Phase 10 turns this into the real one with the load number and demo GIF. |
-| [`DESIGN.md`](../../DESIGN.md) | 61 KB. The architecture and the reasoning. Everything else in the repo cites it by section — `§3` is the six-deployable split, `§5` the per-service specs, `§6` cross-cutting concerns, `§7` deployment and cost. |
+| [`README.md`](../../README.md) | Four lines, pointing at the overview. Phase 10 turns this into the real one with the load number and demo GIF. |
+| [`the overview`](../../the overview) | 61 KB. The architecture and the reasoning. Everything else in the repo cites it by section — `§3` is the six-deployable split, `§5` the per-service specs, `§6` cross-cutting concerns, `§7` deployment and cost. |
 
 **Look closer — [the catalog](../../pnpm-workspace.yaml#L15).** Seven
 `package.json` files declare `"fastify": "catalog:"` instead of a version
@@ -75,7 +75,7 @@ in [`0-review.md`](../reviews/0-review.md#L206): an esbuild compromise now reach
 | File | What it does |
 |---|---|
 | [`src/services.ts`](../../packages/shared/src/services.ts) | 18 lines, and the source of truth for "what are the six deployables". A frozen object of names → local ports. `stats: { port: null }` is the interesting entry — it has no port because it isn't a server. |
-| [`src/service.ts`](../../packages/shared/src/service.ts) | `createService()`. The four things DESIGN.md §6 requires of every HTTP service, implemented once so no service can skip one. Deep-dived below. |
+| [`src/service.ts`](../../packages/shared/src/service.ts) | `createService()`. The four things the overview §6 requires of every HTTP service, implemented once so no service can skip one. Deep-dived below. |
 | [`src/logger.ts`](../../packages/shared/src/logger.ts) | `createJobLogger()`. The same log *shape* for Stats, which has no Fastify instance to get a logger from. |
 | [`package.json`](../../packages/shared/package.json) | Three **subpath exports** and deliberately no barrel. This is load-bearing — see the bundling deep-dive. |
 | [`tsconfig.json`](../../packages/shared/tsconfig.json) | Four lines: extend the base, compile `src`. Identical in all seven packages. |

@@ -1,7 +1,7 @@
 import type Redis from 'ioredis';
 
 /**
- * Token-bucket rate limiting (DESIGN.md §5, ADR-08).
+ * Token-bucket rate limiting (the overview §5, ADR-08).
  *
  * Each client gets a bucket of N tokens; a request spends one; tokens refill at
  * a steady rate. Bursts are allowed, sustained flooding is not.

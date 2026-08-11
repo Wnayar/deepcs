@@ -12,7 +12,7 @@ export const REQUEST_ID_HEADER = 'x-request-id';
 /**
  * Read the caller's identity in a downstream service.
  *
- * **Absent means anonymous, never "trust whatever arrived."** DESIGN.md §6 flags
+ * **Absent means anonymous, never "trust whatever arrived."** the overview §6 flags
  * this as the header-forgery mistake reached from the other direction: the
  * question bank and /stats are public, so `X-User-Id` is legitimately missing on
  * some requests, and a downstream service that treats missing as "skip the

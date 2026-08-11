@@ -1,6 +1,6 @@
 # Phase 1 — Auth, the Gateway, and the schema boundary
 
-**What this phase proves** (DESIGN.md §10):
+**What this phase proves** (the overview §10):
 
 - an emulator token → a protected call succeeds
 - a tampered or expired token → 401
@@ -282,7 +282,7 @@ Emulator mode therefore skips the signature and checks **everything else**:
 and the presence of `sub`. Keeping those checks on the local path is what stops a
 bug in the claim logic hiding until deploy day.
 
-Because that path accepts tokens anyone can forge in a text editor, DESIGN.md §7
+Because that path accepts tokens anyone can forge in a text editor, the overview §7
 requires it be **impossible in production**. Impossible is enforced by refusing
 to boot:
 
@@ -528,7 +528,7 @@ falling through to `public`.
 would have been the one line silently undoing everything in this section, which
 is why the anchor comment says so explicitly.
 
-**Why this is phase 1 and not later.** DESIGN.md §10 answers it: *"a boundary
+**Why this is phase 1 and not later.** the overview §10 answers it: *"a boundary
 that isn't enforced from the first table will be violated by the third, and
 retrofitting grants means untangling queries that already cross."*
 

@@ -1,7 +1,7 @@
 import { createRemoteJWKSet, decodeJwt, jwtVerify, type JWTPayload } from 'jose';
 
 /**
- * Firebase ID token verification (DESIGN.md §5, Gateway).
+ * Firebase ID token verification (the overview §5, Gateway).
  *
  * Verified with `jose` against Google's published JWKS rather than with the
  * Firebase Admin SDK, deliberately: verification needs only public keys, so this
@@ -61,7 +61,7 @@ export function createVerifier({ projectId, emulatorHost }: VerifierOptions) {
   }
 
   /**
-   * The guard DESIGN.md §7 asks for: "the emulator issues UNSIGNED tokens, so
+   * The guard the overview §7 asks for: "the emulator issues UNSIGNED tokens, so
    * this flag must be impossible to set in production."
    *
    * Impossible is enforced by refusing to boot. A Gateway that started in

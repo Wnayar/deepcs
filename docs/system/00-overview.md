@@ -1,35 +1,25 @@
-# DeepCS — Design Doc
+# How the system works
 
-> A deliberately lean, production-grade web backend: **real-time collaboration,
-> microservices + gateway, auth, rate limiting, and Kubernetes locally, with a
-> cloud deploy last.**
+DeepCS is a CS-fundamentals question bank with real-time collaborative solving:
+practise alone, or get matched with someone and work through a question together
+in a shared editor.
 
-**Repo description:** CS fundamentals question bank with real-time
-collaborative solving. Practice solo or get matched with someone.
+This page is the whole system in one place — what the six services are, how a
+request travels through them, and what each one owns. The decisions behind the
+shape are in [`../adr/`](../adr/), one file each. It runs locally, under
+`docker compose` and on a local Kubernetes cluster; nothing is deployed.
 
 ---
 
-## How to read this doc
+## How to read this page
 
-This is a learning project with a real deploy, so some choices optimise for the
-product and some optimise for what I wanted to understand. Rather than blur the
-two, every non-obvious decision carries one of three tags:
+Some things here are built and some are deliberately not, and the line between
+them is one rule: **build what has a concurrency or distributed-systems problem
+inside it; buy what is risk without insight.** That is why identity is Firebase's
+job and the gateway is hand-written — opposite answers from the same test.
 
-| Tag | Meaning |
-|---|---|
-| **[bought]** | Deliberately not built. There's no interesting problem inside it, so paying for it is the correct engineering call, not a shortcut. |
-| **[built · learning]** | A mature off-the-shelf option exists and is what I'd use commercially. Built here because the problem underneath it is one I wanted to hit directly, and configuring a product hides exactly that problem. |
-| **[detour · learning]** | Built, run, and then deliberately **not kept in production**. Exists in the repo as evidence of the work, not as part of the running system. |
-
-Untagged decisions are ordinary product choices with no build-vs-buy tension.
-
-The rule behind every tag: **build what has a concurrency or distributed-systems
-problem inside it; buy what is risk without insight.** That's the line applied
-consistently below — it's why auth is bought (ADR-04) and the gateway is built
-(ADR-08), which are opposite answers from the same test.
-
-Short *Why not X* notes appear inline throughout. The nine decisions big enough
-to need full context, alternatives, and accepted tradeoffs are ADRs (§9).
+Where a choice had a defensible alternative, the reasoning lives in
+[`../adr/`](../adr/) rather than here. Short *Why not X* notes appear inline.
 
 ---
 
@@ -42,10 +32,10 @@ to need full context, alternatives, and accepted tradeoffs are ADRs (§9).
   one I'd defend as genuinely difficult.**
 - A genuinely distributed system: **six independently deployable units** behind a
   **[built · learning]** gateway, with service-to-service authentication, no
-  shared tables, and no transaction spanning a service boundary (ADR-01).
+  shared tables, and no transaction spanning a service boundary ([decision 1](../adr/)).
 - Federated auth done properly **[bought]**: Firebase Auth issues the tokens,
   the gateway verifies them against Google's public keys and holds no credential
-  that could mint one (ADR-04).
+  that could mint one ([decision 4](../adr/)).
 - An event-driven pipeline: services append domain events (facts like "match
   created", recorded as data) to a replayable log; a scheduled job consumes them
   into session summaries and live stats — which is where at-least-once delivery
@@ -168,7 +158,7 @@ or Redis.
 | 1 | **Gateway** | nothing (stateless) | **Position.** A cross-cutting enforcement point has to sit *in front of* what it protects. This would be true even if its scaling profile matched everything else exactly. |
 | 2 | **Users** | profile rows keyed by `firebase_uid` | One capability, one owner. Small and stable — it will change less than anything else here. |
 | 3 | **Questions** | question bank, tags, full-text index, `reference_md` | Read-heavy and cacheable in a way nothing else is; also the only service holding answer keys, so a narrower blast radius is worth something. |
-| 4 | **Matching** | queue state, pair claim, session rows, consent | A hard concurrency problem of its own: two users joining at the same instant race for the same partner, so the pair claim has to be atomic (ADR-03). |
+| 4 | **Matching** | queue state, pair claim, session rows, consent | A hard concurrency problem of its own: two users joining at the same instant race for the same partner, so the pair claim has to be atomic ([decision 3](../adr/)). |
 | 5 | **Collab** | live Yjs docs, snapshots | **Different scaling trigger and different failure mode.** One WebSocket occupies a concurrency slot for 20 minutes, so it needs the opposite concurrency and timeout settings from every other service, and those are per-service (§7). This boundary is forced by the workload, not chosen. |
 | 6 | Event pipeline: `emitEvent` → `events` stream (behind the `EventLog` interface); idempotent **Stats** consumer → summaries + aggregates; the job run on a schedule | end a session → summary renders; `/stats` shows real counts |
 
@@ -184,7 +174,7 @@ this design did exactly that. They're kept separate for **independent
 deployability and one clear owner per capability**, and because operating a
 genuinely distributed system — service-to-service auth, validation across a
 boundary, no cross-service transaction — is a large part of what this project
-exists to teach. ADR-01 states the costs that buys and names the condition under
+exists to teach. decision 1 states the costs that buys and names the condition under
 which they'd merge back.
 
 *Why not a monolith?* Collab alone rules it out: one open WebSocket holds a
@@ -204,28 +194,28 @@ see §5.
 |-------|--------|-----|
 | All services | TypeScript + Fastify (Node web framework) | One language across six deployables + the frontend = fast solo iteration, and shared types across service boundaries, which matters much more now that boundaries exist. *Not Express:* Fastify has JSON-schema validation and a real plugin/encapsulation model built in, and is meaningfully faster. *Not NestJS:* heavy structure earns its keep on a team. |
 | Frontend | React + Vite (build tool) + TS, with `react-router` and `marked` | Minimal, just enough to demo; Yjs bindings for React editors are mature. *Not Next.js:* SSR buys nothing for an authenticated single-page editor and adds a server to deploy where a static bundle on a CDN costs nothing. `react-router` arrived once there were six screens: navigating by React state meant the whole site lived at one address, so the browser Back button left it entirely and no lesson could be linked to. `marked` renders the seeded lesson markdown, and needs no sanitizer because that markdown is seeded by a migration and no route writes it. |
-| Auth | Firebase Auth (email/password) **[bought]** | Identity is a solved, security-critical problem with no design insight left in it; Google's abuse detection and key rotation beat anything hand-rolled. *Not self-hosted:* ADR-04. Free at this scale. |
-| DB access | `pg` driver + hand-written parameterized SQL; migrations as numbered `.sql` files (ADR-10) | No schema DSL on the critical path, and ADR-09's per-schema grants stay literal SQL. *Not Drizzle:* deferred, not rejected — it is item 1 in the additive backlog (§10). |
-| Database | PostgreSQL — one instance, schema per service | Relational data, plus built-in tag filtering (`text[]` + GIN index) and full-text search (`tsvector`), so no separate search engine. *Not database-per-service:* ADR-09 — it would cost cross-service atomicity and force a saga. *Not Mongo:* the data is relational. |
+| Auth | Firebase Auth (email/password) **[bought]** | Identity is a solved, security-critical problem with no design insight left in it; Google's abuse detection and key rotation beat anything hand-rolled. *Not self-hosted:* decision 4. Free at this scale. |
+| DB access | `pg` driver + hand-written parameterized SQL; migrations as numbered `.sql` files ([decision 10](../adr/)) | No schema DSL on the critical path, and decision 9's per-schema grants stay literal SQL. *Not Drizzle:* deferred, not rejected — it is item 1 in the additive backlog (the backlog). |
+| Database | PostgreSQL — one instance, schema per service | Relational data, plus built-in tag filtering (`text[]` + GIN index) and full-text search (`tsvector`), so no separate search engine. *Not database-per-service:* decision 9 — it would cost cross-service atomicity and force a saga. *Not Mongo:* the data is relational. |
 | Cache/queue/pubsub | Redis | One dependency covering five jobs: match queue, rate-limit state, cross-instance pub/sub, event stream, question-bank cache. Split from Postgres by **access pattern** (ephemeral shared state vs durable relational), not by service. |
-| Real-time | WebSockets + Yjs (CRDT) | Concurrent edits merge without a central server ordering them (ADR-02). *Not SSE or polling:* one-directional, or too slow for ~100 ms keystroke echo. *Not Liveblocks/PartyKit:* they'd host the hard part, and the hard part is the project. |
-| Event log | Redis Streams | Replayable domain-event log feeding summaries/stats, behind one `EventLog` interface so a second adapter is a swap rather than a rewrite. *Not Kafka:* an always-on broker for one stream of a few events a minute, though a Kafka adapter behind the same interface is in the backlog (§10). |
+| Real-time | WebSockets + Yjs (CRDT) | Concurrent edits merge without a central server ordering them ([decision 2](../adr/)). *Not SSE or polling:* one-directional, or too slow for ~100 ms keystroke echo. *Not Liveblocks/PartyKit:* they'd host the hard part, and the hard part is the project. |
+| Event log | Redis Streams | Replayable domain-event log feeding summaries/stats, behind one `EventLog` interface so a second adapter is a swap rather than a rewrite. *Not Kafka:* an always-on broker for one stream of a few events a minute, though a Kafka adapter behind the same interface is in the backlog (the backlog). |
 | Editor | Monaco wired to Yjs | Familiar VS Code feel, mature `y-monaco` binding. *Not a plain textarea:* no cursor decorations, so presence would be invisible. *Not CodeMirror 6:* a fair alternative, lighter — Monaco chosen for recognisability in a demo. |
 | Container | Docker + docker-compose | The unit everything ships as, and the reason the same image runs under compose and on the cluster without a rebuild. |
-| Orchestration | Kubernetes on `kind`, locally | Rolling updates and self-healing are the two behaviours compose cannot show, and both are claims this project wants to be able to make (§7). *Not a hosted cluster:* it bills by the hour whether or not anyone visits. ADR-05. |
+| Orchestration | Kubernetes on `kind`, locally | Rolling updates and self-healing are the two behaviours compose cannot show, and both are claims this project wants to be able to make (§7). *Not a hosted cluster:* it bills by the hour whether or not anyone visits. decision 5. |
 | CI | GitHub Actions | Lint → test → build → deploy on merge, **per service** (§7). *Not Cloud Build:* the repo is on GitHub and Actions is free for public repos. |
 
 ---
 
 ## 5. Services
 
-### Gateway — **[built · learning]** (ADR-08)
+### Gateway — **[built · learning]** ([decision 8](../adr/))
 
 The one service where an off-the-shelf product would do the whole job. Kong
 DB-less covers routing, JWT verification, CORS and distributed rate limiting in
 roughly fifteen lines of config, and that is what I'd deploy at a company. It's
 built here for one reason: the rate limiter is the only race in this system that
-a product would otherwise solve *on my behalf*. Matching's pair claim (ADR-03)
+a product would otherwise solve *on my behalf*. Matching's pair claim ([decision 3](../adr/))
 has exactly the same shape, but nobody sells you a matchmaker — so the rate
 limiter is the one place where buying is a real option, and therefore the one
 place where writing the racy version, reproducing the double-count across two
@@ -257,7 +247,7 @@ The bucket is worth it because it permits bursts, which a fixed window either
 forbids or lets through at the boundary.
 
 **The bug the script prevents** — the one this service exists to demonstrate
-(ADR-08). Two Gateway instances, one user's bucket, one token left in it:
+([decision 8](../adr/)). Two Gateway instances, one user's bucket, one token left in it:
 
 ```
 instance A: read tokens = 1
@@ -331,7 +321,7 @@ from Firebase first, then here. If the second half fails, the row is unreachable
   one that is a pure optimisation rather than a correctness requirement.
 - **`reference_md` is never served to a browser by this service.** It's released
   only to Matching, over the internal network, after Matching has verified
-  consent (ADR-06). Questions has no way to know who consented; Matching has no
+  consent ([decision 6](../adr/)). Questions has no way to know who consented; Matching has no
   way to know the answer text. Neither service can leak the answer alone.
 
 ### Matching
@@ -343,7 +333,7 @@ from Firebase first, then here. If the second half fails, the row is unreachable
 - Owns **session rows** and the **consent state** behind the reveal rule.
 - **Validates across boundaries by API call**, not by SQL: it asks Users whether
   the UID exists and Questions for `parts[]`. It cannot join to those tables —
-  the database rejects it (ADR-09).
+  the database rejects it ([decision 9](../adr/)).
 - **Crash recovery:** the claim (Redis) and the session row (Postgres) live in
   two systems, so no transaction spans them. If Matching crashes between the two,
   a claimed pair is out of the queue with no session and would wait forever.
@@ -356,7 +346,7 @@ from Firebase first, then here. If the second half fails, the row is unreachable
 reason about but needs an always-on process, which §7 forbids, and adds up to a
 second of latency for no benefit. The cost is that the claim must be atomic,
 since two users can join simultaneously and race for the same partner — that's
-the Lua script (ADR-03).
+the Lua script ([decision 3](../adr/)).
 
 ### Collab
 
@@ -455,7 +445,7 @@ sequenceDiagram
 
 *Why a log and not a queue?* A queue deletes on consume, so a bug in the summary
 logic means the data needed to recompute is gone. A log keeps entries after
-reading, so the fix is rewinding the bookmark (ADR-07).
+reading, so the fix is rewinding the bookmark ([decision 7](../adr/)).
 
 *Why not have Matching write summaries directly?* The write would sit on the
 user's request path, and there'd be no replay when the logic changes. The async
@@ -491,7 +481,7 @@ it explicitly:
 
 Auth is therefore spread across three places and **there is no auth service**:
 Firebase owns credentials and token issuance, the Gateway owns verification, and
-Users owns the profile row. Before ADR-04 there would have been a seventh
+Users owns the profile row. Before decision 4 there would have been a seventh
 service's worth of work here — buying identity deleted it.
 
 - **Token details:** Firebase ID tokens, RS256, ~1-hour expiry, refreshed
@@ -555,7 +545,7 @@ setting is a security control, not a deployment detail.
 **This system runs locally and is not deployed anywhere.** Two targets, one
 image set: `docker compose` for development, and a local Kubernetes cluster for
 everything that compose cannot show. There is no cloud environment, no hosted
-URL, and nothing here costs money to run. ADR-05 records why.
+URL, and nothing here costs money to run. decision 5 records why.
 
 - **Compose:** `docker compose up` → the 5 services + the Stats job + Postgres +
   Redis + the **Firebase Auth emulator**. The emulator keeps local dev and CI
@@ -578,7 +568,7 @@ URL, and nothing here costs money to run. ADR-05 records why.
   already, which is exactly why it is easy to miss.
 - **CI:** GitHub Actions, **path-filtered per service** — a change under
   `services/questions/` builds and health-checks only Questions. Independent
-  buildability is most of the point of the split (ADR-01), and it doesn't exist
+  buildability is most of the point of the split ([decision 1](../adr/)), and it doesn't exist
   unless CI is wired for it.
 
 **How a waiting user finds out they were matched.** Being matched is caused by
@@ -653,7 +643,7 @@ across every request on the instance, and `/health/ready` can't answer either;
 long enough and the kubelet's liveness probe declares the pod unhealthy and
 restarts it. Password hashing is
 the one place this design would have hit that — bcrypt is deliberately expensive,
-around 250 ms of pure CPU — and **ADR-04 moved it into Firebase, so no CPU-bound
+around 250 ms of pure CPU — and **decision 4 moved it into Firebase, so no CPU-bound
 work sits on any request path here.** That's what makes 80 a safe number rather
 than an optimistic one.
 
@@ -809,237 +799,6 @@ mock would happily confirm that the racy rate limiter works.
 
 ---
 
-## 9. Architecture Decision Records (ADRs)
-
-An ADR is a one-page document recording a significant technical decision: the
-context, what was chosen, the alternatives rejected, and the tradeoffs accepted.
-They live in `docs/adr/`.
-
-**Division of labour with the inline notes above:** the `**[tag]**` markers and
-short *Why not X* lines exist so the doc can be skimmed. ADRs are for the nine
-decisions where the *rejected* option was genuinely defensible and the tradeoff
-is still being paid. An obvious choice gets a one-line inline note, not an ADR.
-
-1. **One service per capability (6 deployables).** Context: six capabilities —
-   verify/route, profiles, question bank, matching, real-time sync, stats.
-   Decision: each is its own deployable. Two of the six are not really splits at
-   all: the **Gateway** is a *position* (a cross-cutting enforcement point must
-   sit in front of what it protects), and **Stats** is a *job* (time-triggered,
-   which a scale-to-zero service physically cannot do). **Collab is forced by the
-   workload:** concurrency and timeout are per-service settings,
-   and a 20-minute WebSocket needs the opposite values from a 30 ms request — one
-   service cannot hold both. Rejected: **grouping Users + Questions + Matching
-   into one service**, which a strict scaling-forces test would recommend, since
-   they share a request shape, failure domain and deploy cadence; an earlier
-   draft did exactly that. Chosen against for independent deploy and rollback per
-   capability, one clear owner per capability, and because operating a genuinely
-   distributed system is a stated goal of the project. Also rejected: **one
-   service per database table**, which aligns boundaries with no force at all.
-   Tradeoffs accepted: six CI pipelines; two extra network hops on the match
-   path; four processes in one request chain; contract tests as the
-   price of independent deploys; and no transaction spanning a service boundary
-   (see ADR-09). **The condition to merge back:** if cold-start latency on the
-   match path or the per-service ops overhead starts dominating, Users +
-   Questions + Matching recombine cheaply — they already share a database
-   instance, so it's a code move, not a data migration.
-2. **Yjs (CRDT) over Operational Transforms** — OT (the older approach, used by
-   Google Docs) needs a central server to order every edit; a CRDT converges
-   without one.
-3. **Reactive matching** with an atomic Redis Lua-script pair claim, instead of a
-   polling loop.
-4. **Firebase Auth instead of self-hosted auth.** Context: the first draft built
-   auth directly — bcrypt, RS256 signing, opaque refresh tokens rotated in Redis.
-   Decision: buy it. Identity is security-critical, fully solved, and the flows
-   that make a managed provider worth its integration cost (password reset, OAuth
-   providers, MFA) are all out of scope (§2) — but so is the *risk* they carry,
-   and Google's credential-stuffing detection, leaked-password checks and
-   signing-key rotation are not things a solo project reproduces. Rejected:
-   self-hosting for the learning value — real, but it's the one component here
-   with no concurrency or distributed-systems problem inside it, so the learning
-   is procedural. Tradeoffs accepted: vendor lock-in on identity (mitigated — the
-   app keys off an opaque `firebase_uid`, so migration is a re-registration flow,
-   not a rewrite); a revoked token stays valid up to an hour (§6); local dev and
-   CI depend on the Auth emulator (§7); and login no longer traverses the
-   Gateway, so its rate limiter no longer protects that endpoint — Google's abuse
-   controls do instead, which is an upgrade, but it moves part of the threat
-   surface off this diagram. **An unplanned benefit worth naming:** bcrypt was
-   the only CPU-bound work anywhere on a request path here, and Node runs all
-   application JS on one thread, so ~250 ms of hashing would stall every other
-   request on that instance — buying auth deleted that hazard, and it's part of
-   why `--concurrency=80` is a safe number (§7). **Deliberately kept:** the
-   Gateway verifies tokens itself against a JWKS rather than delegating to an
-   SDK, so the property that mattered — the edge can verify but cannot mint —
-   survives the switch.
-5. **Kubernetes locally, and no deployment at all.** Context: the original plan
-   was Cloud Run for production with Kubernetes as a side detour. Decision:
-   invert it. The system runs on `kind` locally and is not deployed anywhere.
-   The reasoning is that the two claims worth making — no dropped requests
-   during a rolling update, no interruption when a pod is killed — need an
-   orchestrator and do not need a hosted one, while a live URL needs a payment
-   card the moment trial credits end. Rejected: a hosted cluster, which bills by
-   the hour whether or not anyone visits. Tradeoff accepted: nobody can look at
-   this without cloning it, and the demo recording in the README carries that
-   weight instead.
-6. **Reference answers never enter the shared doc** — a Yjs doc replicates to all
-   peers, so the answer key can't live there. Questions releases `reference_md`
-   only to Matching over the internal network, and only after Matching verifies
-   both participants consented. Neither service can leak it alone.
-7. **A replayable event log for summaries/stats** (Redis Streams in prod, Kafka
-   in dev) — log over queue semantics, so consumed events stay readable: rewind
-   the bookmark to recompute after a bug, or add a consumer later and it still
-   sees history. Considered: a Postgres events table (viable at this scale —
-   rejected for the cleaner scale-up path and the learning value) and real Kafka
-   in prod (no free managed option; an always-on broker breaks §7). Live Yjs sync
-   stays on Redis pub/sub — latency-critical fanout is the wrong shape for a
-   polled log.
-8. **A custom gateway instead of Kong.** Context: the Gateway does JWT
-   verification, routing, CORS and distributed rate limiting — all four of which
-   Kong DB-less provides, the rate limiter included, via its `policy: redis`
-   plugin. Decision: build it anyway. The token bucket is the one component here
-   whose concurrency bug a product would otherwise fix on my behalf — two
-   stateless instances doing read-then-write on a shared bucket double-count
-   under load — and the fix (a Lua script Redis executes atomically) is only
-   meaningful if you've seen the broken version fail. Matching's pair claim
-   (ADR-03) is the same race, but there is no product to buy instead, so it was
-   never a build-vs-buy decision at all. Rejected: **Kong DB-less**, the honest alternative, ~15
-   lines of config and what I'd deploy commercially; **Envoy**, frequently
-   suggested but a worse fit — its local rate-limit filter is per-instance and
-   its global one delegates to a separate Redis-backed service, so the problem is
-   relocated, not solved; **GCP API Gateway**, which doesn't proxy WebSockets;
-   **Cloud Armor**, which needs an external load balancer at roughly $18/month
-   standing charge and breaks §7. Tradeoffs accepted: no circuit breaking,
-   retries or mTLS, none of which this system needs; a hand-written proxy is a
-   single point of failure I now own; and every WebSocket burns a concurrency
-   slot on the Gateway as well as on Collab (§5). **Note the symmetry with
-   ADR-04** — same test, opposite answer: auth bought because it is risk without
-   insight, the gateway built because the insight is what's inside it.
-9. **One Postgres instance, one schema per service, one role per service.**
-   Context: six services, and the question of who owns which tables. Decision: a
-   single Postgres instance with a schema per service (`users`, `questions`,
-   `matching`, `collab`, `stats`), each accessed by its own Postgres role granted
-   privileges **only** on its own schema — so a cross-service read is rejected by
-   the database, not discouraged by convention. **No foreign key crosses a schema
-   boundary**: a session row stores `firebase_uid` and `question_id` as plain
-   columns, validated by API call at creation time. That's the concrete thing
-   given up, and it's deliberate — a cross-schema FK would re-couple the services
-   through the database. Rejected: **database-per-service**, the textbook answer,
-   because session creation touches profiles, questions and sessions, and across
-   separate databases there is no transaction covering them — it would need a
-   **saga** (each step given an explicit compensating action, plus persisted saga
-   state and a sweeper for crashed runs), which is a large amount of machinery
-   for a two-person editor and would want an always-on orchestrator that §7
-   forbids. Also rejected: **a shared schema**, which removes the boundary
-   entirely and makes the services non-independently-deployable in practice — a
-   distributed monolith. Tradeoffs accepted: one instance is a shared failure
-   domain and a shared connection budget (mitigated by a pooled endpoint,
-   since every service instance holding its own pool would otherwise exhaust the
-   free tier's connection limit); and the "microservices" claim rests on services
-   owning their *tables*, not their *instances*. **The condition to split:** one
-   service's data outgrowing the instance, or needing a different store — Collab
-   snapshots moving to object storage is the likeliest first case — or separate
-   teams needing independent migrations. At that point cross-service atomicity is
-   lost and session creation needs a saga; the ordering here is chosen so that
-   split stays cheap, because no query crosses a boundary today.
-10. **`pg` and hand-written SQL now, an ORM deferred — not rejected.** Context:
-    §4 named every other technology but left the Postgres access layer open, and
-    the choice shapes every service from Users onward. Decision: the `pg` driver
-    with parameterized SQL, and migrations as numbered `.sql` files run by a
-    small script. Rationale: it is what §6 already implies ("parameterized
-    queries always"), it keeps ADR-09's per-schema `GRANT`/`REVOKE` as literal
-    SQL rather than something generated, and it adds no schema-definition
-    language to learn on the critical path to a demoable product. Rejected *for
-    now*, not on merit: **Drizzle**, which would derive types from a schema
-    definition and remove the hand-written result types that are this decision's
-    real cost. Tradeoffs accepted: query result types are written by hand and can
-    drift from the schema, and there is no generated migration diffing. **This is
-    the highest-priority item in the additive backlog** — ahead of phases 8, 9
-    and 10 — because it is the only deferred item that pays down a cost incurred
-    on every subsequent phase rather than adding a new capability. It is also
-    cheap to adopt: Drizzle wraps a `pg` pool, so it can be introduced one
-    service at a time with no rewrite and no data migration.
-
----
-
-## 10. Build phases
-
-| Phase | Build | Demoable |
-|---|---|---|
-| 0 | Monorepo, docker-compose (PG + Redis + Firebase Auth emulator), hello-world Fastify services, per-service CI | `docker-compose up` runs |
-| 1 | Firebase Auth + emulator wired in; **Gateway**: JWKS fetch/cache, verify ID token (sig/`exp`/`iss`/`aud`), inject `X-User-Id`, route, per-IP rate limit; **Users**: lazy upsert; schemas + per-service Postgres roles; internal-ingress + invoker IAM | emulator token → protected call succeeds; tampered/expired token 401s; `users` row appears once; a service querying another's schema is **rejected by Postgres** |
-| 2 | **Questions**: bank (filter/search/cursor-paginate/get) + Redis cache; per-user rate limit; public bank UI | browse and read questions solo, cache hits visible |
-| 3 | **Matching**: reactive matching (Redis sorted set + Lua claim), session rows, pub/sub match event, validation calls to Users + Questions, contract tests | two users join → matched → session exists; a Users outage fails the match cleanly rather than corrupting state |
-| 4 | **Collab (hardest):** WebSockets + Yjs, authorize the socket via Matching, cross-instance pub/sub, presence/cursors, snapshot + reconnect, graceful shutdown | two tabs sync live; kill one instance, the other keeps working |
-| 5 | Minimal React: login, question list, match button, session page (Monaco wired to Yjs) with scaffolded editor, reveal flow, end | open two browsers, match, collaborate, reveal |
-| 5b | The question list became a roadmap: topics ordered as a recommended path, one lesson per question set seeded from the same notes, light/dark, and URLs for every screen. Content fixed in the seed rather than at render time | click a topic, read its lesson, press "find a partner" from it; Back works; a lesson link opens that lesson |
-| 6 | Event pipeline: `emitEvent` → `events` stream (behind the `EventLog` interface); idempotent **Stats** consumer → summaries + aggregates; the job run on a schedule | end a session → summary renders; `/stats` shows real counts |
-| 7 | **Load and soak.** One k6 script against `docker-compose`: ramp WebSocket connections on Collab to the configured 250/instance ceiling, hold, and watch memory and socket counts. Needs nothing beyond phase 4, and phases 8 and 10 re-run this same script against different targets | headline concurrency and p95 edit-propagation numbers, **stated with the environment that produced them**; no leaked sockets and flat memory over a long hold |
-| 8 | **Kubernetes, locally.** `k8s/` manifests: Deployment + Service per service, ConfigMap + Secret, Ingress, probes pointed at the existing `/health/live` and `/health/ready`, Postgres and Redis for local use; `make k8s-up` / `make k8s-down` on `kind`; the k6 script re-run during a rolling update and a killed pod | app runs on Kubernetes; k6 shows **zero dropped requests during a rolling update**, and `kubectl delete pod` does not interrupt it. **This is the last phase.** |
-
-**The project ends at phase 8, and is not deployed.** Phase 8 is Kubernetes
-locally, and it is the last one. The system runs under docker compose for
-development and on a `kind` cluster for everything compose cannot demonstrate,
-and there is no hosted environment behind it. ADR-05 records the decision and
-§7 records what it means in practice.
-
-The reason, in one line: the two claims worth making — no dropped requests
-during a rolling update, no interruption when a pod is killed — need an
-orchestrator, not a hosted one, and a live URL needs a payment card the moment
-free credits end.
-
-**What this costs, stated rather than glossed:** there is no URL to send
-anybody. Anyone assessing this has to clone it and run two commands, which is a
-real filter and is accepted deliberately; the README carries a recording
-instead.
-
-**The project is feature-complete at phase 6**, which is where the event
-pipeline and `/stats` land. Both are stated scope (§1, §2), so phase 6 is not
-optional and nothing after it is load-bearing for the product.
-
-
-**Why the event pipeline moved ahead of Kubernetes.** They swapped after the CV
-went out. Ordering by cost and learning value is the right rule while nothing
-outside the repo depends on the plan, and the wrong one once something does: the
-event pipeline is described in writing to people who may ask about it, and
-Kubernetes is described as in progress, which it honestly is. Finishing the
-claim that is already in circulation comes before starting the one that is
-labelled as unfinished.
-
-**Why the load run is its own phase, and sits before Kubernetes.** It depends on
-nothing past phase 4, so it could be run on any afternoon, and that is exactly
-why it needed a number: work that can happen at any time tends to happen at no
-time, and this is the work that turns a quoted figure into a measured one. It
-goes before Kubernetes rather than after because phase 8 re-runs *this* script
-during a rolling update, so the script has to exist first, and because a socket
-leak is far cheaper to find before there are manifests between you and the
-process. Phases 8 and 10 re-run it against different targets to answer different
-questions; neither produces the baseline. See §8.
-
-**The additive backlog, highest priority first:**
-
-| | Item | Why it sits here |
-|---|---|---|
-| 1 | **Adopt Drizzle** over the `pg` layer (ADR-10) | The only deferred item that pays down a cost already being paid — hand-written result types, drifting from the schema, on every service from phase 1 onward. Adoptable one service at a time. Ahead of the phases below because it makes existing code better rather than adding new capability. |
-| 2 | A **Kafka adapter** behind the existing `EventLog` interface | Pure adapter work against a surface that already exists, and the interface was built with a second implementation in mind. |
-| 3 | A **deployment**, if it is ever wanted | Specified in §7 and priced in [docs/cost.md](docs/cost.md). Nothing in the code has to change for it; that is what makes it a backlog item rather than a rewrite. |
-
-**Why this ordering.** The two items below Drizzle each add something new. ADR-10's deferral is different in kind: it is a debt taken deliberately to
-reach a demoable product sooner, and it accrues interest with every service
-written against the raw driver. Adding capability to a codebase carrying a known
-deferred decision is the wrong order if there is ever time for exactly one of
-them.
-
-*Why is phase 0 non-negotiable?* The billing guard is the one item with no
-recovery path if skipped.
-
-*Why is Collab at phase 4 rather than last?* It's the piece that can genuinely
-fail — cross-instance sync, snapshot correctness, reconnect. Hitting that in
-phase 4 leaves room to change approach; hitting it at the end leaves none. It
-sits as early as its dependencies (a session row, phase 3) allow.
-
-*Why do the schema roles land in phase 1?* Because a boundary that isn't enforced
-from the first table will be violated by the third, and retrofitting grants means
-untangling queries that already cross.
-
 ---
 
 ## Final note
@@ -1056,4 +815,4 @@ managed service is time returned to the top of the list.
 The failure mode this doc is written to prevent isn't picking a wrong tool; it's
 spending three weeks on infrastructure and one on the only part that's hard. Six
 services makes that failure mode *easier* to hit, which is the honest cost of
-ADR-01 and the reason phases 8–10 are explicitly droppable.
+decision 1 and the reason phases 8–10 are explicitly droppable.

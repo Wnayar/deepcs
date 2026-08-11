@@ -22,7 +22,7 @@ const pool = createPool();
 const redis = createRedis();
 const queue = createQueue(redis);
 // Matching owns the queue and the session lifecycle, so four of the six domain
-// events are emitted here (DESIGN.md §5).
+// events are emitted here (the overview §5).
 const events = createRedisEventLog(redis);
 
 // Both, and neither is optional here: the queue *is* Redis, and the session

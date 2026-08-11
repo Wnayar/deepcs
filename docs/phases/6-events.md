@@ -58,7 +58,7 @@ thing to notice, not the query.
 
 ## 3. The design said Stats could not be a server. It was half right · ~5 min
 
-DESIGN.md §3 said Stats "can't be a server at all", §2 and §6 both put a public
+The overview §3 said Stats "can't be a server at all", §2 and §6 both put a public
 stats endpoint in scope, and ADR-09 says only `stats_svc` may read the `stats`
 schema. All three cannot hold, and building the phase is what surfaced it.
 

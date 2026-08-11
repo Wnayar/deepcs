@@ -5,7 +5,7 @@ import { createRedisEventLog } from '@deepcs/shared/events';
 import { applyBatch } from './consumer.js';
 
 /**
- * Stats is a JOB, not a server (DESIGN.md §5, ADR-01).
+ * Stats is a JOB, not a server (the overview §5, ADR-01).
  *
  * There is no `listen()` here and there never will be. Its trigger is time, not
  * a request, and a service that is not running between requests has no process

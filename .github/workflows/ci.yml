@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   # ── Which services actually changed? ─────────────────────────────────────────
-  # DESIGN.md §7 wants CI path-filtered per service: a change under
+  # the overview §7 wants CI path-filtered per service: a change under
   # services/questions/ builds only Questions. Independent deployability is most
   # of the point of the six-way split (ADR-01) and it does not exist unless the
   # pipeline is wired for it.
@@ -297,6 +297,6 @@ jobs:
 
     # There is no deploy step, and there is not going to be one: this project
     # runs locally, under docker compose and on a local Kubernetes cluster
-    # (DESIGN.md §7). What this job proves is that each service's production
+    # (the overview §7). What this job proves is that each service's production
     # image builds and answers /health/ready on its own, which is the property
     # a rolling update on the cluster depends on.

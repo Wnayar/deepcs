@@ -1,6 +1,6 @@
 # Phase 5 — The frontend, and the reveal rule behind it
 
-**What this phase proves** (DESIGN.md §10):
+**What this phase proves** (the overview §10):
 
 - the whole loop works from a browser: sign in, browse, match, co-write, reveal, end
 - an answer is released only when *both* people agree, and neither service can
@@ -259,7 +259,7 @@ why the `react-hooks` lint rules were added in this phase.
 registers every language it ships with, and building against it emitted a
 6.9 MB TypeScript worker, a 1 MB CSS worker and a 740 kB HTML worker for a
 document that is prose. The core is 792 kB gzipped, which is most of the
-bundle and inherent to the editor DESIGN.md chose.
+bundle and inherent to the editor the overview chose.
 
 ---
 
@@ -289,7 +289,7 @@ bundle and inherent to the editor DESIGN.md chose.
   already holds. The richer version — sessions solved, popular topics — is fed
   by the event log, which is phase 6.
 - **`reveal.consented` and `session.ended` are log lines**, the last two of
-  DESIGN.md's six events. Phase 6 puts them behind the real `EventLog`.
+  the overview's six events. Phase 6 puts them behind the real `EventLog`.
 - **No frontend container.** It runs with `pnpm --filter @deepcs/web dev` rather
   than `docker compose up`, because in phase 10 it is a static bundle on a CDN
   and the shared Dockerfile builds Node servers out of `services/`.

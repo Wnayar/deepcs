@@ -1,6 +1,6 @@
 # Phase 4 — Collab
 
-**What this phase proves** (DESIGN.md §10):
+**What this phase proves** (the overview §10):
 
 - two people editing the same session from two different Collab instances
   converge, with nothing but Redis between them
@@ -331,7 +331,7 @@ here were wrong at some point:
 
 # Part 6 — What this phase deliberately did not build
 
-- **No `/metrics` or WebSocket connection count.** DESIGN.md scopes that to
+- **No `/metrics` or WebSocket connection count.** The overview scopes that to
   phase 10 alongside Grafana for every service.
 - **No frontend and no real Yjs client.** `y-monaco` and the editor are phase
   5. The tests drive the wire protocol directly, which is enough to prove the
@@ -345,7 +345,7 @@ here were wrong at some point:
   left it for "Collab or a future live-status channel"; Collab turned out not
   to need it, since a client learns its session id from `/match/join` and
   brings it to the socket. It stays for phase 5's live status.
-- **No reveal or consent flow**, still. Matching owns that state per DESIGN.md
+- **No reveal or consent flow**, still. Matching owns that state per the overview
   and nothing has needed it yet. *(Phase 5 built it. Collab needed no change:
   the answer never enters the Yjs document — it is released by Matching to the
   browser over HTTP, which is exactly what ADR-06 requires, since a document

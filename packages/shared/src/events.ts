@@ -1,7 +1,7 @@
 import type Redis from 'ioredis';
 
 /**
- * The domain event log (DESIGN.md §5).
+ * The domain event log (the overview §5).
  *
  * Six moments in the product are recorded here, by whichever service owns the
  * moment. Nothing reads them synchronously: the Stats job drains the log on a

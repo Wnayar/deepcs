@@ -3,7 +3,7 @@
 **This project is not deployed, and this document is why.** It is kept because
 the exploration is the useful part: it works out what a cloud deployment of this
 exact system would cost, which meters it would be billed on, and where the money
-would actually go. The decision it produced is recorded in DESIGN.md ADR-05.
+would actually go. The decision it produced is recorded in the overview ADR-05.
 
 It assumes you know none of the vocabulary. Every term is defined where it first
 appears. Read it top to bottom once; the picture in Part 1 is what everything
@@ -576,7 +576,7 @@ own pricing page on 2026-08-12.
 
 Region matters throughout: `asia-southeast1` is a **Tier 2** Cloud Run region,
 and the free allowance is a spending discount valued at **Tier 1** rates. The
-"our plan now" column describes the deployment as it was specified in DESIGN.md
+"our plan now" column describes the deployment as it was specified in the overview
 §7, not anything that exists.
 
 ## Google Cloud

@@ -134,7 +134,7 @@ also filtered down to "just the services that import it"?
 misconfiguration — and what a reviewer should conclude if it showed
 `exited (1)`.
 
-**7.** `.env.example` sets `FIREBASE_AUTH_EMULATOR_HOST`. DESIGN.md §7 says that
+**7.** `.env.example` sets `FIREBASE_AUTH_EMULATOR_HOST`. The overview §7 says that
 flag "must be impossible to set in prod". Nothing in the repo currently enforces
 that. Where should the enforcement live, and what does the failure look like if
 it's missing?
@@ -188,7 +188,7 @@ at which point the filter needs the graph. Worth knowing the tools that do it
 (`pnpm --filter '...[origin/main]'` resolves exactly this), and worth not
 pretending the current line is more principled than it is.
 
-**6.** Stats is a job (DESIGN.md §5). Its trigger is time, not a request, and a
+**6.** Stats is a job (the overview §5). Its trigger is time, not a request, and a
 service that is not running between requests has no process for a timer to fire
 inside — so it cannot be a server. Locally it does what Cloud Scheduler will
 make it do every 5 minutes: run, drain, exit. `exited (0)` is the success case.

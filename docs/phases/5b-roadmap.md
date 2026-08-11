@@ -1,7 +1,7 @@
 # Phase 5b — The roadmap, and fixing content at the source
 
 *Numbered 5b because it extends phase 5's frontend rather than following it. The
-numbered phases in DESIGN.md §10 have since been reordered, but this stays 5b:
+numbered phases in the overview §10 have since been reordered, but this stays 5b:
 the letter says "more of phase 5", which is what it is, and that remains true
 whatever the numbers after it do.*
 

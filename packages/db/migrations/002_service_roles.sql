@@ -2,7 +2,7 @@
 -- cross-service read is rejected by Postgres rather than discouraged by
 -- convention.
 --
--- This is phase 1 work on purpose. DESIGN.md §10: "a boundary that isn't
+-- This is phase 1 work on purpose. The overview §10: "a boundary that isn't
 -- enforced from the first table will be violated by the third, and retrofitting
 -- grants means untangling queries that already cross."
 --

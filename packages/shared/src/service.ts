@@ -47,7 +47,7 @@ export interface ServiceOptions {
 /**
  * Fastify's internal log lines label the request id `reqId`. Everything else in
  * this system — the `X-Request-Id` header, the structured field name in
- * DESIGN.md §6 — uses `request_id`, and a trace that changes key name halfway
+ * the overview §6 — uses `request_id`, and a trace that changes key name halfway
  * through six services is not a trace.
  *
  * In Fastify 5 this is set by subclassing the log controller; the older
@@ -62,7 +62,7 @@ class DeepcsLogController extends LogController {
 
 /**
  * Every HTTP service in DeepCS is built from this. It fixes the four things
- * DESIGN.md §6 requires of all of them, so no service can quietly skip one:
+ * the overview §6 requires of all of them, so no service can quietly skip one:
  *
  *   1. Structured JSON logs carrying `service` and `request_id`.
  *   2. An `X-Request-Id` that is *propagated* if the caller sent one and minted
@@ -149,7 +149,7 @@ export function createService({ name, port, ready }: ServiceOptions): {
 
   const start = async (): Promise<void> => {
     /**
-     * Graceful shutdown (DESIGN.md §6). Kubernetes and `docker stop` both send
+     * Graceful shutdown (the overview §6). Kubernetes and `docker stop` both send
      * SIGTERM and then wait; `app.close()` stops accepting new connections and
      * lets in-flight requests finish. Without this, replacing a pod severs
      * whatever was mid-flight, which is exactly what phase 8 measures.

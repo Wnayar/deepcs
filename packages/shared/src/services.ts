@@ -1,5 +1,5 @@
 /**
- * The six deployables (DESIGN.md §3) and the ports they listen on locally.
+ * The six deployables (the overview §3) and the ports they listen on locally.
  *
  * Stats is one image with two entrypoints, which is worth explaining because
  * §3 says flatly that it "can't be a server at all". That argument is about the

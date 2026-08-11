@@ -15,7 +15,7 @@ describe this laptop.**
 
 ## 1. The design described a measurement that cannot happen · ~5 min
 
-DESIGN.md §8 said the script "stamps a timestamp into each Yjs update it sends
+The overview §8 said the script "stamps a timestamp into each Yjs update it sends
 and records the delta when the echo arrives back over the socket".
 
 There is no echo. `broadcast` in `services/collab/src/rooms.ts` sends an update
@@ -40,7 +40,7 @@ That is also the better measurement. The number a person cares about is how
 long until *their partner* sees what they typed, not how long a round trip to
 the server takes to return something they already know.
 
-The correction is recorded in DESIGN.md §8 next to the original claim.
+The correction is recorded in the overview §8 next to the original claim.
 
 ## 2. The first thing the server sends is the whole document · ~5 min
 
@@ -76,7 +76,7 @@ the ones that do not depend on how fast it is:
 - **the used heap comes back** — see the numbers below.
 
 The 250 is also worth being precise about. Nothing locally enforces it: the
-ceiling is the per-service concurrency setting from DESIGN.md §7, which
+ceiling is the per-service concurrency setting from the overview §7, which
 does not exist in `docker compose`. What the local run establishes is that 250
 sockets are comfortable here, so if the deployed service refuses the 251st,
 that is the flag doing its job and not the machine running out.
@@ -208,7 +208,7 @@ impossible samples is a script that cannot tell you when they stop being rare.
 
 # Part 4 — What this phase deliberately did not build
 
-- **The run is not in CI.** DESIGN.md §8 gives thresholds as what "lets it live
+- **The run is not in CI.** the overview §8 gives thresholds as what "lets it live
   in CI instead of being something someone remembers to eyeball", and the
   thresholds are here and do fail the run. What is missing is the runner: a
   shared GitHub runner measures the runner, and a p95 gate on one fails for

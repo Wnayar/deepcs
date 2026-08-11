@@ -12,7 +12,7 @@ import { createRedis } from '@deepcs/shared/redis';
 import { createRoomManager, MESSAGE_SYNC, SESSION_ENDED_CODE, toUint8Array } from './rooms.js';
 
 /**
- * The regression tests for the hard part of this phase (DESIGN.md's
+ * The regression tests for the hard part of this phase (the overview's
  * "distributed-systems moment"): two people matched into one session can land
  * on *different* Collab instances, and an edit made on one has to reach the
  * other through Redis rather than through anything in-process.
