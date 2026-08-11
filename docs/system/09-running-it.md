@@ -5,9 +5,9 @@ one to develop against. A local Kubernetes cluster is the one that answers the
 question compose cannot: what happens to the people using it while a service is
 being replaced.
 
-This page is how to run both, what was measured on each, and — the part that
-matters more — which of those measurements are claims about DeepCS and which are
-claims about this laptop.
+This page is how to run both, what was measured on each, how the two measurement
+harnesses work, and — the part that matters more — which of those measurements
+are claims about DeepCS and which are claims about this laptop.
 
 ---
 
@@ -268,7 +268,254 @@ the one-replica column, and it has to be quoted with that condition attached.
 
 ---
 
-## 7. What each claim is worth away from this machine
+## 7. How the load harness works, and the three traps in it
+
+`load/collab.js` is the whole test: session setup, one VU's life, and the
+metric. `load/run.sh` runs it and samples Collab's `/metrics` alongside.
+
+**A VU (virtual user) is one concurrent execution of the script**, and here one
+VU is one person in one two-person session: VUs 1 and 2 share a document, 3 and
+4 share the next. k6's runtime is Go, so a VU is a goroutine rather than an OS
+thread and one laptop drives thousands. *Why not a Node load generator?* It would
+be bounded by its own single event loop, and the number it produced would
+describe the client rather than the server.
+
+**The generator has to be a real Yjs client.** k6 resolves neither
+`node_modules` nor TypeScript, so `load/bundle.mjs` compiles the Yjs libraries in
+beforehand. That build step is the price of the alternative being unusable: a
+hand-written approximation of the wire format does not fail gradually, it fails
+at `deliver`, which closes the socket with 1002 on a malformed frame. An
+approximate client measures nothing. `load/package.json` takes `yjs`,
+`y-protocols` and `lib0` from the same workspace catalog Collab itself uses,
+because a load generator on a different protocol version measures a system that
+does not exist.
+
+**Setup goes through the front door, one pair at a time.** Collab authorizes
+every socket against Matching's participant check, so there is no way to fake a
+session it will accept. `setup()` creates 125 of them the way a person would:
+mint a token, `GET /users/me` to create the profile row Matching validates
+against, then two calls to `POST /match/join` where the first answers `waiting`
+and the second claims it. The joins are **sequential** — two in flight at once
+can claim each other's partner, and then the pairing no longer matches the VU
+numbering the script relies on. Tokens are minted in-process, because the
+emulator issues unsigned tokens and the Gateway checks `iss`, `aud`, `exp` and
+`sub` on that path, so 250 identities cost 250 lines of JSON rather than 250
+round trips.
+
+Each VU reconnects every 30 seconds rather than holding one socket for the whole
+run. A socket that is only ever opened proves nothing about the code that closes
+one, and the leave path — snapshot, drop the room, unsubscribe — is where a leak
+would live.
+
+### Trap 1: there is no echo
+
+The original design said the script "stamps a timestamp into each Yjs update it
+sends and records the delta when the echo arrives back over the socket".
+
+There is no echo. `broadcast` in
+[`services/collab/src/rooms.ts`](../../services/collab/src/rooms.ts) sends an
+update to every socket in the room *except* the one it came from, so a sender
+never sees its own edit return. A script written to that description records
+nothing at all — **and would then have gone green, because a threshold over a
+metric with no samples passes.** That is why `edits_received: ['count>0']` sits
+next to the latency threshold.
+
+So the timestamp is read by the *other* VU in the session. That is also the
+better measurement: the number a person cares about is how long until their
+partner sees what they typed, not how long a round trip takes to return
+something they already know.
+
+### Trap 2: the first thing the server sends is the whole document
+
+On connect, Collab replies to sync step 1 with the entire document — every
+timestamp every VU has inserted into that session since the run began. Feed those
+to the metric and `edit_latency` stops meaning propagation delay and starts
+meaning *the age of the document*, which after three minutes of load is minutes
+rather than milliseconds.
+
+So the script counts nothing until the initial sync has landed. `readSyncMessage`
+applies the update before it returns, and the observer that records latencies
+bails out while `synced` is false, so the burst is applied to the document and
+excluded from the measurement, in that order.
+
+This is the kind of bug the run exists to find: nothing errors, the run goes
+green, and the headline figure is quietly meaningless. It is the same mechanism
+as §6's two-replica column, reached from inside one process instead of across
+two.
+
+### Trap 3: the load generator can be the bottleneck
+
+One `docker stats` sample during the hold:
+
+| | CPU |
+|---|---|
+| the k6 container | 174% |
+| `deepcs-collab-1` | 13% |
+
+The generator costs about thirteen times the service it is testing. That is not a
+defect — k6 runs a full Yjs document per VU in an interpreted runtime while
+Collab merges an update in native V8 — but it means the client-side p95 includes
+whatever k6's own scheduling adds, and a run that saturated the generator would
+report a slow *server*. Collab's `/metrics` is what keeps the two apart: when the
+client says 250 sockets and the server agrees, the number is real; when only the
+client says it, it is a queue in the client.
+
+### What the compose baseline measured
+
+| | |
+|---|---|
+| peak, both views | k6 `vus_max` 250 · Collab `/metrics` 250 connections, 125 rooms |
+| `edit_latency` | p50 3 ms · p95 4 ms · max 38 ms, over 58,294 samples |
+| `ws_connecting` | p95 2.12 ms |
+| checks | 2,030 / 2,030 documents synced |
+| sockets 10s after | 0 connections, 0 rooms |
+| heap | 24 MB idle → 99 MB peak → 58 MB at +10s → **24.8 MB a few minutes later** |
+| rss | 117 MB idle → 258 MB peak → 258 MB at +10s → **123 MB a few minutes later** |
+
+**The two memory rows are the interesting ones**, and they sharpen what "flat
+memory over a long hold" can mean. Memory is *not* flat during the hold, and it
+should not be: 125 documents are being typed into 250 times a second and Yjs
+keeps the history of every insert. Growth that tracks the documents is the system
+working. What a leak would look like is the **return** not happening — and it
+does happen, on two different timescales, which is why both numbers are sampled.
+The used heap is most of the way back within seconds of the rooms closing;
+resident memory follows minutes later, because Node hands pages back to the
+operating system lazily. Reading RSS alone at +10s (258 MB against a 117 MB
+baseline) would have looked exactly like a leak and been wrong.
+
+The settled reading is also taken ten seconds *after* the run rather than from
+the last sample, because the samples at the end land mid-ramp-down and the claim
+is that sockets return to zero once the last one closes, not that they were zero
+while people were still leaving.
+
+**58,294 edits received against 58,870 sent.** The missing 576 are the ramp
+windows: a VU whose partner has not connected yet, or has already gone, is typing
+into a document nobody is reading. That gap being small and stable is itself the
+propagation check.
+
+**One number is impossible, and stays in.** `edit_latency` reported a minimum of
+-522 ms. A negative delay means a marker was read at a wall-clock moment earlier
+than the one it was stamped with, and both VUs are in one k6 process reading one
+clock — so it did not come from two clocks disagreeing, it came from that clock
+moving backwards mid-run, which is a thing WSL2 does when it resyncs against the
+Windows host. The evidence that it was a step rather than noise: a handful of
+samples went negative by about half a second and nothing at all went *positive*
+by half a second, with the maximum sitting at 38 ms. It moves neither p50 nor
+p95, and it is written down rather than clipped away, because a script that
+silently discards its impossible samples cannot tell you when they stop being
+rare.
+
+**The 250 is not enforced by anything local.** Nothing in compose caps
+concurrency; what the run establishes is that 250 sockets are comfortable on this
+machine.
+
+---
+
+## 8. The images
+
+One `Dockerfile`, seven stages, six images, selected with
+`--build-arg SERVICE=<name>`. Six near-identical Node services means six
+Dockerfiles would be the same fix applied six times and drifting in five of them;
+independent deployability lives in the pipeline and the image tag, not in the
+file the image is built from.
+
+```
+base → manifests → deps → dev        (compose bind-mounts src/ into this)
+                        → build      (tsup → dist/)
+       manifests → prod-deps
+       build + prod-deps → runner    (what the cluster runs, non-root, 278 MB)
+```
+
+**The `manifests` stage copies eight `package.json` files by name** rather than
+`COPY . .`, and that is the single highest-value line in the file. Docker
+invalidates a cached layer when any file it copied has changed, so `COPY . .`
+followed by `pnpm install` reinstalls every dependency whenever you edit a `.ts`
+file. Copying only what the install reads keys that layer on dependency changes
+alone. The cost, accepted knowingly: a seventh service means editing this file,
+and forgetting means "module not found" for that one service.
+
+**`runner` starts from a clean `node:24-alpine`** rather than continuing from
+`build`, so none of pnpm, tsup, TypeScript or the dev dependency tree exists in
+the shipped image, and `USER node` drops root.
+
+**Bundling is not a preference.** pnpm links workspace dependencies as symlinks
+into a content-addressed store outside the project directory, so the naive
+`COPY node_modules` from a build stage copies dangling symlinks and the image
+dies at import. The three fixes are `pnpm deploy --prod`, `node-linker=hoisted`,
+or bundling so shared `packages/*` code is inlined and the runtime image needs no
+workspace resolution at all. Bundling is the smallest of the three.
+
+**Compose bind-mounts only `src/` directories**, read-only, never the repo root.
+A bind mount over `/app` *replaces* the directory, including
+`/app/node_modules` — which was installed inside the image for the container's
+platform and contains pnpm symlinks pointing at paths that exist only inside the
+container. The dependency tree vanishes and the container dies on its first
+import.
+
+The tooling itself, line by line, is
+[`../learning/docker.md`](../learning/docker.md).
+
+---
+
+## 9. CI
+
+Three jobs, plus one for the frontend. `changes` computes the changed file list
+with plain `git diff` and emits a JSON array of service names; `lint` runs
+eslint and prettier once, repo-wide; `service` is a matrix job with one parallel
+copy per changed service — typecheck, test, build, build the image, then
+**`docker run` it and curl `/health/ready`**. `fail-fast: false`, so one failure
+does not cancel the others' results.
+
+Path filtering is the point. A change under `services/questions/` builds and
+health-checks only Questions; touching anything shared (`packages/`, the
+`Dockerfile`, the lockfile, root configs) rebuilds all six, because those are
+compiled into every image. Independent buildability is most of what the six-way
+split buys, and it does not exist unless the pipeline is wired for it.
+
+**The smoke test is the step that looks redundant, and it is the one that
+matters.** Typecheck and test have already passed by then. They passed once
+before while `pnpm build` produced a bundle that died at import with `Dynamic
+require of "os" is not supported`: `tsup` exits 0 on a broken bundle, and `pnpm
+test` runs from source and never touches `dist/`. **A green build is not a
+working artifact**, and the only check that would have caught it is running the
+thing you actually ship. Stats is smoke-tested differently, because it is a job:
+success is `docker run` exiting 0, not a port answering.
+
+Real Postgres and Redis run as service containers, not mocks, for the same reason
+the local suites need them: the properties under test are a Lua script's
+atomicity and a role being refused a schema.
+
+**There is no deploy step and there is not going to be one.** What CI proves is
+that each service's production image builds and answers `/health/ready` on its
+own, which is exactly the property a rolling update depends on.
+
+Two things it does not do:
+
+- **It does not orchestrate sibling services.** The matrix brings up Postgres and
+  Redis only, so Matching's and Collab's contract tests against a real Users,
+  Questions and Matching pass locally and skip in CI.
+- **It does not run the load test.** A shared GitHub runner measures the runner,
+  and a p95 gate on one fails for reasons unrelated to any change. The thresholds
+  still do their job locally: nobody has to eyeball a table to know whether the
+  run passed.
+
+One bug in this file is worth knowing because the shape recurs. The `changes` job
+used to fail the whole run on any commit that touched no service — a docs-only
+change. `grep` exits 1 when it matches nothing, which is exactly what a docs-only
+commit looks like, and under `set -euo pipefail` that status propagates out of
+the command substitution and kills the step *before* the empty-list guard written
+for this case can be reached. The fix is `{ grep -oE '^services/[^/]+' || true; }`,
+with the braces scoping `|| true` to `grep` alone: appending it to the whole
+pipeline would also swallow a genuine failure and hand the matrix a silently
+empty list, which is worse because it looks like success. **Under `set -euo
+pipefail`, a command whose "nothing found" case is normal needs that case handled
+explicitly, or your error handling becomes unreachable code.**
+
+The tooling itself is [`../learning/ci.md`](../learning/ci.md).
+
+---
+
+## 10. What each claim is worth away from this machine
 
 The distinction the whole repo is built on, applied here.
 
@@ -299,7 +546,7 @@ on one afternoon.
 
 ---
 
-## 8. Things that break, and what they look like
+## 11. Things that break, and what they look like
 
 | What you see | What it is |
 |---|---|

@@ -9,6 +9,18 @@ request travels through them, and what each one owns. The decisions behind the
 shape are in [`../adr/`](../adr/), one file each. It runs locally, under
 `docker compose` and on a local Kubernetes cluster; nothing is deployed.
 
+Each part of it also has a page of its own in this folder, which is where the
+failure modes and the code pointers live:
+[Gateway](01-gateway.md) ·
+[Users](02-users.md) ·
+[Questions](03-questions.md) ·
+[Matching](04-matching.md) ·
+[Collab](05-collab.md) ·
+[Events and Stats](06-events-and-stats.md) ·
+[Frontend](07-frontend.md) ·
+[Data](08-data.md) ·
+[Running it](09-running-it.md).
+
 ---
 
 ## How to read this page
@@ -64,11 +76,10 @@ Where a choice had a defensible alternative, the reasoning lives in
 8. Mutual-consent reveal of the reference answer.
 9. End session; see a short summary.
 
-*Steps 1 and 2 replaced "browse the question bank", which was the original entry
-point and was the wrong one: a list of questions you cannot answer yet is not
-somewhere to start learning. The bank still exists and matching still searches
-it; it just is not the front door. See
-[docs/phases/5b-roadmap.md](./docs/phases/5b-roadmap.md).*
+*The roadmap is the front door rather than the question bank, because a list of
+questions you cannot answer yet is not somewhere to start learning. The bank
+still exists and matching still searches it; it just is not where you arrive.
+See [`03-questions.md`](03-questions.md).*
 
 **Domain:** a bank of multi-part CS fundamentals questions (OS, networking,
 databases, concurrency), sourced from my existing notes repo — so the content
@@ -95,20 +106,20 @@ roles; role swapping; voice/video; rubrics and scoring; question authoring.
 ```mermaid
 %%{init: {"flowchart": {"nodeSpacing": 45, "rankSpacing": 60}}}%%
 flowchart TD
-    U["User A + User B browsers<br/>React app served from<br/>Cloud Storage + CDN"]
+    U["User A + User B browsers<br/>React app, a static bundle<br/>served by Vite locally"]
 
     U ==>|"all traffic: HTTP + WebSocket"| GW
 
     subgraph RUN["Stateless services — one container each"]
-        GW@{ shape: procs, label: "<b>1. Gateway</b> ×0–2<br/>verify token · rate limit<br/>route · CORS" }
-        USR@{ shape: procs, label: "<b>2. Users</b> ×0–2<br/>profiles" }
-        QST@{ shape: procs, label: "<b>3. Questions</b> ×0–2<br/>bank · search<br/>reference answers" }
-        MCH@{ shape: procs, label: "<b>4. Matching</b> ×0–2<br/>queue · pair claim<br/>sessions · consent" }
-        COL@{ shape: procs, label: "<b>5. Collab</b> ×0–2<br/>WebSockets · Yjs CRDT<br/>presence" }
-        STA["<b>6. Stats</b> ×0–1<br/>scheduled job: every<br/>5 min, drains, exits"]
+        GW@{ shape: procs, label: "<b>1. Gateway</b> ×2<br/>verify token · rate limit<br/>route · CORS" }
+        USR@{ shape: procs, label: "<b>2. Users</b> ×2<br/>profiles" }
+        QST@{ shape: procs, label: "<b>3. Questions</b> ×2<br/>bank · search<br/>reference answers" }
+        MCH@{ shape: procs, label: "<b>4. Matching</b> ×2<br/>queue · pair claim<br/>sessions · consent" }
+        COL@{ shape: procs, label: "<b>5. Collab</b> ×2<br/>WebSockets · Yjs CRDT<br/>presence" }
+        STA["<b>6. Stats</b><br/>scheduled job: drains<br/>and exits · plus a read API"]
     end
 
-    subgraph DATA["Managed free tiers — always-on, own the disks"]
+    subgraph DATA["Stateful — always-on, own the disks"]
         PG[("PostgreSQL ×1<br/>one instance, one schema<br/>per service, one role each")]
         RD[("Redis ×1<br/>match queue · rate limits<br/>pub/sub · events · cache")]
     end
@@ -141,11 +152,12 @@ flowchart TD
     class PG,RD stateful
 ```
 
-**Reading the diagram:** stacked blue boxes autoscale between 0 and 2 instances —
-nobody using the app means zero instances running. The dashed green Stats job
-never has an instance parked. Solid arrows are the request path; **dotted arrows
-are service-to-service calls**, which exist because no service may read another's
-tables. The amber cylinders are the only always-on machines.
+**Reading the diagram:** stacked blue boxes run two replicas each on the cluster
+and one each under compose, which is the difference that lets a rolling update be
+lossless (§7). The dashed green Stats job has no instance parked between runs;
+its read API is an ordinary service. Solid arrows are the request path; **dotted
+arrows are service-to-service calls**, which exist because no service may read
+another's tables. The amber cylinders are the only always-on machines.
 
 Every browser request — HTTP or WebSocket — enters through the Gateway. No other
 service is reachable from the internet, and the browser never talks to Postgres
@@ -195,15 +207,15 @@ see §5.
 | All services | TypeScript + Fastify (Node web framework) | One language across six deployables + the frontend = fast solo iteration, and shared types across service boundaries, which matters much more now that boundaries exist. *Not Express:* Fastify has JSON-schema validation and a real plugin/encapsulation model built in, and is meaningfully faster. *Not NestJS:* heavy structure earns its keep on a team. |
 | Frontend | React + Vite (build tool) + TS, with `react-router` and `marked` | Minimal, just enough to demo; Yjs bindings for React editors are mature. *Not Next.js:* SSR buys nothing for an authenticated single-page editor and adds a server to deploy where a static bundle on a CDN costs nothing. `react-router` arrived once there were six screens: navigating by React state meant the whole site lived at one address, so the browser Back button left it entirely and no lesson could be linked to. `marked` renders the seeded lesson markdown, and needs no sanitizer because that markdown is seeded by a migration and no route writes it. |
 | Auth | Firebase Auth (email/password) **[bought]** | Identity is a solved, security-critical problem with no design insight left in it; Google's abuse detection and key rotation beat anything hand-rolled. *Not self-hosted:* decision 4. Free at this scale. |
-| DB access | `pg` driver + hand-written parameterized SQL; migrations as numbered `.sql` files ([decision 10](../adr/)) | No schema DSL on the critical path, and decision 9's per-schema grants stay literal SQL. *Not Drizzle:* deferred, not rejected — it is item 1 in the additive backlog (the backlog). |
+| DB access | `pg` driver + hand-written parameterized SQL; migrations as numbered `.sql` files ([decision 10](../adr/)) | No schema DSL on the critical path, and decision 9's per-schema grants stay literal SQL. *Not Drizzle:* deferred, not rejected — it is the first item in the additive backlog. |
 | Database | PostgreSQL — one instance, schema per service | Relational data, plus built-in tag filtering (`text[]` + GIN index) and full-text search (`tsvector`), so no separate search engine. *Not database-per-service:* decision 9 — it would cost cross-service atomicity and force a saga. *Not Mongo:* the data is relational. |
 | Cache/queue/pubsub | Redis | One dependency covering five jobs: match queue, rate-limit state, cross-instance pub/sub, event stream, question-bank cache. Split from Postgres by **access pattern** (ephemeral shared state vs durable relational), not by service. |
 | Real-time | WebSockets + Yjs (CRDT) | Concurrent edits merge without a central server ordering them ([decision 2](../adr/)). *Not SSE or polling:* one-directional, or too slow for ~100 ms keystroke echo. *Not Liveblocks/PartyKit:* they'd host the hard part, and the hard part is the project. |
-| Event log | Redis Streams | Replayable domain-event log feeding summaries/stats, behind one `EventLog` interface so a second adapter is a swap rather than a rewrite. *Not Kafka:* an always-on broker for one stream of a few events a minute, though a Kafka adapter behind the same interface is in the backlog (the backlog). |
+| Event log | Redis Streams | Replayable domain-event log feeding summaries/stats, behind one `EventLog` interface so a second adapter is a swap rather than a rewrite. *Not Kafka:* an always-on broker for one stream of a few events a minute, though a Kafka adapter behind the same interface is in the backlog. |
 | Editor | Monaco wired to Yjs | Familiar VS Code feel, mature `y-monaco` binding. *Not a plain textarea:* no cursor decorations, so presence would be invisible. *Not CodeMirror 6:* a fair alternative, lighter — Monaco chosen for recognisability in a demo. |
 | Container | Docker + docker-compose | The unit everything ships as, and the reason the same image runs under compose and on the cluster without a rebuild. |
 | Orchestration | Kubernetes on `kind`, locally | Rolling updates and self-healing are the two behaviours compose cannot show, and both are claims this project wants to be able to make (§7). *Not a hosted cluster:* it bills by the hour whether or not anyone visits. decision 5. |
-| CI | GitHub Actions | Lint → test → build → deploy on merge, **per service** (§7). *Not Cloud Build:* the repo is on GitHub and Actions is free for public repos. |
+| CI | GitHub Actions | Lint → typecheck → test → build → run the image and check `/health/ready`, **per service** (§7). There is no deploy step and there is not going to be one. |
 
 ---
 
@@ -351,9 +363,10 @@ the Lua script ([decision 3](../adr/)).
 ### Collab
 
 - Authenticated WebSocket connections; one Yjs document per session.
-- Doc seeded from the question's `parts[]` — one heading per part, plus
-  "## Our answer" and "## Scratch". The scaffold lets two people work in parallel
-  without colliding; "## Scratch" doubles as the chat channel.
+- Doc seeded from the question's `parts[]` — a numbered line per part with room
+  under each to answer in. There are no separate answer and scratch sections:
+  they meant deciding where a thought belonged before writing it down, and the
+  numbering now matches how the questions read everywhere else in the app.
 - Presence + cursors via Yjs **awareness** (its built-in side channel).
 - **Cross-instance sync** via a Redis pub/sub channel per session — needed
   because the two users may be connected to *different* Collab instances.
@@ -437,11 +450,10 @@ sequenceDiagram
   exits. Worst case a summary lands ~5 minutes after the
   session ends. The retained log is what makes reprocessing possible: rewind the
   bookmark after a bug fix, or add a consumer later, and history is still there.
-- **[detour · learning]** In dev only, docker-compose runs single-node Kafka
-  (KRaft mode), and the same code targets it through the 3-method `EventLog`
-  interface (append / readBatch / ack). **Nothing in production touches Kafka** —
-  it exists so topics, offsets and consumer groups are hands-on rather than read
-  about, confined behind the interface so prod is unaffected.
+- **The `EventLog` interface has exactly three methods** (append / readBatch /
+  ack) because those are what Redis Streams and Kafka genuinely share. A Kafka
+  adapter behind that surface is in the backlog and is **not built**: nothing in
+  this repo runs a broker.
 
 *Why a log and not a queue?* A queue deletes on consume, so a bug in the summary
 logic means the data needed to recompute is gone. A log keeps entries after
@@ -450,7 +462,7 @@ reading, so the fix is rewinding the bookmark ([decision 7](../adr/)).
 *Why not have Matching write summaries directly?* The write would sit on the
 user's request path, and there'd be no replay when the logic changes. The async
 split is also what creates the at-least-once problem that forces idempotency —
-which is the reason this phase is worth building.
+which is the reason this pipeline is worth building at all.
 
 *Why a scheduled job and not an always-on consumer?* An always-on container is
 the one thing §7 rules out. The log holds events while nobody reads, so polling
@@ -496,13 +508,13 @@ service's worth of work here — buying identity deleted it.
 
 Now that services call each other, "internal" has to mean something enforceable:
 
-- Every service except the Gateway is deployed with **internal-only ingress**, so
-  it has no route from the internet.
-- Each service runs as its **own service account**, and is granted
-  `roles/run.invoker` only on the specific services it calls — Matching on Users
-  and Questions, Collab on Matching, the Gateway on all four. Callers attach a
-  service account token, and nothing outside the cluster can reach them at
-  all: only the Gateway has an Ingress.
+- Every service except the Gateway is a **ClusterIP Service**, so it has no route
+  in from outside the cluster; under compose, nothing but the Gateway publishes a
+  port a browser can reach.
+- The call graph is deliberately narrow — Matching calls Users and Questions,
+  Collab calls Matching, the Gateway calls all of them, and nothing else calls
+  anything. Inside the cluster those calls carry no credential of their own,
+  which is exactly why the ingress boundary has to hold.
 
 **This is the assumption the whole design rests on.** `X-User-Id` is trusted
 because only the Gateway can set it. If any service ever gains public ingress,
@@ -524,8 +536,8 @@ setting is a security control, not a deployment detail.
     histograms, WebSocket connection count.
     Scraped rather than pushed, which is the ordinary Prometheus model and is
     available precisely because pods are individually addressable inside a
-    cluster. Only Collab's socket count and memory are built so far (phase 7);
-    the rest is a stretch.
+    cluster. Only Collab's socket count and memory are built; the rest is a
+    stretch.
   - Full OpenTelemetry tracing is an explicit stretch. It's worth more here than
     it was with three services — a match request now touches four — but it's
     still not core.
@@ -705,20 +717,19 @@ in.
   Matching→Questions, Collab→Matching), so a response-shape change breaks CI
   rather than production. This is the tax independent deployability charges.
 - **One end-to-end happy path:** sign in → match → collab edit syncs → end.
-- **k6 load test on Collab, run twice, and the two runs answer different
-  questions.**
+- **Two measurement harnesses, and they answer different questions.**
 
-  **The baseline is phase 7, against `docker-compose`.** It requires Collab and
-  nothing else, so it has been possible since phase 4; it is numbered anyway
-  because a task with no place in the sequence is a task that never happens, and
-  this is the one that turns a quoted figure into a measured one. Ramping
-  WebSocket connections is where the volume goes and where bugs are cheap to
-  find (a socket leak, an unbounded map, a missing `await`), and this run is
-  what produces the headline concurrency and propagation figures.
+  **`make load` is the k6 script**, run against compose and against the cluster.
+  It ramps 250 collaboration sockets, holds them, and measures how long an edit
+  takes to reach the other person in the pair. Ramping WebSocket connections is
+  where the volume goes and where bugs are cheap to find — a socket leak, an
+  unbounded map, a missing `await` — and it is what produces the concurrency and
+  propagation figures.
 
-  **Phase 8 re-runs the same script on the local Kubernetes cluster**, and the
-  point is not a bigger number. It is that load can be applied *while* a rolling
-  update goes out and *while* a pod is deleted, which is a different claim.
+  **`make k8s-check` is the disruption prober**, and it exists because the k6
+  script *cannot* measure dropped requests: it sends its HTTP in `setup()` and
+  `teardown()` and holds sockets in between, so during a rolling update there is
+  nothing in flight to drop.
 
   **What a local run may and may not claim.** It measures a laptop, not a
   system, so it cannot support a capacity claim: "holds N concurrent
@@ -730,11 +741,10 @@ in.
   - no lost edits while an instance is replaced,
   - flat memory and no leaked sockets over a long run.
 
-  The first of those is the payoff for the readiness probes written in phase 1:
-  a pod failing `/health/ready` is removed from the Service endpoints, and that
-  is the mechanism that makes the update lossless. "Zero dropped requests, and
-  here is why" is a better answer to what Kubernetes buys than listing object
-  kinds.
+  The first of those is the payoff for the readiness probes: a pod failing
+  `/health/ready` is removed from the Service endpoints, and that is the
+  mechanism that makes the update lossless. "Zero dropped requests, and here is
+  why" is a better answer to what Kubernetes buys than listing object kinds.
 
 ### How the headline number is measured
 
@@ -773,14 +783,13 @@ export const options = {
   *other* VU in that session subtracts it from its own clock when the insert
   arrives. The headline number does not exist unless this metric is built.
 
-  **Corrected 2026-08-11, building phase 7.** This said the delta was recorded
-  "when the echo arrives back over the socket". There is no echo: `broadcast`
-  in services/collab/src/rooms.ts sends an update to every socket in the room
-  *except* the one it came from, so a sender never sees its own edit return,
-  and a script written to that description would have measured nothing at all.
-  Reading it from the partner is also the better measurement — it is the delay
-  a person actually experiences, rather than a round trip to a server and back
-  to the person who already knows what they typed.
+  **It has to be read from the partner, and not from an echo, because there is
+  no echo.** `broadcast` in services/collab/src/rooms.ts sends an update to
+  every socket in the room *except* the one it came from, so a sender never sees
+  its own edit return and a script written to expect one measures nothing at
+  all. Reading it from the partner is also the better measurement: it is the
+  delay a person actually experiences, rather than a round trip to a server and
+  back to the person who already knows what they typed.
 - **Report p95/p99, never the average.** If 95 requests take 10 ms and 5 take
   2 s, the average is 110 ms and not one request was anywhere near it. p95 means
   95% of requests were faster than the stated figure — and the tail is both what
@@ -820,4 +829,4 @@ managed service is time returned to the top of the list.
 The failure mode this doc is written to prevent isn't picking a wrong tool; it's
 spending three weeks on infrastructure and one on the only part that's hard. Six
 services makes that failure mode *easier* to hit, which is the honest cost of
-decision 1 and the reason phases 8–10 are explicitly droppable.
+decision 1, and it is why everything in the backlog is explicitly droppable.
