@@ -102,12 +102,28 @@ and any links that break.
   `CLAUDE.md`.
 - Do not reintroduce a cloud dependency in prose or in code.
 
+### Also check these two files are still true
+
+Both were edited during the restructure and both are easy to leave stale:
+
+- **`CLAUDE.md`** — the project-context list must match the four folders, the
+  "Running it" section must match the real `make` targets, and no convention in
+  it should reference a phase, a deployment or a doc that moved. It is loaded
+  into every session, so an error here propagates.
+- **`Makefile`** — every target and every comment. `k8s-up` and `k8s-down`
+  arrive with Part 2 and have to be documented in the header block alongside
+  `up`, `web`, `test` and `load`, and `README.md` lists the same commands.
+
 ### Verify before committing
 
 ```bash
 pnpm lint && pnpm format:check && pnpm -r typecheck
 grep -rn "phase\|Cloud Run\|Neon\|Upstash" --include=*.md docs/ | grep -v future/cost.md
+grep -rn "DESIGN\.md\|docs/phases\|docs/reviews" . --include=*.md --include=*.ts --include=*.yml | grep -v node_modules
 ```
+
+The last one catches links to files that no longer exist, which is the most
+likely thing to break during the move.
 
 `docs/future/cost.md` is the one file allowed to discuss cloud pricing; it is
 explicitly framed as the exploration that decided against deploying.

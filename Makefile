@@ -31,12 +31,12 @@ migrate:
 	DATABASE_URL="postgresql://deepcs:deepcs@127.0.0.1:5432/deepcs" pnpm --filter @deepcs/db migrate
 
 # Needs `make up` first: the suites run against the real Postgres and Redis
-# rather than mocks, which is DESIGN.md §8's rule.
+# rather than mocks, which is the rule in docs/system/00-overview.md §8.
 test:
 	pnpm -r test
 
-# The phase 7 load run (DESIGN.md §8). Needs `make up`, and takes about five
-# minutes: it ramps 250 collab sockets, holds them, and prints k6's client-side
-# latency next to Collab's own socket count and memory.
+# The k6 load run. Needs `make up`, and takes about five minutes: it ramps 250
+# collab sockets, holds them, and prints k6's client-side latency next to
+# Collab's own socket count and memory.
 load:
 	./load/run.sh
