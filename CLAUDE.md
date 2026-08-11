@@ -87,6 +87,8 @@ minutes: it is the phase 7 k6 run against the running stack.
 - [docs/phases/5b-roadmap.md](./docs/phases/5b-roadmap.md) — the roadmap that replaced Learn and the bank, and the standing rule it came from: fix content in the seed, never at render time
 - [docs/phases/6-events.md](./docs/phases/6-events.md) — the event log: why acking after the commit is the whole safety argument, and the two different ways an event is made safe to reprocess
 - [docs/phases/7-load-and-soak.md](./docs/phases/7-load-and-soak.md) — the load run: why edit latency is read at the partner and not the sender, and which of its numbers a laptop is allowed to claim
+- [docs/cost.md](./docs/cost.md) — what deploying costs, explained from nothing: why an open WebSocket is what spends the budget and a page view is not, the Neon sleep trap, the Tier 2 region penalty, and every cost in one table
+- [docs/frontend.md](./docs/frontend.md) — how the frontend works from nothing: the empty HTML shell, what the build actually produces, the two backends the browser talks to, and the three rules that break in a browser but not in curl
 
 ### Comment style
 
@@ -171,14 +173,19 @@ minutes: it is the phase 7 k6 run against the running stack.
 - **Phase numbers are identities, not positions.** They are cited by every doc,
   comment and commit message, so a reordering moves the sequence and leaves the
   numbers alone. Phases 0 to 7 were built in numeric order.
-- **Next is phase 10, the deploy** (reordered 2026-08-11). It had been last, on
-  the grounds that a live URL inside a cost ceiling buys attention on billing
-  rather than on the system; most of that attention was already spent in phase 0
-  and its guard rails are still standing, and a URL is the only part of this a
-  stranger experiences. Kubernetes (8) and Kafka (9) are labelled learning
-  detours and move behind it. What that costs is recorded in DESIGN.md §10:
-  phase 8's "zero dropped requests during a rolling update" claim lands later,
-  and the §7 ceiling becomes a live constraint rather than a design one.
+- **The project ends at phase 8** (decided 2026-08-12, superseding a same-week
+  reorder that had put the deploy next). Phase 8 is Kubernetes locally, and it
+  is the last phase. Phase 10 (Cloud Run) and phase 11 (Terraform) are
+  *designed and costed, deliberately not executed*: the deployment is specified
+  in DESIGN.md §7 and priced in [docs/cost.md](./docs/cost.md), and running it
+  would mean attaching a card to a portfolio demo once trial credits expire.
+  The deliverable is the specification, not the URL. Say "designed, not built"
+  — never "in progress" — about anything in that category.
+- **Claims about this project have to be checkable**, because the whole repo is
+  built on stating what was measured and in which environment. Nothing is
+  "deployed" until it is, load numbers travel with the machine that produced
+  them, and the k6 figures are laptop figures. This rule has already had to
+  correct a CV draft.
 - **The k6 script is written once, in phase 7, and re-run twice.** Phase 8 runs
   it during a rolling update and a pod kill; phase 10 runs it smaller against
   Cloud Run. Only phase 10 may make a capacity claim, because a local run

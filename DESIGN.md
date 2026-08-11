@@ -1048,11 +1048,31 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
 | 10 | **Deploy.** The services to Cloud Run + frontend to CDN; CI deploys per service on merge; logs + health + `/metrics` → Grafana; the smaller k6 run against the real thing; README + ADRs + demo GIF | live URL; headline load number in README with the environment stated; deploying Questions alone doesn't restart Collab |
 | 11 | **[built · learning]** Terraform: import the manual setup (services + flags, service accounts, invoker bindings, registry, secrets, bucket, scheduler job, budget alerts). After phase 10, because it imports infrastructure that has to exist first | `terraform apply` rebuilds the environment |
 
-**Build order, from 2026-08-11: phase 10 comes next**, and everything after it
-follows the additive backlog at the end of this section rather than the numbers
-in this table. The numbers are identities, not positions — every doc, comment
-and commit message in the repo cites them — so they stay fixed and the sequence
-moves around them. Phases 0 to 7 were built in the order they are numbered.
+**Superseded 2026-08-12: the project ends at phase 8.** Phase 8 (Kubernetes
+locally) is next and last. Phase 10 (the Cloud Run deploy) and phase 11
+(Terraform) are **designed and costed, deliberately not executed** — the design
+stays in §7 because it is the reasoning, not the artefact, and what it would
+cost to run is in [docs/cost.md](docs/cost.md).
+
+The reason is the one §7's ceiling was always pointing at, now with numbers
+behind it. A live URL is free only while trial credits last; after that,
+`asia-southeast1` is a Tier 2 region where the free allowance is worth about 36
+instance-hours a month, an open WebSocket bills for its whole life, and the
+system would need a card attached to stay up. That is a poor trade for a
+portfolio demo that `kubectl` can run on any laptop, for ever, at no cost. The
+deployment being *specified in enough detail to price* is the deliverable;
+running it is not.
+
+**What this costs, stated as plainly as the reorder it replaces:** there is no
+URL to send anybody, and there never will be. The README carries a recording
+instead. Anyone assessing this repo has to clone it, which is a real filter and
+is accepted deliberately.
+
+The paragraphs below are the earlier reasoning, kept because the sequence of
+decisions is the interesting part. The numbers in this table are identities,
+not positions — every doc, comment and commit message in the repo cites them —
+so they stay fixed regardless of what is built. Phases 0 to 7 were built in the
+order they are numbered.
 
 **The project is feature-complete at phase 6**, which is where the event
 pipeline and `/stats` land. Both are stated scope (§1, §2), so phase 6 is not
