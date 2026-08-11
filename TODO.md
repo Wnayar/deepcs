@@ -1,11 +1,17 @@
 # Handover: finish the docs restructure
 
-Temporary file. Delete it when Part 1 is done — Parts 2 and 3 are finished.
+Temporary file. Delete it when Parts 1 and 3 are done — only Part 2 is finished.
 
-**Start here.** Only **Part 1** is left: `docs/phases/` and `docs/reviews/` still
-exist and their still-true content has to move into `docs/system/`. Part 2
-(Kubernetes) is built, measured and committed. Part 3 (closing the cloud
-accounts) is a manual checklist for the human, not the agent.
+**Start here.** Two parts are left, and they are for different people:
+
+- **Part 1 — the docs, for the agent.** `docs/phases/` and `docs/reviews/` still
+  exist and their still-true content has to move into `docs/system/`.
+- **Part 3 — the cloud accounts, for you.** Not started as of 2026-08-12: `.env`
+  is still present, and `gcloud projects list` still shows `deepcs-will`. None of
+  it is billing, which is why it is not urgent, but none of it is done either.
+  Do not hand this one to the agent; it deletes accounts.
+
+**Part 2 — Kubernetes — is done**, built, measured and committed.
 
 Kubernetes landed on `build/kubernetes-locally`, branched off `main`. Check with
 `git log --oneline -6` where you actually are. Nothing is half-edited; the tree
