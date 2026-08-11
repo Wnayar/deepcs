@@ -51,7 +51,7 @@ to need full context, alternatives, and accepted tradeoffs are ADRs (§9).
   into session summaries and live stats — which is where at-least-once delivery
   forces idempotency (§6).
 - A system that runs on Kubernetes locally at no cost, and is deployed to a
-  live URL at the end, inside a hard cost ceiling
+  live URL inside a hard cost ceiling
   (§7) — the constraint that shapes more of this design than any other.
 
 ---
@@ -1048,10 +1048,16 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
 | 10 | **Deploy.** The services to Cloud Run + frontend to CDN; CI deploys per service on merge; logs + health + `/metrics` → Grafana; the smaller k6 run against the real thing; README + ADRs + demo GIF | live URL; headline load number in README with the environment stated; deploying Questions alone doesn't restart Collab |
 | 11 | **[built · learning]** Terraform: import the manual setup (services + flags, service accounts, invoker bindings, registry, secrets, bucket, scheduler job, budget alerts). After phase 10, because it imports infrastructure that has to exist first | `terraform apply` rebuilds the environment |
 
+**Build order, from 2026-08-11: phase 10 comes next**, and everything after it
+follows the additive backlog at the end of this section rather than the numbers
+in this table. The numbers are identities, not positions — every doc, comment
+and commit message in the repo cites them — so they stay fixed and the sequence
+moves around them. Phases 0 to 7 were built in the order they are numbered.
+
 **The project is feature-complete at phase 6**, which is where the event
 pipeline and `/stats` land. Both are stated scope (§1, §2), so phase 6 is not
 optional and nothing after it is load-bearing for the product. *Publicly*
-demoable means phase 10, and that is the deliberate cost of this ordering.
+demoable means phase 10, which is now the next phase.
 
 **Why the deploy moved last.** It was phase 6, ahead of everything additive. The
 trade it was making turned out to be a bad one: a live URL is the only part of
@@ -1065,6 +1071,31 @@ live URL is still the goal; it is now the last thing rather than the middle one.
 What is honestly lost is worth naming rather than glossing: until phase 10 there
 is no URL to send anybody, and nobody is going to run `kind create cluster` to
 look at a project. The README carries the demo recording until then.
+
+**And why it moved back to the front, 2026-08-11.** The paragraph above prices
+the deploy as *attention*: budget alarms, kill switches, free-tier quotas, an
+audit of anything that generates traffic. That price has largely been paid
+already and it was paid in phase 0 — the kill-switch function, the budget
+alerts and the enabled-API allowlist exist and are still standing, so what is
+left is the deploy itself rather than the apparatus around it. Against a cost
+that shrank, the thing the deferral gave up has a date on it: a URL is the only
+part of this a stranger experiences, and it is wanted now. Phases 8 and 9 are
+both labelled learning detours in the table, and a detour is what moves when
+something dated is queued behind it.
+
+Only the deploy moves. What follows it is the additive backlog below, in the
+priority that table already argues for — which is not disturbed by this, except
+that phase 11 is no longer waiting on anything, since Terraform imports what the
+deploy creates and could never have run before it.
+
+The cost of *this* reordering, stated as plainly as the last one: phase 8's
+"zero dropped requests during a rolling update, and here is why the readiness
+probes make that work" was the sharpest operational claim in the plan, and it
+now lands later. Cloud Run migrates traffic between revisions and will
+demonstrate something adjacent, but it is not the same claim: the mechanism
+there belongs to Google rather than to anything in `k8s/`. And a deployed
+system spends real quota from the moment it exists, so §7's ceiling stops being
+a design constraint and becomes a live one.
 
 **Why the event pipeline moved ahead of Kubernetes.** They swapped after the CV
 went out. Ordering by cost and learning value is the right rule while nothing

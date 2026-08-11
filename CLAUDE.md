@@ -168,11 +168,17 @@ minutes: it is the phase 7 k6 run against the running stack.
   fail a user's request. Adding a seventh means adding it to `EventType`, to the
   `switch` in `services/stats/src/consumer.ts`, and to a table keyed so that
   reprocessing it changes nothing.
-- **Phase order: 6 event pipeline, 7 load and soak, 8 Kubernetes locally, 9
-  Kafka, 10 deploy, 11 Terraform.** The deploy is last because keeping a live
-  URL inside a cost ceiling was buying attention on billing rather than on the
-  system, and the event pipeline is first because it is the piece already
-  described to people outside the repo. DESIGN.md §10 records both.
+- **Phase numbers are identities, not positions.** They are cited by every doc,
+  comment and commit message, so a reordering moves the sequence and leaves the
+  numbers alone. Phases 0 to 7 were built in numeric order.
+- **Next is phase 10, the deploy** (reordered 2026-08-11). It had been last, on
+  the grounds that a live URL inside a cost ceiling buys attention on billing
+  rather than on the system; most of that attention was already spent in phase 0
+  and its guard rails are still standing, and a URL is the only part of this a
+  stranger experiences. Kubernetes (8) and Kafka (9) are labelled learning
+  detours and move behind it. What that costs is recorded in DESIGN.md §10:
+  phase 8's "zero dropped requests during a rolling update" claim lands later,
+  and the §7 ceiling becomes a live constraint rather than a design one.
 - **The k6 script is written once, in phase 7, and re-run twice.** Phase 8 runs
   it during a rolling update and a pod kill; phase 10 runs it smaller against
   Cloud Run. Only phase 10 may make a capacity claim, because a local run
