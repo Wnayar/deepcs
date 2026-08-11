@@ -831,9 +831,18 @@ export const options = {
 - **Thresholds** turn the run into a pass/fail check, which is what lets it live
   in CI instead of being something someone remembers to eyeball.
 - **`edit_latency` has to be hand-written**, because k6 has no concept of edit
-  propagation: the script stamps a timestamp into each Yjs update it sends and
-  records the delta when the echo arrives back over the socket. The headline
-  number does not exist unless this metric is built.
+  propagation: the script stamps a timestamp into the text it inserts, and the
+  *other* VU in that session subtracts it from its own clock when the insert
+  arrives. The headline number does not exist unless this metric is built.
+
+  **Corrected 2026-08-11, building phase 7.** This said the delta was recorded
+  "when the echo arrives back over the socket". There is no echo: `broadcast`
+  in services/collab/src/rooms.ts sends an update to every socket in the room
+  *except* the one it came from, so a sender never sees its own edit return,
+  and a script written to that description would have measured nothing at all.
+  Reading it from the partner is also the better measurement — it is the delay
+  a person actually experiences, rather than a round trip to a server and back
+  to the person who already knows what they typed.
 - **Report p95/p99, never the average.** If 95 requests take 10 ms and 5 take
   2 s, the average is 110 ms and not one request was anywhere near it. p95 means
   95% of requests were faster than the stated figure — and the tail is both what

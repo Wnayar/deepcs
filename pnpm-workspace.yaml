@@ -8,6 +8,12 @@ packages:
   # either — that matrix assumes each entry is a Docker-buildable server with a
   # /health/ready endpoint, and this is a static bundle.
   - 'frontend'
+  # The k6 load test (phase 7). A workspace package only so that the Yjs
+  # libraries it bundles into the k6 script come from the same catalog
+  # versions Collab itself runs — a load generator speaking a different
+  # protocol version to the server would measure something that does not
+  # exist. It is not a service and builds no image.
+  - 'load'
 
 # pnpm blocks dependency install scripts by default (a supply-chain control:
 # a compromised transitive package cannot run code on install). esbuild is an

@@ -1,0 +1,17 @@
+{
+  "name": "@deepcs/load",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bundle": "node bundle.mjs"
+  },
+  "dependencies": {
+    "lib0": "catalog:",
+    "y-protocols": "catalog:",
+    "yjs": "catalog:"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

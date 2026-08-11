@@ -159,6 +159,15 @@ export interface RoomManager {
   /** Snapshots every room this manager currently holds — the SIGTERM leg of
    * DESIGN.md's "every 30s, on disconnect, and before SIGTERM". */
   snapshotAllRooms(): Promise<void>;
+
+  /**
+   * What this instance believes it is holding, for `/metrics`. Both numbers
+   * are counted from the manager's own state rather than from the operating
+   * system's open sockets, and that is the point: a leak is precisely the case
+   * where the two disagree, because the connection is gone and the bookkeeping
+   * still has it.
+   */
+  stats(): { sockets: number; rooms: number };
 }
 
 /**
@@ -182,6 +191,14 @@ export function createRoomManager(deps: RoomDeps): RoomManager {
   const instanceId = randomUUID();
 
   /**
+   * The rooms that finished building, which `rooms` cannot report on because
+   * it holds promises and a metrics scrape has to answer without awaiting one.
+   * Membership is added once a build resolves and removed in `teardown`, the
+   * single place a room stops existing.
+   */
+  const live = new Set<Room>();
+
+  /**
    * Returns the room for `sessionId`, building it (from a Postgres snapshot,
    * or freshly seeded from the question) if this is the first socket to want
    * it on this instance. Concurrent callers for a brand-new session all await
@@ -201,7 +218,9 @@ export function createRoomManager(deps: RoomDeps): RoomManager {
       promise.catch(() => rooms.delete(sessionId));
       rooms.set(sessionId, promise);
     }
-    return { room: await promise, created };
+    const room = await promise;
+    live.add(room);
+    return { room, created };
   }
 
   /**
@@ -252,6 +271,7 @@ export function createRoomManager(deps: RoomDeps): RoomManager {
     room.closing = true;
     clearInterval(room.snapshotTimer);
     rooms.delete(sessionId);
+    live.delete(room);
     await room.subscriber
       .unsubscribe(
         docChannel(sessionId),
@@ -368,7 +388,13 @@ export function createRoomManager(deps: RoomDeps): RoomManager {
     );
   }
 
-  return { attachSocket, snapshotAllRooms };
+  function stats(): { sockets: number; rooms: number } {
+    let sockets = 0;
+    for (const room of live) sockets += room.sockets.size;
+    return { sockets, rooms: live.size };
+  }
+
+  return { attachSocket, snapshotAllRooms, stats };
 }
 
 async function buildRoom(

@@ -41,6 +41,45 @@ app.get('/', async () => ({ service: 'collab', phase: 4 }));
 
 app.get('/health/deps', deps);
 
+/**
+ * Prometheus-format counters for the load run (§8) — e.g.
+ *   curl http://localhost:8084/metrics
+ * The two that matter are the socket count and the resident memory, because
+ * they are the pair the k6 run is checked against: the client's own view can
+ * say "I have 250 connections open", and only this can say whether the server
+ * agrees. A hold that ends with connections back at zero and memory where it
+ * started is what "no leaked sockets, flat memory" means.
+ *
+ * Deliberately not routed through the Gateway, so it is reachable from the
+ * compose network and from nowhere else. §6 wants request-rate, error-rate and
+ * latency histograms here too, on every service; those arrive in phase 10 with
+ * the Grafana push, and none of them is what this phase measures.
+ */
+app.get('/metrics', async (_req, reply) => {
+  const { sockets, rooms: openRooms } = rooms.stats();
+  const memory = process.memoryUsage();
+
+  return reply
+    .type('text/plain; version=0.0.4')
+    .send(
+      [
+        '# HELP collab_websocket_connections Collaboration sockets attached to this instance.',
+        '# TYPE collab_websocket_connections gauge',
+        `collab_websocket_connections ${sockets}`,
+        '# HELP collab_rooms Sessions this instance is holding a document for.',
+        '# TYPE collab_rooms gauge',
+        `collab_rooms ${openRooms}`,
+        '# HELP process_resident_memory_bytes Resident set size of this process.',
+        '# TYPE process_resident_memory_bytes gauge',
+        `process_resident_memory_bytes ${memory.rss}`,
+        '# HELP nodejs_heap_size_used_bytes Used V8 heap.',
+        '# TYPE nodejs_heap_size_used_bytes gauge',
+        `nodejs_heap_size_used_bytes ${memory.heapUsed}`,
+        '',
+      ].join('\n'),
+    );
+});
+
 declare module 'fastify' {
   interface FastifyRequest {
     /** Set by the preHandler below once Matching has confirmed the caller

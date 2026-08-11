@@ -71,7 +71,8 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 `make up` starts the stack and applies migrations (compose has a one-shot
 `migrate` service every other service waits on). `make web` starts the frontend
 on :5173. `make test` needs the stack up, because the suites use real Postgres
-and Redis rather than mocks.
+and Redis rather than mocks. `make load` needs it up too, and takes about six
+minutes: it is the phase 7 k6 run against the running stack.
 
 ## Project context
 
@@ -85,6 +86,7 @@ and Redis rather than mocks.
 - [docs/phases/5-frontend.md](./docs/phases/5-frontend.md) — the React app, and the reveal rule: why the answer and the authority to release it live in different services
 - [docs/phases/5b-roadmap.md](./docs/phases/5b-roadmap.md) — the roadmap that replaced Learn and the bank, and the standing rule it came from: fix content in the seed, never at render time
 - [docs/phases/6-events.md](./docs/phases/6-events.md) — the event log: why acking after the commit is the whole safety argument, and the two different ways an event is made safe to reprocess
+- [docs/phases/7-load-and-soak.md](./docs/phases/7-load-and-soak.md) — the load run: why edit latency is read at the partner and not the sender, and which of its numbers a laptop is allowed to claim
 
 ### Comment style
 
