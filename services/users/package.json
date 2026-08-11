@@ -13,6 +13,7 @@
   "dependencies": {
     "@deepcs/shared": "workspace:*",
     "fastify": "catalog:",
+    "ioredis": "catalog:",
     "pg": "catalog:",
     "zod": "catalog:"
   },
