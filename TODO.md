@@ -1,11 +1,16 @@
-# Handover: finish the docs restructure, then build Kubernetes
+# Handover: finish the docs restructure
 
-Temporary file. Delete it when both parts are done.
+Temporary file. Delete it when Part 1 is done — Parts 2 and 3 are finished.
 
-This work was done on `refine/local-only`, which is intended to be merged into
-`main`. Check with `git log --oneline -6` where you actually are, and start a
-fresh branch off whatever contains the commit "Restructure the docs". Nothing is
-half-edited; the tree is consistent at every commit.
+**Start here.** Only **Part 1** is left: `docs/phases/` and `docs/reviews/` still
+exist and their still-true content has to move into `docs/system/`. Part 2
+(Kubernetes) is built, measured and committed. Part 3 (closing the cloud
+accounts) is a manual checklist for the human, not the agent.
+
+Kubernetes landed on `build/kubernetes-locally`, branched off `main`. Check with
+`git log --oneline -6` where you actually are. Nothing is half-edited; the tree
+is consistent at every commit, and `pnpm lint`, `format:check`, `-r typecheck`
+and all 140 tests pass as of that commit.
 
 ---
 
@@ -34,6 +39,23 @@ The repo has been converted from a "still building, deploying later" state to a
 - `.dockerignore`, `.gitignore`, `.env.example` cleaned for local-only.
 - Verified: `pnpm lint`, `pnpm format:check`, `pnpm -r typecheck`, and all 137
   tests pass.
+
+**Two items above were overstated, found while building Part 2.** Fix them with
+Part 1 rather than trusting the list:
+
+- *"Every Cloud Run reference in code comments now cites what actually applies"*
+  is not true. `services/stats/src/server.ts` still says the two entrypoints are
+  "deployed in Cloud Run as one job and one service", and
+  `packages/shared/src/service.ts` still explains `trustProxy` in terms of what
+  sits "behind Cloud Run". Both are now answered by `k8s/`.
+- *"every mention of phases gone"* was true of `CLAUDE.md` only. Still carrying
+  `phase N` or dead links: `load/run.sh`, `docker-compose.yml`,
+  `pnpm-workspace.yaml`, `.github/workflows/ci.yml`, `docs/system/07-frontend.md`,
+  `docs/learning/the-code.md`, `docs/adr/10-hand-written-sql-for-now.md`, and
+  `docs/system/00-overview.md:71` which links to `docs/phases/5b-roadmap.md`.
+
+Note the verify grep at the end of Part 1 **misses `.sh` files**, which is why
+`load/run.sh` survived. Widen it.
 
 ---
 
@@ -187,14 +209,14 @@ the whole document and the script counts old markers as fresh edits, which puts
 p95 at 18.72s against a 5ms median. Not a defect; the reasoning is in §6 of
 `09-running-it.md`.
 
-### Afterwards — still to do
+### Afterwards
 
-Update the CV bullets in `~/deepcs-resume-bullets.txt` (also on the Windows
-desktop) with the measured result: the last bullet's "in progress" becomes the
-rolling-update and pod-kill claim. Use the numbers and the exact wording from
-`docs/system/09-running-it.md` §4 and §5 — in particular "a reconnect, not any
-edits" rather than "interrupts nobody", and keep the machine attached to any
-latency figure.
+Nothing. `~/deepcs-resume-bullets.txt` has been deleted on purpose — it was a
+scratch file, and its planned upgrade text ("zero dropped requests during a
+rolling update and a pod kill, verified with the same k6 script") was wrong on
+both counts. If a CV bullet is written later, take the numbers and the wording
+from `docs/system/09-running-it.md` §4 and §5: "a reconnect, not any edits"
+rather than "interrupts nobody", and the machine attached to any latency figure.
 
 ---
 

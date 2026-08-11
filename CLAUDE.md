@@ -190,8 +190,24 @@ used to be X", it belongs in a decision file or nowhere.
   "deployed" until it is, load numbers travel with the machine that produced
   them, and the k6 figures are laptop figures. This rule has already had to
   correct a CV draft.
-- **There is one k6 script** (`load/`), run against compose and against the
-  cluster during a rolling update and a pod kill. No run may make a capacity
-  claim, because every run measures this laptop. What a local run can claim is zero dropped
-  requests during a rolling update, which is a property of the readiness probes
-  and is hardware-independent.
+- **Two measurement harnesses, and they answer different questions.** `load/` is
+  the one k6 script: it holds 250 collaboration sockets and measures edit
+  propagation. It *cannot* measure dropped requests, because it sends its HTTP in
+  `setup()` and `teardown()` and holds sockets in between, so during a rolling
+  update there is nothing in flight to drop. That is what `k8s/disruption-check.sh`
+  (`make k8s-check`) is for. No run may make a capacity claim, because every run
+  measures this laptop. What a local run can claim is zero dropped requests
+  during a rolling update, which is a property of the readiness probes and is
+  hardware-independent.
+- **`edit_latency` from the k6 script is only meaningful against one Collab
+  replica.** With two, a pod opening a room another pod holds asks for state on
+  Redis and gets the whole document back, which it re-broadcasts to its own
+  sockets; the script stamps timestamps into the text, so it counts re-delivered
+  old markers as fresh edits. That put p95 at 18.72s against a 5ms median, with
+  `edits_received` exceeding `edits_sent` as the tell. Not a defect. Before
+  quoting any latency number, check the replica count.
+- **The cluster is raw YAML in `k8s/`**, no Helm and no Kustomize, because the
+  directory exists to be read. After a code change re-run `make k8s-up`, not
+  `kubectl apply`: a rebuilt image does not reach the node without `kind load`.
+  The measured results, and the conditions attached to each, are in
+  [docs/system/09-running-it.md](./docs/system/09-running-it.md).
