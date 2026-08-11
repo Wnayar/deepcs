@@ -46,6 +46,11 @@ pages first.
 
 ### Target
 
+**`docs/` ends with exactly four folders and no loose files.** `phases/` and
+`reviews/` are deleted once their still-true content has moved into `system/`.
+If something does not belong in one of these four, it does not belong in the
+repo.
+
 ```
 docs/
   system/       ← the folder you read to understand the repo
