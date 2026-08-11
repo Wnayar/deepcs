@@ -1,0 +1,8 @@
+# Everything DeepCS lands in one namespace, so `kubectl delete namespace deepcs`
+# removes the whole system and leaves the cluster (and ingress-nginx, which
+# lives in its own) intact. It is also what makes the short DNS names below
+# work: inside this namespace `http://users:8081` resolves without a suffix.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: deepcs

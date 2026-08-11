@@ -14,6 +14,7 @@
 #   build      tsup-bundle one service to dist/
 #   prod-deps  install runtime dependencies only
 #   runner     final image: dist/ + prod node_modules, non-root
+#   migrate    the schema, as its own image — no SERVICE, see the stage
 
 ARG NODE_VERSION=24-alpine
 
@@ -86,3 +87,30 @@ COPY --from=build     /app/services/${SERVICE}/dist         ./services/${SERVICE
 USER node
 ENV SERVICE=${SERVICE}
 CMD ["sh", "-c", "node services/${SERVICE}/dist/index.js"]
+
+# ─── migrate ─────────────────────────────────────────────────────────────────
+# The schema, as an image the cluster can run as a Job — e.g.
+#   docker build --target migrate -t deepcs/migrate:local .
+#
+# It takes no SERVICE build-arg, because it is not one of the six: it applies
+# the numbered .sql files and exits. `runner` cannot do this job — it copies
+# services/${SERVICE}/dist and nothing else, so the migrations are not in it.
+#
+# Compose runs the same migration from the `dev` target instead, because that
+# stage is already built there for the bind mounts. Nothing on the cluster is
+# bind-mounted, so building the whole dev tree to run forty lines of .mjs would
+# be several hundred megabytes to move through `kind load`.
+#
+# Connects as the owner role, the one role allowed to create schemas and hand
+# out grants — which is exactly what the six service roles are forbidden (ADR-09).
+FROM node:${NODE_VERSION} AS migrate
+ENV NODE_ENV=production
+WORKDIR /app
+
+COPY --from=prod-deps /app/node_modules             ./node_modules
+COPY --from=prod-deps /app/packages/db/node_modules ./packages/db/node_modules
+COPY packages/db/migrate.mjs ./packages/db/migrate.mjs
+COPY packages/db/migrations  ./packages/db/migrations
+
+USER node
+CMD ["node", "packages/db/migrate.mjs"]

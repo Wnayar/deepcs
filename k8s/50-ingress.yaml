@@ -1,0 +1,37 @@
+# The only route into the cluster, and it reaches the Gateway alone — e.g.
+#   curl http://localhost:8090/roadmap
+#
+# That exclusivity is not tidiness, it is half of the authentication scheme.
+# The Gateway deletes any inbound X-User-Id before setting its own from a
+# verified token, so downstream services can trust the header — but only
+# because there is no second door. Give Users an Ingress of its own and anyone
+# can send `X-User-Id: <someone else>` straight to it and be that person. The
+# other five Services are ClusterIP for exactly this reason.
+#
+# localhost:8090 rather than :80 comes from the extraPortMappings in
+# kind-cluster.yaml. No host rule, so it answers on whatever name is used.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gateway
+  namespace: deepcs
+  annotations:
+    # Collab's sockets are proxied through the Gateway and through this
+    # controller, and nginx's default proxy timeout is 60 seconds of silence.
+    # A pair thinking quietly for a minute is normal, and without these two the
+    # controller would close their connection mid-session and the failure would
+    # look like a bug in the CRDT sync rather than a timeout in a proxy.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  number: 8080

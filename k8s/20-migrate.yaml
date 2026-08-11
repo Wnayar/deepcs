@@ -1,0 +1,47 @@
+# The schema and the seeds, applied before any service starts.
+#
+# This is compose's one-shot `migrate` service as a Job. The ordering it
+# enforces is the same and matters for the same reason: no service may race a
+# half-migrated database. Compose gets the ordering from
+# `depends_on: service_completed_successfully`; here k8s/up.sh applies this
+# file, waits for the Job to complete, and only then applies the services.
+#
+# A Job's pod template is immutable once created, so `kubectl apply` over a
+# finished Job fails rather than re-running it. up.sh deletes the Job first,
+# which is also what makes every `make k8s-up` start from a known schema.
+#
+# Re-running is safe: the runner records each file in public.schema_migrations
+# and skips what it has already applied, and the seeds are written
+# ON CONFLICT DO UPDATE precisely so a second pass changes nothing.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  namespace: deepcs
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      # OnFailure, not Never: a failure here is almost always Postgres still
+      # coming up, and retrying in the same pod is cheaper than a new one.
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          # The Dockerfile's `migrate` target: migrate.mjs, the .sql files and
+          # prod node_modules. Not one of the six service images — none of them
+          # contains the migrations.
+          image: deepcs/migrate:local
+          imagePullPolicy: IfNotPresent
+          env:
+            # The owner role, the only one permitted to create schemas and
+            # grant privileges. Running this as a service role would fail on
+            # the first CREATE SCHEMA, which is the point of ADR-09.
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: deepcs-secrets
+                  key: owner
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi

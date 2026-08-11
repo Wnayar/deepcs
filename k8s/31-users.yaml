@@ -1,0 +1,85 @@
+# Users: profiles, keyed by the Firebase uid the Gateway put in X-User-Id.
+# Same Deployment shape as the Gateway, explained in 30-gateway.yaml.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: users
+  namespace: deepcs
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: users
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: users
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: users
+          image: deepcs/users:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8081
+              name: http
+          envFrom:
+            - configMapRef:
+                name: deepcs-config
+          env:
+            # Its own role, with USAGE on the `users` schema and nothing else.
+            # A query against matching.* from this pod is refused by Postgres.
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: deepcs-secrets
+                  key: users
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 1
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 2
+            timeoutSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ['sleep', '5']
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: users
+  namespace: deepcs
+spec:
+  # ClusterIP, and that is half of what makes X-User-Id unforgeable: the
+  # Gateway strips any inbound copy before setting its own, and nothing but the
+  # Gateway is reachable from outside the cluster, so there is no second way in
+  # (packages/shared/src/headers.ts). Either half alone leaves it forgeable.
+  selector:
+    app: users
+  ports:
+    - port: 8081
+      targetPort: http

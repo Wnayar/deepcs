@@ -667,17 +667,22 @@ containers on this machine), created and destroyed with `make k8s-up` and
 `make k8s-down`. Raw YAML in `k8s/` — no Helm, no operators — so every line is
 something to be able to explain.
 
-What it has to demonstrate, and what compose cannot:
+What it demonstrates that compose cannot, both measured — the numbers and their
+conditions are in [`09-running-it.md`](09-running-it.md):
 
-1. **A rolling update drops no requests.** k6 from §8 runs against the cluster
-   while `kubectl apply` replaces every pod. The mechanism is the readiness
-   probe from phase 1: a pod that fails `/health/ready` is removed from the
+1. **A rolling update drops no requests.** `make k8s-check` holds a steady
+   stream of requests through the Ingress while every Gateway and Questions pod
+   is replaced: zero non-200 out of 1,230, with the prober separately shown able
+   to detect an outage and the ingress shown not to be retrying. The mechanism
+   is the readiness probe: a pod that fails `/health/ready` is removed from the
    Service's endpoints, so traffic only reaches replicas that can serve it.
    "Zero dropped requests, and here is why" is a better answer to what
    Kubernetes buys than listing object kinds.
-2. **A killed pod does not interrupt anyone.** `kubectl delete pod` during the
-   same run, with the graceful-shutdown path (§6) draining in-flight work and
-   Collab snapshotting its documents before the process exits.
+2. **A killed pod costs a reconnect, not any edits.** An edit written seconds
+   before its Collab pod was deleted was in the document after reconnecting,
+   saved by the SIGTERM path in §6 and by nothing else. The socket itself does
+   close — no Deployment setting can prevent that — and the client reconnects
+   and resumes from the snapshot. The narrower claim is the true one.
 
 Postgres and Redis run in the cluster too, as ordinary Deployments with no
 persistence beyond the pod: this is a place to run the system, not to keep data

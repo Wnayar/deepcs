@@ -1,0 +1,57 @@
+# Redis does five jobs here (the overview §4): rate-limit state, the match
+# queue, cross-instance pub/sub, the event stream, and the question cache.
+#
+# Persistence is turned off explicitly rather than left at the default. Redis
+# ships with RDB save points on, so without these flags it would periodically
+# fork and write a dump file into a container filesystem that is thrown away
+# anyway — a background CPU cost for a snapshot nothing can ever read. Compose
+# leaves the default alone; on the cluster it is worth saying no out loud.
+#
+# One replica for the same reason as Postgres: two would be two Redises, and
+# the match queue's atomic claim (ADR-03) is only atomic within one of them.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: deepcs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          command: ['redis-server', '--save', '', '--appendonly', 'no']
+          ports:
+            - containerPort: 6379
+              name: redis
+          readinessProbe:
+            exec:
+              command: ['redis-cli', 'ping']
+            periodSeconds: 2
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: deepcs
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: redis
