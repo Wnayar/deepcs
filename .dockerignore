@@ -21,15 +21,15 @@ coverage
 # force a full rebuild of all six service images.
 .github
 docs
-# The frontend is not in any service image — it builds to a static bundle
-# served from a CDN — and without this line every UI edit would invalidate the
-# COPY layer and rebuild all six.
+# The frontend is not in any service image — it builds to a static bundle that
+# is served separately — and without this line every UI edit would invalidate
+# the COPY layer and rebuild all six.
 frontend
 DESIGN.md
 README.md
 docker-compose.yml
 docker/
-infra/
+k8s/
 eslint.config.js
 .prettierrc.json
 .prettierignore
