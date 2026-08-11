@@ -17,7 +17,7 @@ jobs:
   # pipeline is wired for it.
   #
   # Done with plain git rather than a marketplace action so every step is
-  # visible — this is the job that decides what gets deployed in phase 6.
+  # visible — this is the job that decides what actually gets rebuilt.
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -295,6 +295,8 @@ jobs:
             [ "${ok:-0}" = "1" ]
           fi
 
-    # Phase 6 adds the deploy step here: push to Artifact Registry and
-    # `gcloud run deploy` this one service. Deliberately absent until there is
-    # a GCP project with a tested billing guard in front of it.
+    # There is no deploy step, and there is not going to be one: this project
+    # runs locally, under docker compose and on a local Kubernetes cluster
+    # (DESIGN.md §7). What this job proves is that each service's production
+    # image builds and answers /health/ready on its own, which is the property
+    # a rolling update on the cluster depends on.

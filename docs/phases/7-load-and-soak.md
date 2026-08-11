@@ -76,7 +76,7 @@ the ones that do not depend on how fast it is:
 - **the used heap comes back** — see the numbers below.
 
 The 250 is also worth being precise about. Nothing locally enforces it: the
-ceiling is the Cloud Run `--concurrency=250` flag from DESIGN.md §7, which
+ceiling is the per-service concurrency setting from DESIGN.md §7, which
 does not exist in `docker compose`. What the local run establishes is that 250
 sockets are comfortable here, so if the deployed service refuses the 251st,
 that is the flag doing its job and not the machine running out.

@@ -19,9 +19,10 @@ export const REQUEST_ID_HEADER = 'x-request-id';
  * check" is exactly as broken as one that trusts a forged value.
  *
  * The header is trustworthy *only* because the Gateway strips any inbound copy
- * before setting its own, and because Cloud Run's internal ingress means these
- * services are unreachable from the public internet (phase 10). Both halves are
- * required — either one alone leaves the header forgeable.
+ * before setting its own, and because only the Gateway is reachable from
+ * outside: under compose nothing else is published to a browser, and on the
+ * cluster only the Gateway has an Ingress. Both halves are required — either
+ * one alone leaves the header forgeable.
  */
 export function getUserId(req: FastifyRequest): string | null {
   const raw = req.headers[USER_ID_HEADER];

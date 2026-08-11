@@ -46,7 +46,7 @@ deepcs/
 | Stats shows `exited (0)` and reruns on `docker compose run --rm stats` | yes |
 
 **The local half of phase 0 is done.** What remains is entirely cloud-side and
-yours: the GCP/Firebase/Neon/Upstash accounts and the tested billing kill-switch.
+yours: the Firebase project used by the Auth emulator.
 
 ## The bug worth reading about
 
@@ -174,7 +174,7 @@ the seconds after boot, the process is alive but cannot serve a request that
 needs either — live yes, ready no. If you only have liveness, the orchestrator
 routes traffic into a service that 500s. If you only have readiness, a process
 that has wedged permanently is never restarted, because nothing distinguishes
-"still starting" from "hung". Cloud Run only consumes readiness; the split still
+"still starting" from "hung". A simple runtime only consumes readiness; the split still
 matters because phase 8 puts these same containers on Kubernetes, which uses
 both, and because a readiness probe that checks dependencies can take a whole
 instance out of rotation when its database blips.
@@ -189,10 +189,10 @@ at which point the filter needs the graph. Worth knowing the tools that do it
 pretending the current line is more principled than it is.
 
 **6.** Stats is a job (DESIGN.md §5). Its trigger is time, not a request, and a
-scale-to-zero Cloud Run *service* has no running process for a timer to fire
+service that is not running between requests has no process for a timer to fire
 inside — so it cannot be a server. Locally it does what Cloud Scheduler will
 make it do every 5 minutes: run, drain, exit. `exited (0)` is the success case.
-`exited (1)` would mean the run failed, which in production makes the Cloud Run
+`exited (1)` would mean the run failed, which makes a scheduled
 job retryable — the exit code is the entire contract between the job and its
 scheduler.
 

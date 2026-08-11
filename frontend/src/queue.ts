@@ -8,9 +8,9 @@ import type { Difficulty } from './api';
  * narrower but still worth deciding: whether to hold a stream open at all.
  *
  * Holding one open for everybody signed in would put the earlier problem back
- * in a new shape. A connection is not free either: on Cloud Run it occupies a
- * concurrency slot and keeps the instance alive, so every person quietly
- * reading a lesson would pin a service for as long as they read. A stream is
+ * in a new shape. A connection is not free either: it occupies a concurrency
+ * slot for its whole life, so every person quietly reading a lesson would pin a
+ * service for as long as they read. A stream is
  * opened only by somebody actually waiting for a partner, and it is given up
  * after a while, because a tab abandoned mid-queue should not hold a connection
  * open for the rest of the day.

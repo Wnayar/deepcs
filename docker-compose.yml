@@ -253,12 +253,13 @@ services:
 
   # ── The job ────────────────────────────────────────────────────────────────
   # Stats is expected to show as `exited (0)` seconds after `up`. That is not a
-  # failure — it is the whole point (DESIGN.md §5). In production Cloud
-  # Scheduler invokes it every 5 minutes; locally, run it on demand with
+  # failure — it is the whole point (DESIGN.md §5): it drains the event log and
+  # exits, rather than sitting there as a server. Run it on demand with
   #   docker compose run --rm stats
+  # and on the cluster it is a Kubernetes CronJob (phase 8).
   # The read side of Stats: same image, different command. `stats` below is the
-  # job, which is the image's default entrypoint and what Cloud Run runs on a
-  # schedule; this serves `GET /stats` and a session's summary, which nothing
+  # job, which is the image's default entrypoint and what the scheduled run
+  # invokes; this serves `GET /stats` and a session's summary, which nothing
   # else can, because only `stats_svc` may read the `stats` schema (ADR-09).
   stats-api:
     <<: *service

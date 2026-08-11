@@ -50,9 +50,10 @@ to need full context, alternatives, and accepted tradeoffs are ADRs (§9).
   created", recorded as data) to a replayable log; a scheduled job consumes them
   into session summaries and live stats — which is where at-least-once delivery
   forces idempotency (§6).
-- A system that runs on Kubernetes locally at no cost, and is deployed to a
-  live URL inside a hard cost ceiling
-  (§7) — the constraint that shapes more of this design than any other.
+- A system that runs on Kubernetes locally at no cost (§7), which is the
+  constraint that shapes more of this design than any other: everything here
+  has to work on one machine, with no managed service standing in for a
+  decision.
 
 ---
 
@@ -108,7 +109,7 @@ flowchart TD
 
     U ==>|"all traffic: HTTP + WebSocket"| GW
 
-    subgraph RUN["Cloud Run — stateless, scales to zero"]
+    subgraph RUN["Stateless services — one container each"]
         GW@{ shape: procs, label: "<b>1. Gateway</b> ×0–2<br/>verify token · rate limit<br/>route · CORS" }
         USR@{ shape: procs, label: "<b>2. Users</b> ×0–2<br/>profiles" }
         QST@{ shape: procs, label: "<b>3. Questions</b> ×0–2<br/>bank · search<br/>reference answers" }
@@ -118,8 +119,8 @@ flowchart TD
     end
 
     subgraph DATA["Managed free tiers — always-on, own the disks"]
-        PG[("PostgreSQL — Neon ×1<br/>one instance, one schema<br/>per service, one role each")]
-        RD[("Redis — Upstash ×1<br/>match queue · rate limits<br/>pub/sub · events · cache")]
+        PG[("PostgreSQL ×1<br/>one instance, one schema<br/>per service, one role each")]
+        RD[("Redis ×1<br/>match queue · rate limits<br/>pub/sub · events · cache")]
     end
 
     GW -->|HTTP| USR
@@ -168,8 +169,8 @@ or Redis.
 | 2 | **Users** | profile rows keyed by `firebase_uid` | One capability, one owner. Small and stable — it will change less than anything else here. |
 | 3 | **Questions** | question bank, tags, full-text index, `reference_md` | Read-heavy and cacheable in a way nothing else is; also the only service holding answer keys, so a narrower blast radius is worth something. |
 | 4 | **Matching** | queue state, pair claim, session rows, consent | A hard concurrency problem of its own: two users joining at the same instant race for the same partner, so the pair claim has to be atomic (ADR-03). |
-| 5 | **Collab** | live Yjs docs, snapshots | **Different scaling trigger and different failure mode.** One WebSocket occupies a concurrency slot for 20 minutes; Cloud Run needs opposite `--concurrency`/`--timeout` values from every other service, and those are per-service flags (§7). This boundary is forced by the platform, not chosen. |
-| 6 | **Stats** | summaries, aggregates | **Trigger.** Time-driven, not request-driven — and a scaled-to-zero service has no running process for a timer to fire in, so *draining the log* can't be a server. It's a job. **Corrected in phase 6:** an earlier version of this row ended "so it can't be a server at all", which does not follow. Serving `GET /stats` and a session's summary is request-driven like any other read, and nothing else may serve them, because those rows are in the `stats` schema and only `stats_svc` can read it (ADR-09). Stats is one image with two entrypoints, deployed as one job and one service. |
+| 5 | **Collab** | live Yjs docs, snapshots | **Different scaling trigger and different failure mode.** One WebSocket occupies a concurrency slot for 20 minutes, so it needs the opposite concurrency and timeout settings from every other service, and those are per-service (§7). This boundary is forced by the workload, not chosen. |
+| 6 | Event pipeline: `emitEvent` → `events` stream (behind the `EventLog` interface); idempotent **Stats** consumer → summaries + aggregates; the job run on a schedule | end a session → summary renders; `/stats` shows real counts |
 
 **Two of these six are not really "splits."** The Gateway is a *position* and
 Stats is a *job plus the read surface for what the job wrote* — judging either
@@ -205,13 +206,13 @@ see §5.
 | Frontend | React + Vite (build tool) + TS, with `react-router` and `marked` | Minimal, just enough to demo; Yjs bindings for React editors are mature. *Not Next.js:* SSR buys nothing for an authenticated single-page editor and adds a server to deploy where a static bundle on a CDN costs nothing. `react-router` arrived once there were six screens: navigating by React state meant the whole site lived at one address, so the browser Back button left it entirely and no lesson could be linked to. `marked` renders the seeded lesson markdown, and needs no sanitizer because that markdown is seeded by a migration and no route writes it. |
 | Auth | Firebase Auth (email/password) **[bought]** | Identity is a solved, security-critical problem with no design insight left in it; Google's abuse detection and key rotation beat anything hand-rolled. *Not self-hosted:* ADR-04. Free at this scale. |
 | DB access | `pg` driver + hand-written parameterized SQL; migrations as numbered `.sql` files (ADR-10) | No schema DSL on the critical path, and ADR-09's per-schema grants stay literal SQL. *Not Drizzle:* deferred, not rejected — it is item 1 in the additive backlog (§10). |
-| Database | PostgreSQL (Neon, free) **[bought]** — one instance, schema per service | Relational data, plus built-in tag filtering (`text[]` + GIN index) and full-text search (`tsvector`), so no separate search engine. *Not database-per-service:* ADR-09 — it would cost cross-service atomicity and force a saga. *Not Mongo:* the data is relational. *Not Cloud SQL:* no free tier, bills hourly. |
-| Cache/queue/pubsub | Redis (Upstash, free) **[bought]** | One dependency covering five jobs: match queue, rate-limit state, cross-instance pub/sub, event stream, question-bank cache. Split from Postgres by **access pattern** (ephemeral shared state vs durable relational), not by service. *Not Memorystore:* no free tier. |
+| Database | PostgreSQL — one instance, schema per service | Relational data, plus built-in tag filtering (`text[]` + GIN index) and full-text search (`tsvector`), so no separate search engine. *Not database-per-service:* ADR-09 — it would cost cross-service atomicity and force a saga. *Not Mongo:* the data is relational. |
+| Cache/queue/pubsub | Redis | One dependency covering five jobs: match queue, rate-limit state, cross-instance pub/sub, event stream, question-bank cache. Split from Postgres by **access pattern** (ephemeral shared state vs durable relational), not by service. |
 | Real-time | WebSockets + Yjs (CRDT) | Concurrent edits merge without a central server ordering them (ADR-02). *Not SSE or polling:* one-directional, or too slow for ~100 ms keystroke echo. *Not Liveblocks/PartyKit:* they'd host the hard part, and the hard part is the project. |
-| Event log | Redis Streams (prod) + Kafka (dev only) **[detour · learning]** | Replayable domain-event log feeding summaries/stats; one `EventLog` interface, two adapters. Kafka exists **only in docker-compose**. *Not Kafka in prod:* no free managed option, and an always-on broker breaks §7. *Not GCP Pub/Sub:* more IAM surface, and it hides the bookmark mechanics that are the point. |
+| Event log | Redis Streams | Replayable domain-event log feeding summaries/stats, behind one `EventLog` interface so a second adapter is a swap rather than a rewrite. *Not Kafka:* an always-on broker for one stream of a few events a minute, though a Kafka adapter behind the same interface is in the backlog (§10). |
 | Editor | Monaco wired to Yjs | Familiar VS Code feel, mature `y-monaco` binding. *Not a plain textarea:* no cursor decorations, so presence would be invisible. *Not CodeMirror 6:* a fair alternative, lighter — Monaco chosen for recognisability in a demo. |
-| Container | Docker + docker-compose | Local dev; dev/prod parity — the same image runs locally, on Cloud Run, and on GKE, which makes the §7 migration a deploy command rather than a rewrite. |
-| Deploy | Cloud Run (GCP, `asia-southeast1`) **[bought]** | Scale-to-zero (idle cost $0, at the price of a cold start), free at this scale, live URL. *Not GKE:* ADR-05. *Not Vercel/Railway:* fine products, but the goal includes learning GCP's primitives. |
+| Container | Docker + docker-compose | The unit everything ships as, and the reason the same image runs under compose and on the cluster without a rebuild. |
+| Orchestration | Kubernetes on `kind`, locally | Rolling updates and self-healing are the two behaviours compose cannot show, and both are claims this project wants to be able to make (§7). *Not a hosted cluster:* it bills by the hour whether or not anyone visits. ADR-05. |
 | CI | GitHub Actions | Lint → test → build → deploy on merge, **per service** (§7). *Not Cloud Build:* the repo is on GitHub and Actions is free for public repos. |
 
 ---
@@ -373,15 +374,15 @@ the Lua script (ADR-03).
   in this session?* The Gateway cannot answer that — it has no session data.
 
 *Why Redis pub/sub and not sticky sessions?* The obvious fix is pinning both
-users to one instance. It doesn't work: Cloud Run's session affinity is
-best-effort and pins **a client**, not a group — the two people in a session are
-different clients connecting at different moments, so nothing would co-locate
-them in the first place, and affinity evaporates on scale-down. Fanning through
+users to one replica. It doesn't work: session affinity pins **a client**, not
+a group — the two people in a session are different clients connecting at
+different moments, so nothing would co-locate them in the first place, and the
+pinning is lost the moment that replica is replaced. Fanning through
 Redis makes instance placement irrelevant, which is the property that survives
 autoscaling.
 
-*Why snapshot every 30 s and not on every edit?* Per-keystroke writes would
-exhaust Neon's free tier and add latency to the hot path. 30 s bounds worst-case
+*Why snapshot every 30 s and not on every edit?* Per-keystroke writes would put
+a database round trip on the hot path of every character typed. 30 s bounds worst-case
 loss to 30 s of typing, and the SIGTERM and disconnect snapshots mean the routine
 cases (deploy, scale-down, closed tab) lose nothing at all. Only an ungraceful
 crash hits the full window.
@@ -441,8 +442,9 @@ sequenceDiagram
 - **Acknowledge after the commit, never before.** An acked entry is never
   redelivered, so acking first turns a crash into silent loss instead of a
   repeat, and a repeat is the thing every write above is built to survive.
-- Cloud Scheduler **[bought]** triggers it as a Cloud Run job every 5 minutes; it
-  drains the backlog and exits. Worst case a summary lands ~5 minutes after the
+- A scheduled run triggers it every few minutes — `docker compose run --rm
+  stats` locally, a Kubernetes CronJob on the cluster; it drains the backlog and
+  exits. Worst case a summary lands ~5 minutes after the
   session ends. The retained log is what makes reprocessing possible: rewind the
   bookmark after a bug fix, or add a consumer later, and history is still there.
 - **[detour · learning]** In dev only, docker-compose runs single-node Kafka
@@ -509,7 +511,8 @@ Now that services call each other, "internal" has to mean something enforceable:
 - Each service runs as its **own service account**, and is granted
   `roles/run.invoker` only on the specific services it calls — Matching on Users
   and Questions, Collab on Matching, the Gateway on all four. Callers attach a
-  Google-signed ID token; Cloud Run rejects anything else.
+  service account token, and nothing outside the cluster can reach them at
+  all: only the Gateway has an Ingress.
 
 **This is the assumption the whole design rests on.** `X-User-Id` is trusted
 because only the Gateway can set it. If any service ever gains public ingress,
@@ -529,16 +532,15 @@ setting is a security control, not a deployment detail.
   - `/health/live` + `/health/ready` on every service.
   - Prometheus-format `/metrics` per service: request rate, error rate, latency
     histograms, WebSocket connection count.
-  - Grafana Cloud free tier **[bought]** stores and dashboards it. *Not a
-    self-hosted Prometheus server:* an always-on container with a disk, which §7
-    forbids. Consequence worth knowing — Prometheus normally **pulls**, and Cloud
-    Run instances aren't individually addressable and vanish when idle, so
-    metrics must be **pushed** (OTLP or `remote_write`), not scraped.
+    Scraped rather than pushed, which is the ordinary Prometheus model and is
+    available precisely because pods are individually addressable inside a
+    cluster. Only Collab's socket count and memory are built so far (phase 7);
+    the rest is a stretch.
   - Full OpenTelemetry tracing is an explicit stretch. It's worth more here than
     it was with three services — a match request now touches four — but it's
     still not core.
-- **Security:** HTTPS (Cloud Run free), CORS to one origin, helmet security
-  headers, secrets in Secret Manager, Dependabot.
+- **Security:** CORS to one origin, helmet security headers, credentials in a
+  Kubernetes Secret rather than in an image or a manifest, Dependabot.
 - **Graceful shutdown:** drain in-flight requests; Collab snapshots Yjs docs
   before exit.
 - **Idempotency** (safe to run twice with the same effect as once): queue-join
@@ -548,38 +550,44 @@ setting is a security control, not a deployment detail.
 
 ---
 
-## 7. Deployment
+## 7. Running it
 
-- **Local:** `docker-compose up` → 5 services + the Stats job + Postgres + Redis
-  + single-node Kafka + the **Firebase Auth emulator**. The emulator keeps local
-  dev and CI offline and free, lets integration tests mint tokens for arbitrary
-  test users, and preserves the "one command runs everything" property that
-  buying a hosted identity provider would otherwise break. It issues *unsigned*
-  tokens, so the Gateway selects emulator mode purely on an env var — a flag that
-  must be impossible to set in prod.
-- **Prod:** Docker images → Artifact Registry → Cloud Run (`asia-southeast1`);
-  Neon + Upstash via env vars; secrets in Secret Manager; frontend on Cloud
-  Storage + CDN; Stats as a Cloud Run job triggered by Cloud Scheduler every 5
-  minutes. One live URL.
-- **The frontend bucket must serve `index.html` for unknown paths.** Routing is
+**This system runs locally and is not deployed anywhere.** Two targets, one
+image set: `docker compose` for development, and a local Kubernetes cluster for
+everything that compose cannot show. There is no cloud environment, no hosted
+URL, and nothing here costs money to run. ADR-05 records why.
+
+- **Compose:** `docker compose up` → the 5 services + the Stats job + Postgres +
+  Redis + the **Firebase Auth emulator**. The emulator keeps local dev and CI
+  offline and free, lets integration tests mint tokens for arbitrary test users,
+  and preserves the "one command runs everything" property that a hosted
+  identity provider would otherwise break. It issues *unsigned* tokens, so the
+  Gateway selects emulator mode purely on an env var — a flag that must be
+  impossible to set anywhere real.
+- **Kubernetes:** the same images, a Deployment and Service per service,
+  ConfigMap and Secret for configuration, one Ingress in front of the Gateway,
+  and probes pointed at the `/health/live` and `/health/ready` endpoints §6
+  already requires. Only the Gateway is reachable from outside the cluster;
+  everything else is a ClusterIP Service, which is what keeps `X-User-Id`
+  unforgeable (§6).
+- **The frontend must serve `index.html` for unknown paths.** Routing is
   client-side, so `/step/<uuid>` exists only once the bundle is running: without
-  a rewrite the CDN answers 404 for every link into the app except the root, and
-  the failure shows up only for shared links and refreshes, never while clicking
-  around. On Cloud Storage this is the bucket's error page set to `index.html`;
-  behind a load balancer it is a URL map rewrite. Vite's dev server and
-  `vite preview` both do it already, which is exactly why it is easy to miss.
+  a rewrite, whatever serves the files answers 404 for every link into the app
+  except the root, and the failure shows up only for shared links and refreshes,
+  never while clicking around. Vite's dev server and `vite preview` both do it
+  already, which is exactly why it is easy to miss.
 - **CI:** GitHub Actions, **path-filtered per service** — a change under
-  `services/questions/` builds and deploys only Questions. Independent deploy is
-  most of the point of the split (ADR-01), and it doesn't exist unless CI is
-  wired for it.
+  `services/questions/` builds and health-checks only Questions. Independent
+  buildability is most of the point of the split (ADR-01), and it doesn't exist
+  unless CI is wired for it.
 
 **How a waiting user finds out they were matched.** Being matched is caused by
 somebody else's request, and HTTP gives a server no way to speak first, so a
 client either asks repeatedly or is told. It asked, at first, and that turned out
-to defeat both mechanisms this cost model rests on: Neon suspends idle compute
-and Cloud Run scales to zero, and neither can happen while a request arrives
-every few seconds. Slowing it down to fix that made a partner's arrival up to
-twenty seconds late, with the partner sitting alone in the editor meanwhile.
+to keep every layer awake: the database never went idle and no service was ever
+without work, because a request arrived every few seconds whether or not
+anything had happened. Slowing it down to fix that made a partner's arrival up
+to twenty seconds late, with the partner sitting alone in the editor meanwhile.
 
 It is now server-sent events: `GET /match/events` holds one ordinary HTTP
 response open and Matching writes into it when the Redis message for that user
@@ -587,85 +595,36 @@ arrives. Nothing is spent while nothing happens, and delivery is immediate
 (23 ms end to end through the Gateway, measured). Two things about it are worth
 knowing rather than discovering:
 
-- **A connection is not free either.** On Cloud Run an open stream occupies a
-  concurrency slot and keeps the instance alive, so a stream is opened only by
-  somebody actually waiting, never by everyone signed in, and it is given up
-  after fifteen minutes.
+- **A connection is not free either.** An open stream occupies a concurrency
+  slot for its whole life and keeps that replica busy, so a stream is opened
+  only by somebody actually waiting, never by everyone signed in, and it is
+  given up after fifteen minutes.
 - **Its failure mode is silent.** Anything in the path that buffers turns the
   stream into one long pause and then everything at once: the request succeeds,
   the headers are right, and events simply never arrive. That cannot be caught
   by reading code, so it is caught by a wall-clock assertion through the Gateway
   in `frontend/src/matchEvents.test.ts`.
 
-**Whether Matching and Collab go out with the rest is a decision for the day,
-not for now.** A lone visitor cannot use matchmaking: queue up with nobody else
-there and you wait forever, which is why the roadmap and its lessons are public
-in the first place (§2). The case for leaving those two undeployed is real, and
-the case against is that they are the CRDT, the atomic pair claim, the
-cross-instance pub/sub and the authorised WebSocket — most of what makes this a
-distributed system rather than a content site.
-
-What settles it is that **omitting them saves no money**. Cloud Run bills
-requests and CPU time, so a service nobody calls scales to zero and costs
-approximately nothing; the thing that was going to cost was polling, and there
-is no polling any more. So the choice is about deployment effort, and ADR-01's
-whole point is that the six deploy independently, which makes this a flag on the
-day rather than a fork in the design. The empty room is answered by the demo
-recording, which phase 10 already lists, and by the fact that two tabs and two
-accounts work.
-
-**The cost of six deployables, stated honestly:** a cold match request can chain
-cold starts — Gateway → Matching → Users → Questions, each potentially starting
-from zero. That's the real price of `--min-instances=0`, and it's accepted rather
-than mitigated, because the alternative is paying for parked instances. It is
-also why cross-service calls are kept to validation only, and never placed on the
+**The cost of six deployables, stated honestly:** a match request chains four
+processes — Gateway → Matching → Users → Questions — so it carries four network
+hops and four chances to be waiting on a pod that has just been rescheduled.
+That is the real price of the split, and it is accepted rather than mitigated.
+It is also why cross-service calls are kept to validation only, and never placed on the
 question-browsing path a first-time visitor hits.
 
-### Cost controls (before deploying anything)
+### How much one replica can hold, and why
 
-The primary safety net is the GCP free trial ($300 / 90 days): during the trial
-GCP cannot charge the card — when credits run out, services stop instead of
-billing. Upgrading to a paid account is a separate decision.
+Replica count and per-process concurrency are independent axes, and their
+product is the capacity ceiling **per service**. Two replicas of Users,
+Questions or Matching handling 80 requests each is **160** simultaneous
+requests; two of the Gateway or Collab at 250 each is **500**. Past that,
+requests queue and then fail, which is the intended behaviour: a ceiling you
+chose beats an unbounded one you did not.
 
-GCP has no *general* "stop at $X" cap — an ordinary budget is an alert, not a
-limit — so the ceiling is built in layers. Build the kill-switch before deploying
-a single service.
-
-**Revised 2026-08-08.** This section previously said GCP had no spend cap at all.
-That is no longer true: **spend cap enforcement** shipped in Preview and covers
-four services — Gemini API, Agent Platform, **Cloud Run** and **Cloud Run
-functions**. It is layer 6 below. It does not remove the need for the
-kill-switch, because it is scoped to *one project and one service per budget*
-and cannot cover storage, egress, Cloud Build or GKE. The kill-switch remains the
-only whole-project stop; it is no longer the only stop.
-
-| Layer | Mechanism | Purpose |
-|---|---|---|
-| 1. Kill-switch | Billing budget → Pub/Sub → Cloud Function **[bought]** that detaches the billing account (`projects.updateBillingInfo`) at $20. Google publishes the ~40-line sample. **Three caveats that make it a backstop rather than a cap:** budget data lags, so the delay is hours not minutes and a genuine runaway can overshoot; detaching is *destructive*, not a pause — resources can be deleted, not merely suspended; and it fails **silently** unless the function's service account is granted on **both ends of the billing link** — `roles/billing.admin` on the **billing account**, *and* `roles/browser` + `roles/billing.projectManager` on the **project**. Either alone is refused; verified 2026-08-08, where the billing-account grant alone failed on the function's first Cloud Billing call. (An org-level `billing.admin` grant would cover both, but a project with no organization above it needs the two project grants explicitly.) Test it once on a throwaway project with a $0.01 budget. | The only true whole-project stop — a backstop, not the primary control. |
-| 2. Cloud Run flags | On the **five services** (Stats is a job — it has no instances to cap; Cloud Scheduler starts it, it drains, it exits): `--max-instances=2` (excess requests queue or get 429 instead of spinning up 100 containers) and `--min-instances=0` (idle ~$0). Then split by unit of work, since Cloud Run counts an open WebSocket as one in-flight request for its entire life: **Users / Questions / Matching** get `--concurrency=80` and `--timeout=60s`; **Gateway and Collab** get `--concurrency=250` and `--timeout=3600s`, since a 60 s timeout would sever every collab session each minute. Concurrency is the hard cap on sockets: 250 × 2 = 500. | The real day-to-day cap: runaway bills come from autoscaling, and this caps it at the source. |
-| 3. API surface | Enable only what the system or the kill-switch needs. The system: Cloud Run, Artifact Registry, Secret Manager, Cloud Storage, Cloud Scheduler. Layer 1 additionally requires Cloud Functions, Cloud Build, Eventarc, Pub/Sub, Logging and the Cloud Billing API — **a gen2 function is not a standalone thing, it is a Cloud Run service with a build pipeline and an event trigger in front of it.** The narrower list is the goal; the kill-switch wins where they conflict, because it is the layer with no recovery path. | Every disabled API is a category of bill that can't happen. |
-| 4. Public URL | The Gateway's rate limit caps traffic that would drive Cloud Run scaling. Neon (0.5 GB storage) and Upstash (**500K commands/month, 256 MB, 50 GB bandwidth** — measured from the console 2026-08-09, *not* the 10K/day this row previously claimed; 10,000 is Upstash's commands-per-**second** rate ceiling, a different limit) throttle rather than overage-bill. Worth reading the Upstash figure as what it also is: **a ceiling on total requests for the month**, since every request through the Gateway spends one Lua call on the bucket. **Monthly, not daily, is the part that bites** — a daily allowance refills each morning, so overspending it costs you a day; a monthly one doesn't, so one heavy test can leave the rest of the month short. | The stateful layer isn't the risk — Cloud Run is, because its response to load is to provision more of itself. |
-| 5. Early warning | Budget alerts at 50 / 90 / 100% ($10 / $18 / $20). | Email before the kill-switch fires. |
-| 6. Spend cap enforcement **[bought · Preview]** | A second budget, type *spend cap*, scoped to project + service **Cloud Run**, at $20. At 100% Google blocks all *new* Cloud Run usage in that project; in-flight requests finish and bill, persistent resources keep running, nothing is deleted, and lifting it is manual (up to an hour to resume). Faster than layer 1 — it enforces on *gross estimated* cost rather than settled billing — but explicitly **not instant**, and Google states overage during its reporting lag is still yours. **Do not cap "Cloud Run functions" in the same project: the layer-1 kill-switch bills under that service, and capping it would block the backstop.** One project + one service per budget, monthly periods only. | The fast, non-destructive cap on the one service that autoscales. Preview, so additive only — never the sole control. |
-
-**Note that six deployables does not multiply the bill.** Everything scales to
-zero, so idle cost is unchanged; what grows is the *ceiling* — at most eleven
-processes can exist at once, five services × two instances plus one Stats job —
-and the operational surface. Baseline spend doesn't move.
-
-### What the concurrency flags actually mean
-
-`--max-instances` and `--concurrency` are independent axes and their product is
-the capacity ceiling, **per service**: **2 × 80 = 160** simultaneous requests for
-each of Users, Questions and Matching, and **2 × 250 = 500** for the Gateway and
-again for Collab. Past that, Cloud Run queues briefly and then returns **429 Too
-Many Requests**, because max-instances is a hard ceiling — rejecting traffic is
-the intended behaviour when the alternative is an unbounded bill.
-
-The Gateway's 500 are not a second pool of sockets, though. Every WebSocket burns
-one slot there *and* one on Collab, and the Gateway's slots are the same ones
-every HTTP request needs — so 500 live sockets is also the point at which nobody
-can browse the question bank (§5).
+The Gateway's 500 are not a second pool of sockets, though. Every WebSocket
+burns one slot there *and* one on Collab, and the Gateway's slots are the same
+ones every HTTP request needs — so 500 live sockets is also the point at which
+nobody can browse the question bank (§5).
 
 **Why 80 requests on one Node process is not a typo.** Node runs all application
 JavaScript on a single thread (one OS-scheduled flow of execution — two of your
@@ -682,9 +641,8 @@ socket. That is the whole reason the number is cheap.
 
 This is **concurrency without parallelism**: tasks interleaved over a period, not
 executing in the same instant. More cores do nothing for a single Node process,
-which is why scaling out means more instances — the axis `--max-instances`
-governs — and why the rate-limit bucket has to live in Redis rather than in
-memory (§5).
+which is why scaling out means more replicas, and why the rate-limit bucket has
+to live in Redis rather than in memory (§5).
 
 **What it depends on, and the failure mode.** All of the above holds only while
 the work is I/O-bound. A CPU-bound stretch with no `await` inside it holds the
@@ -692,58 +650,51 @@ thread until it finishes — the loop cannot interrupt it, because there is no
 other thread to interrupt it *with*. For that whole time, completed Postgres
 results for the other 79 requests sit unread in kernel buffers, p95 latency rises
 across every request on the instance, and `/health/ready` can't answer either;
-long enough and Cloud Run declares the instance unhealthy. Password hashing is
+long enough and the kubelet's liveness probe declares the pod unhealthy and
+restarts it. Password hashing is
 the one place this design would have hit that — bcrypt is deliberately expensive,
 around 250 ms of pure CPU — and **ADR-04 moved it into Firebase, so no CPU-bound
 work sits on any request path here.** That's what makes 80 a safe number rather
 than an optimistic one.
 
 *Why not `--concurrency=1`?* Then 100 simultaneous users demand 100 instances.
-Under `--max-instances=2` the app would serve two requests at a time and 429 the
-rest, which reads as broken; without the cap it's 100 containers and a real bill.
-Concurrency is precisely what keeps a two-instance ceiling sufficient.
+With two replicas the app would serve two requests at a time and queue the rest,
+which reads as broken. Concurrency is precisely what keeps a two-replica ceiling
+sufficient.
 
 *Why Collab's numbers are the opposite.* Its unit of work is an open socket that
 is idle almost all of the time — someone typing occasionally costs microseconds
-of CPU — so one instance holds far more of them. But the flag also changes
+of CPU — so one replica holds far more of them. But the number also changes
 meaning: for a request/response service concurrency is a throughput knob, while
 for Collab `250 × 2 = 500` is a **hard ceiling on concurrent users**, and the
 501st is rejected at connect. That is the number §8 has to be careful not to
 mistake for a measurement.
 
-### Infrastructure as code (Terraform) — second pass, not first · **[built · learning]**
+### Kubernetes, locally · **[the deployment target]**
 
-*Why second?* Writing Terraform for infrastructure you don't yet understand means
-debugging two unfamiliar things at once — the cloud resource and the provider's
-model of it. Deploying manually first means the `.tf` files describe something
-already known to work. Six services makes this materially more valuable than it
-was with three: the service accounts, IAM invoker bindings and per-service flags
-are exactly the kind of thing that drifts when clicked into a console.
+The cluster is `kind` (Kubernetes in Docker: a cluster whose nodes are
+containers on this machine), created and destroyed with `make k8s-up` and
+`make k8s-down`. Raw YAML in `k8s/` — no Helm, no operators — so every line is
+something to be able to explain.
 
-First deploy is manual (console + `gcloud`). Then capture it: Cloud Run services
-with their flags, service accounts and invoker bindings, Artifact Registry,
-Secret Manager, the bucket, the Scheduler job, and budget alerts.
+What it has to demonstrate, and what compose cannot:
 
-### Kubernetes — learning sprint, then migrate to Cloud Run · **[detour · learning]**
+1. **A rolling update drops no requests.** k6 from §8 runs against the cluster
+   while `kubectl apply` replaces every pod. The mechanism is the readiness
+   probe from phase 1: a pod that fails `/health/ready` is removed from the
+   Service's endpoints, so traffic only reaches replicas that can serve it.
+   "Zero dropped requests, and here is why" is a better answer to what
+   Kubernetes buys than listing object kinds.
+2. **A killed pod does not interrupt anyone.** `kubectl delete pod` during the
+   same run, with the graceful-shutdown path (§6) draining in-flight work and
+   Collab snapshotting its documents before the process exits.
 
-**The clearest example of the tag in this doc: built, run, demonstrated, then
-deleted.** Kubernetes is not part of the production system and never will be —
-GKE bills 24/7 whether or not anyone visits, violating the §7 ceiling. It's here
-because orchestration can't be learned from reading, and because an idle cluster
-is the single most likely way to burn $300 of trial credits by accident, so doing
-it deliberately and on a deadline is safer than doing it casually.
-
-1. **Learn on GKE (during the trial):** raw manifests for the five services —
-   Deployment, Service, Ingress, ConfigMap/Secret, liveness/readiness probes —
-   on GKE Autopilot, standing **alongside** the live Cloud Run deployment rather
-   than replacing it. Run it for a few days: roll out with `kubectl apply`, kill
-   a pod and watch it self-heal, read logs via `kubectl`. No Helm, no k3d — raw
-   YAML so every line is understood.
-2. **Delete the cluster**, keep the manifests in `k8s/`. Production never moves:
-   it is on Cloud Run from phase 10 onwards and stays there, which is the whole
-   point of running this as a detour on a deadline. ADR-05 records it.
+Postgres and Redis run in the cluster too, as ordinary Deployments with no
+persistence beyond the pod: this is a place to run the system, not to keep data
+in.
 
 ---
+
 
 ## 8. Testing + the headline load number
 
@@ -789,14 +740,6 @@ it deliberately and on a deadline is safer than doing it casually.
   is the mechanism that makes the update lossless. "Zero dropped requests, and
   here is why" is a better answer to what Kubernetes buys than listing object
   kinds.
-
-  **Phase 10 re-runs it smaller against Cloud Run with Grafana open**, answering
-  the question the local one cannot: does it behave the same under the §7 flags,
-  real network latency to `asia-southeast1`, and cold starts. Headline: *"holds
-  N concurrent WebSocket connections per instance at p95 X ms edit-propagation
-  latency"* — stated together with which environment produced it. Either way the
-  configured ceiling (250/instance) is the first limit N hits, not hardware, so
-  raise the flag deliberately before chasing a bigger number.
 
 ### How the headline number is measured
 
@@ -851,28 +794,10 @@ export const options = {
   `/metrics` socket count — so that "the server is saturated" stays
   distinguishable from "my load generator is saturated".
 
-**Why the cloud run is the smaller one.** Every cross-instance edit is one Redis
-`PUBLISH`, and Upstash's free tier allows **500,000 commands per month** (§7). At
-roughly one update per second per session, a hundred live sessions consume
-100 commands/second — **about 83 minutes to spend the entire month's budget** —
-and the rate limiter is drawing on the same allowance for every ordinary request.
-
-**Corrected 2026-08-09.** This paragraph previously said 10,000 commands a *day*,
-and concluded a hundred sessions would exhaust it "in under two minutes". The
-arithmetic was right for that figure; the figure was wrong. 10,000 is Upstash's
-commands-per-*second* rate ceiling, not the quota. The real quota is monthly.
-
-**The correction makes the constraint worse, not better.** 83 minutes sounds like
-more headroom than two, but a daily allowance refills every morning — overspending
-it costs you a day of testing. A monthly one doesn't. A single enthusiastic load
-test that burns 200K commands leaves three weeks of ordinary development sharing
-what's left, and the rate limiter never stops drawing on it.
-
-That ceiling lands on precisely the test that would otherwise produce the biggest
-number, so the scaling curve comes from local and production is where it's
-*validated*, not where it's maximised. Quoting a local number as though it were
-measured in production is the dishonest version of this test, and worth naming so
-it doesn't happen by accident.
+Every number this test produces is a number about one machine, and it travels
+with the machine that produced it or it means nothing. Quoting a laptop figure
+as though it described a deployed system is the dishonest version of this test,
+and it is worth naming so that it doesn't happen by accident.
 
 *Why these tests and not a coverage target?* A percentage pushes effort toward
 whatever is easiest to cover, which is rarely where this system breaks. The
@@ -901,7 +826,7 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
    all: the **Gateway** is a *position* (a cross-cutting enforcement point must
    sit in front of what it protects), and **Stats** is a *job* (time-triggered,
    which a scale-to-zero service physically cannot do). **Collab is forced by the
-   platform:** `--concurrency` and `--timeout` are per-service Cloud Run flags,
+   workload:** concurrency and timeout are per-service settings,
    and a 20-minute WebSocket needs the opposite values from a 30 ms request — one
    service cannot hold both. Rejected: **grouping Users + Questions + Matching
    into one service**, which a strict scaling-forces test would recommend, since
@@ -911,7 +836,7 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
    distributed system is a stated goal of the project. Also rejected: **one
    service per database table**, which aligns boundaries with no force at all.
    Tradeoffs accepted: six CI pipelines; two extra network hops on the match
-   path; chained cold starts under `--min-instances=0`; contract tests as the
+   path; four processes in one request chain; contract tests as the
    price of independent deploys; and no transaction spanning a service boundary
    (see ADR-09). **The condition to merge back:** if cold-start latency on the
    match path or the per-service ops overhead starts dominating, Users +
@@ -945,11 +870,16 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
    Gateway verifies tokens itself against a JWKS rather than delegating to an
    SDK, so the property that mattered — the edge can verify but cannot mint —
    survives the switch.
-5. **Cloud Run over Kubernetes for production** — production runs on Cloud Run
-   from the first deploy onwards, for scale-to-zero and zero idle cost. GKE is
-   stood up separately as a learning detour (phase 8), run alongside
-   the live deployment, then deleted; the manifests are retained in `k8s/` as
-   evidence, not as an alternative production path.
+5. **Kubernetes locally, and no deployment at all.** Context: the original plan
+   was Cloud Run for production with Kubernetes as a side detour. Decision:
+   invert it. The system runs on `kind` locally and is not deployed anywhere.
+   The reasoning is that the two claims worth making — no dropped requests
+   during a rolling update, no interruption when a pod is killed — need an
+   orchestrator and do not need a hosted one, while a live URL needs a payment
+   card the moment trial credits end. Rejected: a hosted cluster, which bills by
+   the hour whether or not anyone visits. Tradeoff accepted: nobody can look at
+   this without cloning it, and the demo recording in the README carries that
+   weight instead.
 6. **Reference answers never enter the shared doc** — a Yjs doc replicates to all
    peers, so the answer key can't live there. Questions releases `reference_md`
    only to Matching over the internal network, and only after Matching verifies
@@ -985,7 +915,7 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
    insight, the gateway built because the insight is what's inside it.
 9. **One Postgres instance, one schema per service, one role per service.**
    Context: six services, and the question of who owns which tables. Decision: a
-   single Neon instance with a schema per service (`users`, `questions`,
+   single Postgres instance with a schema per service (`users`, `questions`,
    `matching`, `collab`, `stats`), each accessed by its own Postgres role granted
    privileges **only** on its own schema — so a cross-service read is rejected by
    the database, not discouraged by convention. **No foreign key crosses a schema
@@ -1001,7 +931,7 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
    forbids. Also rejected: **a shared schema**, which removes the boundary
    entirely and makes the services non-independently-deployable in practice — a
    distributed monolith. Tradeoffs accepted: one instance is a shared failure
-   domain and a shared connection budget (mitigated by Neon's pooled endpoint,
+   domain and a shared connection budget (mitigated by a pooled endpoint,
    since every service instance holding its own pool would otherwise exhaust the
    free tier's connection limit); and the "microservices" claim rests on services
    owning their *tables*, not their *instances*. **The condition to split:** one
@@ -1034,88 +964,37 @@ is still being paid. An obvious choice gets a one-line inline note, not an ADR.
 
 | Phase | Build | Demoable |
 |---|---|---|
-| 0 | Monorepo, docker-compose (PG + Redis + Firebase Auth emulator), hello-world Fastify services, per-service CI, GCP project (free trial) + billing guard, Firebase/Neon/Upstash accounts | `docker-compose up` runs |
+| 0 | Monorepo, docker-compose (PG + Redis + Firebase Auth emulator), hello-world Fastify services, per-service CI | `docker-compose up` runs |
 | 1 | Firebase Auth + emulator wired in; **Gateway**: JWKS fetch/cache, verify ID token (sig/`exp`/`iss`/`aud`), inject `X-User-Id`, route, per-IP rate limit; **Users**: lazy upsert; schemas + per-service Postgres roles; internal-ingress + invoker IAM | emulator token → protected call succeeds; tampered/expired token 401s; `users` row appears once; a service querying another's schema is **rejected by Postgres** |
 | 2 | **Questions**: bank (filter/search/cursor-paginate/get) + Redis cache; per-user rate limit; public bank UI | browse and read questions solo, cache hits visible |
 | 3 | **Matching**: reactive matching (Redis sorted set + Lua claim), session rows, pub/sub match event, validation calls to Users + Questions, contract tests | two users join → matched → session exists; a Users outage fails the match cleanly rather than corrupting state |
 | 4 | **Collab (hardest):** WebSockets + Yjs, authorize the socket via Matching, cross-instance pub/sub, presence/cursors, snapshot + reconnect, graceful shutdown | two tabs sync live; kill one instance, the other keeps working |
 | 5 | Minimal React: login, question list, match button, session page (Monaco wired to Yjs) with scaffolded editor, reveal flow, end | open two browsers, match, collaborate, reveal |
 | 5b | The question list became a roadmap: topics ordered as a recommended path, one lesson per question set seeded from the same notes, light/dark, and URLs for every screen. Content fixed in the seed rather than at render time | click a topic, read its lesson, press "find a partner" from it; Back works; a lesson link opens that lesson |
-| 6 | Event pipeline: `emitEvent` → `events` stream (behind the `EventLog` interface); idempotent **Stats** consumer → summaries + aggregates; Cloud Scheduler → Cloud Run job | end a session on the live URL → summary renders; `/stats` shows real counts |
+| 6 | Event pipeline: `emitEvent` → `events` stream (behind the `EventLog` interface); idempotent **Stats** consumer → summaries + aggregates; the job run on a schedule | end a session → summary renders; `/stats` shows real counts |
 | 7 | **Load and soak.** One k6 script against `docker-compose`: ramp WebSocket connections on Collab to the configured 250/instance ceiling, hold, and watch memory and socket counts. Needs nothing beyond phase 4, and phases 8 and 10 re-run this same script against different targets | headline concurrency and p95 edit-propagation numbers, **stated with the environment that produced them**; no leaked sockets and flat memory over a long hold |
-| 8 | **Kubernetes, locally.** `k8s/` manifests: Deployment + Service per service, ConfigMap + Secret, Ingress, probes pointed at the existing `/health/live` and `/health/ready`, Postgres and Redis for local use; `make k8s-up` / `make k8s-down` on `kind`; the k6 script re-run during a rolling update and a killed pod | app runs on Kubernetes; k6 shows **zero dropped requests during a rolling update**, and `kubectl delete pod` does not interrupt it |
-| 9 | **[detour · learning]** Kafka in dev: single-node Kafka (KRaft) in compose + a Kafka adapter for `EventLog` | same events flow through Kafka on `docker-compose up`; prod unchanged |
-| 10 | **Deploy.** The services to Cloud Run + frontend to CDN; CI deploys per service on merge; logs + health + `/metrics` → Grafana; the smaller k6 run against the real thing; README + ADRs + demo GIF | live URL; headline load number in README with the environment stated; deploying Questions alone doesn't restart Collab |
-| 11 | **[built · learning]** Terraform: import the manual setup (services + flags, service accounts, invoker bindings, registry, secrets, bucket, scheduler job, budget alerts). After phase 10, because it imports infrastructure that has to exist first | `terraform apply` rebuilds the environment |
+| 8 | **Kubernetes, locally.** `k8s/` manifests: Deployment + Service per service, ConfigMap + Secret, Ingress, probes pointed at the existing `/health/live` and `/health/ready`, Postgres and Redis for local use; `make k8s-up` / `make k8s-down` on `kind`; the k6 script re-run during a rolling update and a killed pod | app runs on Kubernetes; k6 shows **zero dropped requests during a rolling update**, and `kubectl delete pod` does not interrupt it. **This is the last phase.** |
 
-**Superseded 2026-08-12: the project ends at phase 8.** Phase 8 (Kubernetes
-locally) is next and last. Phase 10 (the Cloud Run deploy) and phase 11
-(Terraform) are **designed and costed, deliberately not executed** — the design
-stays in §7 because it is the reasoning, not the artefact, and what it would
-cost to run is in [docs/cost.md](docs/cost.md).
+**The project ends at phase 8, and is not deployed.** Phase 8 is Kubernetes
+locally, and it is the last one. The system runs under docker compose for
+development and on a `kind` cluster for everything compose cannot demonstrate,
+and there is no hosted environment behind it. ADR-05 records the decision and
+§7 records what it means in practice.
 
-The reason is the one §7's ceiling was always pointing at, now with numbers
-behind it. A live URL is free only while trial credits last; after that,
-`asia-southeast1` is a Tier 2 region where the free allowance is worth about 36
-instance-hours a month, an open WebSocket bills for its whole life, and the
-system would need a card attached to stay up. That is a poor trade for a
-portfolio demo that `kubectl` can run on any laptop, for ever, at no cost. The
-deployment being *specified in enough detail to price* is the deliverable;
-running it is not.
+The reason, in one line: the two claims worth making — no dropped requests
+during a rolling update, no interruption when a pod is killed — need an
+orchestrator, not a hosted one, and a live URL needs a payment card the moment
+free credits end.
 
-**What this costs, stated as plainly as the reorder it replaces:** there is no
-URL to send anybody, and there never will be. The README carries a recording
-instead. Anyone assessing this repo has to clone it, which is a real filter and
-is accepted deliberately.
-
-The paragraphs below are the earlier reasoning, kept because the sequence of
-decisions is the interesting part. The numbers in this table are identities,
-not positions — every doc, comment and commit message in the repo cites them —
-so they stay fixed regardless of what is built. Phases 0 to 7 were built in the
-order they are numbered.
+**What this costs, stated rather than glossed:** there is no URL to send
+anybody. Anyone assessing this has to clone it and run two commands, which is a
+real filter and is accepted deliberately; the README carries a recording
+instead.
 
 **The project is feature-complete at phase 6**, which is where the event
 pipeline and `/stats` land. Both are stated scope (§1, §2), so phase 6 is not
-optional and nothing after it is load-bearing for the product. *Publicly*
-demoable means phase 10, which is now the next phase.
+optional and nothing after it is load-bearing for the product.
 
-**Why the deploy moved last.** It was phase 6, ahead of everything additive. The
-trade it was making turned out to be a bad one: a live URL is the only part of
-this a stranger experiences, but keeping one alive inside a $20 ceiling meant
-budget alarms, kill switches, free-tier quotas and a running audit of anything
-that might generate traffic — attention spent on billing rather than on the
-system. Running on Kubernetes locally costs nothing, has no billing account
-attached, and teaches the part of operations the compose file was hiding. The
-live URL is still the goal; it is now the last thing rather than the middle one.
-
-What is honestly lost is worth naming rather than glossing: until phase 10 there
-is no URL to send anybody, and nobody is going to run `kind create cluster` to
-look at a project. The README carries the demo recording until then.
-
-**And why it moved back to the front, 2026-08-11.** The paragraph above prices
-the deploy as *attention*: budget alarms, kill switches, free-tier quotas, an
-audit of anything that generates traffic. That price has largely been paid
-already and it was paid in phase 0 — the kill-switch function, the budget
-alerts and the enabled-API allowlist exist and are still standing, so what is
-left is the deploy itself rather than the apparatus around it. Against a cost
-that shrank, the thing the deferral gave up has a date on it: a URL is the only
-part of this a stranger experiences, and it is wanted now. Phases 8 and 9 are
-both labelled learning detours in the table, and a detour is what moves when
-something dated is queued behind it.
-
-Only the deploy moves. What follows it is the additive backlog below, in the
-priority that table already argues for — which is not disturbed by this, except
-that phase 11 is no longer waiting on anything, since Terraform imports what the
-deploy creates and could never have run before it.
-
-The cost of *this* reordering, stated as plainly as the last one: phase 8's
-"zero dropped requests during a rolling update, and here is why the readiness
-probes make that work" was the sharpest operational claim in the plan, and it
-now lands later. Cloud Run migrates traffic between revisions and will
-demonstrate something adjacent, but it is not the same claim: the mechanism
-there belongs to Google rather than to anything in `k8s/`. And a deployed
-system spends real quota from the moment it exists, so §7's ceiling stops being
-a design constraint and becomes a live one.
 
 **Why the event pipeline moved ahead of Kubernetes.** They swapped after the CV
 went out. Ordering by cost and learning value is the right rule while nothing
@@ -1140,12 +1019,10 @@ questions; neither produces the baseline. See §8.
 | | Item | Why it sits here |
 |---|---|---|
 | 1 | **Adopt Drizzle** over the `pg` layer (ADR-10) | The only deferred item that pays down a cost already being paid — hand-written result types, drifting from the schema, on every service from phase 1 onward. Adoptable one service at a time. Ahead of the phases below because it makes existing code better rather than adding new capability. |
-| 2 | Phase 8 — Kubernetes locally | Costs nothing and teaches the operations layer the compose file hides, but nothing in the product depends on it. |
-| 3 | Phase 9 — Kafka adapter | Pure adapter work behind the existing `EventLog` interface; prod unchanged. |
-| 4 | Phase 11 — Terraform import | Highest effort, and it documents infrastructure that already works. |
+| 2 | A **Kafka adapter** behind the existing `EventLog` interface | Pure adapter work against a surface that already exists, and the interface was built with a second implementation in mind. |
+| 3 | A **deployment**, if it is ever wanted | Specified in §7 and priced in [docs/cost.md](docs/cost.md). Nothing in the code has to change for it; that is what makes it a backlog item rather than a rewrite. |
 
-**Why this ordering and not the doc's original.** Phases 8, 9 and 11 each add
-something new. ADR-10's deferral is different in kind: it is a debt taken deliberately to
+**Why this ordering.** The two items below Drizzle each add something new. ADR-10's deferral is different in kind: it is a debt taken deliberately to
 reach a demoable product sooner, and it accrues interest with every service
 written against the raw driver. Adding capability to a codebase carrying a known
 deferred decision is the wrong order if there is ever time for exactly one of
@@ -1156,7 +1033,7 @@ recovery path if skipped.
 
 *Why is Collab at phase 4 rather than last?* It's the piece that can genuinely
 fail — cross-instance sync, snapshot correctness, reconnect. Hitting that in
-phase 4 leaves room to change approach; hitting it in phase 10 leaves none. It
+phase 4 leaves room to change approach; hitting it at the end leaves none. It
 sits as early as its dependencies (a session row, phase 3) allow.
 
 *Why do the schema roles land in phase 1?* Because a boundary that isn't enforced

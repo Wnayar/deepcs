@@ -10,8 +10,8 @@
  * the `stats` schema and only `stats_svc` may read it (ADR-09).
  *
  * So: `job.ts` drains and exits, `index.ts` serves reads and scales to zero
- * like any other service. In Cloud Run that is one image deployed twice, once
- * as a job and once as a service.
+ * like any other service. That is one image run two ways: as a scheduled job,
+ * and as a long-lived server.
  */
 export const SERVICES = {
   gateway: { port: 8080 },

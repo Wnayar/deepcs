@@ -5,10 +5,10 @@ import pg from 'pg';
  *
  * The pool here is the *application-side* one: it avoids a TCP+TLS handshake
  * per query within this process. It is not, and cannot be, the thing that
- * bounds total connections — each Cloud Run instance runs its own copy of this
- * file and none of them can see the others. That job belongs to PgBouncer at
- * Neon's `-pooler` endpoint (ADR-09), which is the only point every instance
- * passes through.
+ * bounds total connections — every replica runs its own copy of this file and
+ * none of them can see the others. Bounding the total needs something every
+ * replica passes through, which is a connection pooler in front of Postgres
+ * (ADR-09).
  *
  * Which means `max` below is a per-instance number, and the figure that matters
  * is `max × maxInstances × services`. Five services × 2 instances × 5 is 50
@@ -33,10 +33,10 @@ export function createPool(options: PoolOptions = {}): pg.Pool {
     max: options.max ?? DEFAULT_MAX,
 
     /**
-     * Return a connection to the pool after 30s idle. Cloud Run freezes an
-     * instance's CPU between requests, so a connection held open across a long
-     * idle gap is one Postgres process doing nothing on a machine that is also
-     * doing nothing — and Neon's free tier counts it either way.
+     * Return a connection to the pool after 30s idle. A connection held open
+     * across a long idle gap is one Postgres backend process doing nothing,
+     * and Postgres charges for it in memory and in its connection limit
+     * whether or not a query ever arrives.
      */
     idleTimeoutMillis: 30_000,
 

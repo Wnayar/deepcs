@@ -10,7 +10,7 @@ const participantResponse = z.object({
  * How long to wait on a sibling service before giving up. Without a bound, a
  * hung Questions leaves a room build pending forever — the socket never gets
  * a room, and `snapshotAllRooms` awaits that same promise on SIGTERM, so the
- * shutdown snapshot never runs and Cloud Run SIGKILLs at the grace deadline.
+ * shutdown snapshot never runs and the process is killed at the grace deadline.
  */
 const REQUEST_TIMEOUT_MS = 5_000;
 

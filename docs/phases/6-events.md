@@ -68,7 +68,7 @@ conclusion overreaches. Serving a summary is request-driven like every other
 read and scales to zero perfectly well.
 
 So Stats is one image with two entrypoints: `index.ts` drains and exits,
-`server.ts` answers reads. In Cloud Run that is the same image deployed twice,
+`server.ts` answers reads. On the cluster that is the same image run twice,
 once as a job and once as a service. The job stays the image default, so CI's
 existing smoke test keeps meaning what it meant.
 

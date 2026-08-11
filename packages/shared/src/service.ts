@@ -83,14 +83,15 @@ export function createService({ name, port, ready }: ServiceOptions): {
      * everyone. It looks correct locally only because compose publishes the
      * port directly, so the peer really is the client.
      *
-     * `1`, not `true`. Cloud Run *appends* the caller's address to any
-     * inbound X-Forwarded-For rather than replacing it, so the rightmost entry
-     * is the one Google vouches for and everything left of it is caller-
-     * supplied. `true` trusts the whole chain and takes the leftmost — which a
-     * client sets themselves, handing them a fresh bucket per forged header
-     * and removing the limit entirely. `1` trusts exactly the one hop in front
-     * of us. Re-check this number in phase 10 against whatever actually sits in
-     * front of the service; it is a property of the deployment, not of Fastify.
+     * `1`, not `true`. A proxy that behaves correctly *appends* the caller's
+     * address to any inbound X-Forwarded-For rather than replacing it, so the
+     * rightmost entry is the one it vouches for and everything left of it is
+     * caller-supplied. `true` trusts the whole chain and takes the leftmost —
+     * which a client sets themselves, handing them a fresh bucket per forged
+     * header and removing the limit entirely. `1` trusts exactly the one hop in
+     * front of us. Re-check the number against whatever actually sits in front
+     * of the service, an Ingress included; it is a property of how it is run,
+     * not of Fastify.
      */
     trustProxy: 1,
     requestIdHeader: 'x-request-id',
@@ -148,9 +149,10 @@ export function createService({ name, port, ready }: ServiceOptions): {
 
   const start = async (): Promise<void> => {
     /**
-     * Graceful shutdown (DESIGN.md §6). Cloud Run sends SIGTERM and then waits;
-     * `app.close()` stops accepting new connections and lets in-flight requests
-     * finish. Without this, a deploy severs whatever was mid-flight.
+     * Graceful shutdown (DESIGN.md §6). Kubernetes and `docker stop` both send
+     * SIGTERM and then wait; `app.close()` stops accepting new connections and
+     * lets in-flight requests finish. Without this, replacing a pod severs
+     * whatever was mid-flight, which is exactly what phase 8 measures.
      *
      * Registered here rather than at construction on purpose: these are
      * *process*-wide handlers, and a test that builds ten app instances would
@@ -169,8 +171,8 @@ export function createService({ name, port, ready }: ServiceOptions): {
       });
     }
 
-    // Cloud Run injects PORT and expects the container to honour it; the value
-    // in SERVICES is only the local-compose default (DESIGN.md §7).
+    // PORT is honoured when the environment sets it, which is how a container
+    // is told where to listen; the value in SERVICES is the compose default.
     const listenPort = process.env.PORT ? Number(process.env.PORT) : port;
 
     // 0.0.0.0, not localhost: inside a container, binding the loopback
