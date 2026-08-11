@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "//": "The one package here that is not a Node service. It builds to a static bundle served from a CDN in phase 6, so it has no Dockerfile target, no port and no /health/ready.",
+  "//": "The one package here that is not a Node service. It builds to a static bundle rather than running a server, so it has no Dockerfile target, no port and no /health/ready.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

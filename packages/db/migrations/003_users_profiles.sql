@@ -27,6 +27,5 @@ CREATE TABLE IF NOT EXISTS users.profiles (
   updated_at    timestamptz NOT NULL DEFAULT now()
 );
 
--- gen_random_uuid() is built in from Postgres 13 — no pgcrypto extension
--- needed, which matters because Neon's free tier restricts which extensions
--- can be installed.
+-- gen_random_uuid() is built in from Postgres 13, so no pgcrypto extension is
+-- needed and nothing here depends on which extensions a given server allows.

@@ -76,12 +76,13 @@ export function createService({ name, port, ready }: ServiceOptions): {
 } {
   const app = Fastify({
     /**
-     * Without this, `req.ip` is the socket's peer address — which behind Cloud
-     * Run is Google's front end, not the caller. Every anonymous request would
-     * then share one `rl:ip:` bucket and the per-IP limiter in §6 would be a
-     * per-*deployment* limiter: one client spending 60 tokens locks out
-     * everyone. It looks correct locally only because compose publishes the
-     * port directly, so the peer really is the client.
+     * Without this, `req.ip` is the socket's peer address — which behind any
+     * proxy is the proxy, not the caller. On the cluster that is the ingress
+     * controller. Every anonymous request would then share one `rl:ip:` bucket
+     * and the per-IP limiter in §6 would be a per-*cluster* limiter: one client
+     * spending 60 tokens locks out everyone. It looks correct under compose
+     * only because compose publishes the port directly, so the peer really is
+     * the client.
      *
      * `1`, not `true`. A proxy that behaves correctly *appends* the caller's
      * address to any inbound X-Forwarded-For rather than replacing it, so the
@@ -100,7 +101,8 @@ export function createService({ name, port, ready }: ServiceOptions): {
     genReqId: (req) => (req.headers['x-request-id'] as string) ?? randomUUID(),
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
-      // Cloud Logging reads `message` and `severity`, not pino's `msg`/`level`.
+      // The keys a structured-log collector conventionally reads are `message`
+      // and `severity`, not pino's own `msg`/`level`.
       messageKey: 'message',
       base: { service: name },
       formatters: {
@@ -152,7 +154,8 @@ export function createService({ name, port, ready }: ServiceOptions): {
      * Graceful shutdown (the overview §6). Kubernetes and `docker stop` both send
      * SIGTERM and then wait; `app.close()` stops accepting new connections and
      * lets in-flight requests finish. Without this, replacing a pod severs
-     * whatever was mid-flight, which is exactly what phase 8 measures.
+     * whatever was mid-flight, which is exactly what the disruption check in
+     * k8s/disruption-check.sh measures.
      *
      * Registered here rather than at construction on purpose: these are
      * *process*-wide handlers, and a test that builds ten app instances would

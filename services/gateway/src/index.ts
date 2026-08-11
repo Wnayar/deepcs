@@ -41,8 +41,8 @@ await app.register(cors, {
   // A response header a browser cannot read may as well not be sent: `fetch`
   // hides everything outside the CORS-safelist unless it is named here.
   // `retry-after` is the one the 429 above depends on — a frontend backing off
-  // would otherwise read null — and `x-cache` is what makes phase 2's cache
-  // visible from anywhere other than curl.
+  // would otherwise read null — and `x-cache` is what makes the Questions
+  // cache visible from anywhere other than curl.
   exposedHeaders: [
     'x-request-id',
     'x-ratelimit-limit',
@@ -55,7 +55,8 @@ await app.register(cors, {
 await app.register(helmet, {
   /**
    * CSP off at the Gateway: it serves JSON, not HTML, so a content policy here
-   * protects nothing. It belongs on whatever serves the frontend (phase 5).
+   * protects nothing. It belongs on whatever serves the frontend, which is
+   * where it is (frontend/vite.config.ts).
    */
   contentSecurityPolicy: false,
 });
@@ -79,7 +80,7 @@ declare module 'fastify' {
  *                        attempt to authenticate, and a failed one.
  *   valid token       -> X-User-Id injected from `sub`.
  *
- * A WebSocket upgrade (Collab, from phase 4) is a fourth case in practice: a
+ * A WebSocket upgrade (Collab) is a fourth case in practice: a
  * browser's native WebSocket constructor cannot set an Authorization header,
  * so the token arrives as `?token=` instead. That fallback is read only when
  * the request is actually a WS upgrade, so it never widens how an ordinary
@@ -157,8 +158,8 @@ app.addHook('onRequest', async (req, reply) => {
      * The alternative — fail closed — turns a cache outage into a total
      * outage. This is a deliberate availability-over-enforcement choice and it
      * is only defensible because the thing being protected is request volume,
-     * not money or data. §7's --max-instances still caps the cost of whatever
-     * gets through.
+     * not money or data. The replica count still caps what the traffic that
+     * gets through can cost.
      */
     req.log.error({ err }, 'rate limiter unavailable; allowing request');
     return;
@@ -188,7 +189,7 @@ app.get('/health/deps', async () => {
   }
 });
 
-app.get('/', async () => ({ service: 'gateway', phase: 1 }));
+app.get('/', async () => ({ service: 'gateway' }));
 
 /**
  * Routing (§5). One registration per downstream service.
@@ -200,9 +201,9 @@ app.get('/', async () => ({ service: 'gateway', phase: 1 }));
  * `/questions/:id/reference` is where the answer lives. A prefix meaning "read
  * the material" should not be nested inside one meaning "read a question".
  *
- * `websocket: true` on collab is needed from phase 4, and is set now because
- * every WebSocket is proxied through here — the tradeoff §5 names explicitly:
- * one collab connection occupies a concurrency slot on the Gateway *and* one on
+ * `websocket: true` on collab is what makes the upgrade proxy at all, and every
+ * WebSocket is proxied through here — the tradeoff §5 names explicitly: one
+ * collab connection occupies a concurrency slot on the Gateway *and* one on
  * Collab, and the Gateway's slots are shared with every HTTP request in the
  * system.
  */

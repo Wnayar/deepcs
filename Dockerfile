@@ -2,11 +2,11 @@
 #
 # One Dockerfile for all six deployables, selected with --build-arg SERVICE=<name>.
 #
-# Why one and not six (D2 in the phase-0 pre-brief): the services are
-# near-identical Node processes, so six copies means the same fix applied six
-# times and drifting in five of them. Independent deployability lives in the
-# pipeline and the image tag, not in the file the image is built from — CI
-# builds and pushes six *separate images* from this one file.
+# Why one and not six: the services are near-identical Node processes, so six
+# copies means the same fix applied six times and drifting in five of them.
+# Independent deployability lives in the pipeline and the image tag, not in the
+# file the image is built from — CI builds six *separate images* from this one
+# file.
 #
 # Stages:
 #   deps       install everything (dev + prod), cached on package.json files alone

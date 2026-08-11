@@ -15,8 +15,8 @@ export interface UpsertResult {
    *
    * This is the entire reason the upsert is written the way it is. The overview §5:
    * "there is no signup endpoint", so this flag is the only place
-   * `user.signed_up` can be emitted from (phase 6). Get it wrong and the event
-   * fires on every request and the sign-up count in /stats means nothing.
+   * `user.signed_up` can be emitted from. Get it wrong and the event fires on
+   * every request and the sign-up count in /stats means nothing.
    */
   created: boolean;
 }

@@ -24,7 +24,7 @@ const { app, start } = createService({
  * queries during a demo actually hit the cache. */
 const LIST_CACHE_TTL_SECONDS = 60;
 
-app.get('/', async () => ({ service: 'questions', phase: 2 }));
+app.get('/', async () => ({ service: 'questions' }));
 
 app.get('/health/deps', async () => {
   const [postgres, redisState] = await Promise.all([probe(pingDb(pool)), probe(pingRedis(redis))]);

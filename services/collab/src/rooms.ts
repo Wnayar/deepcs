@@ -95,11 +95,10 @@ function matchChannel(sessionId: string): string {
 export const SESSION_ENDED_CODE = 4001;
 
 /**
- * Builds the scaffold as a Yjs update: one heading per question part with the
- * part's own text under it, plus "## Our answer" and "## Scratch" (the overview:
- * the scaffold lets two people work in parallel without colliding, and
- * "## Scratch" doubles as the chat channel). It all lives in a single shared
- * `Y.Text` named "content" — phase 5 binds Monaco to that field via y-monaco.
+ * Builds the scaffold as a Yjs update: a numbered line per question part with
+ * room under each to answer in. It all lives in a single shared `Y.Text` named
+ * "content", which is a contract with the frontend — y-monaco binds to that
+ * field, and binding to any other yields an editor that syncs with nobody.
  *
  * Returned as an update rather than written straight into the room's doc so
  * that it goes through SEED_CLIENT_ID and is identical on every instance.
@@ -294,7 +293,7 @@ export function createRoomManager(deps: RoomDeps): RoomManager {
    * Without this, ending only stopped *new* sockets: the participant check
    * refused them, but a socket already open kept accepting edits and the 30s
    * snapshot kept saving them, so the document went on changing after the
-   * session was over — and phase 6's summary would read whatever it had
+   * session was over — and the session summary would read whatever it had
    * drifted to.
    *
    * Ordering matters twice here. `closing` goes up first so nothing else is
@@ -411,7 +410,7 @@ async function buildRoom(
   const awareness = new Awareness(doc);
   // Constructing an Awareness registers its own doc as a client with an empty
   // state. The server is not a participant: left in place it shows up in
-  // phase 5's cursor UI as a peer who never types, and it re-announces itself
+  // the editor's cursor UI as a peer who never types, and it re-announces itself
   // to every other instance every few seconds for as long as the room lives.
   awareness.setLocalState(null);
 

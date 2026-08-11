@@ -24,7 +24,7 @@ const { app, start } = createService({
   ready: deps,
 });
 
-app.get('/', async () => ({ service: 'users', phase: 1 }));
+app.get('/', async () => ({ service: 'users' }));
 
 app.get('/health/deps', deps);
 

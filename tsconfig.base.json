@@ -7,7 +7,7 @@
 
     // "Bundler" rather than "NodeNext" deliberately: tsup bundles every service
     // before it reaches an image, so relative imports never need the ".js"
-    // extension NodeNext demands of ESM. See docs/phases/0.md.
+    // extension NodeNext demands of ESM. See docs/learning/the-code.md.
     "moduleResolution": "Bundler",
 
     "strict": true,

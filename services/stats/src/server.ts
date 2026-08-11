@@ -9,15 +9,16 @@ import { readSummary, readStats } from './repository.js';
  * The read side of Stats, and the second entrypoint of this image.
  *
  * the overview §3 says Stats "can't be a server at all", and that argument is
- * right about the thing it is arguing: a timer cannot fire inside a service
- * that has scaled to zero, so *draining the log* has to be a job. It does not
- * follow that Stats can have no HTTP surface. Serving a summary is
- * request-driven like any other read, and it scales to zero perfectly well.
+ * right about the thing it is arguing: a job whose trigger is time cannot live
+ * inside a process that is not running between requests, so *draining the log*
+ * has to be a job. It does not follow that Stats can have no HTTP surface.
+ * Serving a summary is request-driven like any other read.
  *
  * Something has to serve these, and it can only be this service: the rows live
  * in the `stats` schema and no other role may read it (ADR-09). So the image
- * has two entrypoints, `index.ts` to drain and this to read, deployed in Cloud
- * Run as one job and one service.
+ * has two entrypoints, `index.ts` to drain and this to read — under compose a
+ * one-shot `stats` container and a long-running `stats-api`, and on the
+ * cluster a CronJob and a Deployment running the same image.
  */
 const pool = createPool();
 
@@ -27,7 +28,7 @@ const { app, start } = createService({
   ready: async () => ({ postgres: await probe(pingDb(pool)) }),
 });
 
-app.get('/', async () => ({ service: 'stats', phase: 6 }));
+app.get('/', async () => ({ service: 'stats' }));
 
 /**
  * Public aggregates, e.g.

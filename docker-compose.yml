@@ -1,8 +1,8 @@
 name: deepcs
 
-# Phase 0 target: `docker compose up` brings up the whole system locally —
-# five services, the Stats job, Postgres, Redis and the Firebase Auth emulator.
-# No cloud account is involved and nothing here costs money.
+# `docker compose up` brings up the whole system locally — five services, the
+# Stats read API, the Stats job, Postgres, Redis and the Firebase Auth
+# emulator. No cloud account is involved and nothing here costs money.
 
 # Shared by all six. `build` and `volumes` are NOT here: every service
 # overrides both with its own SERVICE build-arg and its own src/ mount, and
@@ -13,8 +13,8 @@ name: deepcs
 #
 # DATABASE_URL is deliberately NOT here. Each service connects as its own
 # Postgres role (ADR-09), so a shared default would be the one line that
-# silently undoes the boundary every other part of phase 1 enforces. The
-# services that need Postgres set their own; the Gateway needs none.
+# silently undoes the boundary every other part of the schema split enforces.
+# The services that need Postgres set their own; the Gateway needs none.
 #
 # There is deliberately no shared `environment:` here, and it is worth knowing
 # why rather than adding one back. A YAML merge key is *shallow*: if a service
@@ -256,7 +256,7 @@ services:
   # failure — it is the whole point (the overview §5): it drains the event log and
   # exits, rather than sitting there as a server. Run it on demand with
   #   docker compose run --rm stats
-  # and on the cluster it is a Kubernetes CronJob (phase 8).
+  # and on the cluster it is a Kubernetes CronJob (k8s/40-stats-cronjob.yaml).
   # The read side of Stats: same image, different command. `stats` below is the
   # job, which is the image's default entrypoint and what the scheduled run
   # invokes; this serves `GET /stats` and a session's summary, which nothing

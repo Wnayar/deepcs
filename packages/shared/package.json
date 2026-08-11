@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "//": "Subpath exports, deliberately no barrel — see src/service.ts and the phase-0 notes.",
+  "//": "Subpath exports, deliberately no barrel — see the note at the top of src/service.ts.",
   "exports": {
     "./service": "./src/service.ts",
     "./logger": "./src/logger.ts",

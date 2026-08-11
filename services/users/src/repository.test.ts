@@ -89,7 +89,7 @@ describe.skipIf(!process.env.CI && process.env.DATABASE_URL === undefined)('lazy
 /**
  * ADR-09's boundary, asserted rather than assumed.
  *
- * This is phase 1's fourth demoable claim: "a service querying another's schema
+ * The claim under test: "a service querying another's schema
  * is rejected by Postgres". A convention that is merely documented drifts; a
  * grant that does not exist cannot.
  */

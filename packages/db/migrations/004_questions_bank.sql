@@ -12,8 +12,8 @@ CREATE TABLE IF NOT EXISTS questions.bank (
   title         text NOT NULL,
   difficulty    text NOT NULL CHECK (difficulty IN ('easy', 'medium', 'hard')),
 
-  -- One prompt per part. Phase 4's Collab doc seeds one heading per entry, in
-  -- array order.
+  -- One prompt per part. Collab seeds one numbered line per entry, in array
+  -- order.
   parts         jsonb NOT NULL,
 
   reference_md  text NOT NULL,

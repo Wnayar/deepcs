@@ -1,10 +1,10 @@
 # The Firebase Auth emulator ships as a Java jar wrapped by the Node CLI, so
 # this image needs both runtimes. Google publishes no official emulator image.
 #
-# Why run it at all when Firebase Auth is free (D4 in the phase-0 pre-brief):
-# it keeps local dev and CI offline, it can mint tokens for arbitrary test
-# users (which the real thing will not), and it preserves the property that one
-# command runs the whole system (DESIGN.md §7).
+# Why run it at all when Firebase Auth is free: it keeps local dev and CI
+# offline, it can mint tokens for arbitrary test users (which the real thing
+# will not), and it preserves the property that one command runs the whole
+# system (docs/system/09-running-it.md).
 FROM node:24-alpine
 
 RUN apk add --no-cache openjdk21-jre-headless \

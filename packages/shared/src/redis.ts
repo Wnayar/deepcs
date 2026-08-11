@@ -2,7 +2,7 @@ import Redis, { type RedisOptions } from 'ioredis';
 
 /**
  * Redis does five jobs in this system (§4): rate-limit state, match queue,
- * cross-instance pub/sub, event stream, question cache. Phase 1 uses the first.
+ * cross-instance pub/sub, event stream, question cache.
  *
  * ioredis rather than node-redis: `defineCommand` registers a Lua script once
  * and then calls it by SHA with an automatic fallback to EVAL if Redis has

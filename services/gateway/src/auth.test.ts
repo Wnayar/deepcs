@@ -42,7 +42,7 @@ describe('bearerToken', () => {
 });
 
 describe('queryToken', () => {
-  // Collab's WS handshake (phase 4): a browser's native WebSocket constructor
+  // Collab's WS handshake: a browser's native WebSocket constructor
   // can't set an Authorization header, so the token travels as ?token=
   // instead. The onRequest hook in index.ts only consults this for requests
   // carrying an Upgrade: websocket header — these tests cover the parsing

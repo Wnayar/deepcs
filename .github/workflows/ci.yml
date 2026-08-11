@@ -154,10 +154,10 @@ jobs:
         service: ${{ fromJSON(needs.changes.outputs.services) }}
     name: ${{ matrix.service }}
 
-    # Real Postgres and Redis, not mocks (§8). The two things phase 1 must
-    # prove — a Lua script's atomicity, and a role being refused another
-    # schema — are properties of those systems. A mock would only prove the
-    # mock agrees with itself.
+    # Real Postgres and Redis, not mocks (§8). The two properties worth proving
+    # — a Lua script's atomicity, and a role being refused another schema — are
+    # properties of those systems. A mock would only prove the mock agrees with
+    # itself.
     services:
       postgres:
         image: postgres:17-alpine
@@ -262,12 +262,12 @@ jobs:
             # runner's network stack makes 127.0.0.1:5432 mean what the env
             # vars above say it means.
             #
-            # The env vars are not decoration. From phase 1 the services refuse
-            # to start without their config — createPool throws on a missing
+            # The env vars are not decoration. The services refuse to start
+            # without their config — createPool throws on a missing
             # DATABASE_URL, createVerifier on a missing FIREBASE_PROJECT_ID —
             # which is deliberate, and which this step has to satisfy for the
-            # same reason a real deployment does. NODE_ENV=production is baked
-            # into the runner stage, so the emulator guard is also live here:
+            # same reason the cluster does. NODE_ENV=production is baked into
+            # the runner stage, so the emulator guard is also live here:
             # setting FIREBASE_AUTH_EMULATOR_HOST would make the Gateway refuse
             # to boot, exactly as intended.
             # USERS_URL/QUESTIONS_URL/MATCHING_URL only need to be non-empty
