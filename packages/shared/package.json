@@ -16,7 +16,7 @@
   "scripts": {
     "build": "echo 'consumed from source; bundled into each service by tsup' && exit 0",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run"
   },
   "dependencies": {
     "fastify": "catalog:",

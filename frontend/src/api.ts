@@ -21,11 +21,6 @@ export interface Question {
   createdAt: string;
 }
 
-export interface QuestionPage {
-  items: Question[];
-  nextCursor: string | null;
-}
-
 export interface Session {
   id: string;
   questionId: string;
@@ -90,21 +85,6 @@ export function ensureProfile() {
   return request<{ id: string; firebaseUid: string }>('/users/me');
 }
 
-export function listQuestions(params: {
-  tags?: string;
-  difficulty?: Difficulty;
-  q?: string;
-  cursor?: string;
-  limit?: number;
-}) {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== '') search.set(key, String(value));
-  }
-  const query = search.toString();
-  return request<QuestionPage>(`/questions${query ? `?${query}` : ''}`);
-}
-
 export function getQuestion(id: string) {
   return request<Question>(`/questions/${id}`);
 }
@@ -141,7 +121,7 @@ export function consentToReveal(sessionId: string) {
   return request<RevealState>(`/match/sessions/${sessionId}/reveal`, { method: 'POST' });
 }
 
-/** Read consent state without granting it — what the session page polls while
+/** Read consent state without granting it — what the session page checks while
  * waiting on the other person. */
 export function revealState(sessionId: string) {
   return request<RevealState>(`/match/sessions/${sessionId}/reveal`);

@@ -25,7 +25,6 @@ docs
 # is served separately — and without this line every UI edit would invalidate
 # the COPY layer and rebuild all six.
 frontend
-DESIGN.md
 README.md
 docker-compose.yml
 docker/
