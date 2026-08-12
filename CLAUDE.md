@@ -115,6 +115,15 @@ used to be X", it belongs in a decision file or nowhere.
 - Skip inline citations (the overview section numbers, ADR numbers) in comments
   that explain *what to do* or *how to call something*. Save citations for
   comments whose whole point is *why* a decision was made.
+- **A citation names its document.** `docs/system/08-data.md §6`, never a bare
+  `§6` or "the overview §8" — a section number with no document attached is
+  unresolvable from where the reader is standing, and it silently goes stale
+  when that document is renumbered.
+- **One fact, one home.** A comment carries the mechanism and the consequence,
+  then points at the page for the rest. If the same reasoning is in a comment
+  *and* in `docs/`, the copy nobody updates is the one in the comment. The
+  rate-limiter trace and the polling-to-SSE story were each in three or four
+  places before this rule.
 
 ### Working conventions
 
@@ -202,6 +211,12 @@ used to be X", it belongs in a decision file or nowhere.
   measures this laptop. What a local run can claim is zero dropped requests
   during a rolling update, which is a property of the readiness probes and is
   hardware-independent.
+- **Nothing configures a concurrency limit, so do not describe one.** There is
+  no per-process request cap on any service; Fastify accepts connections until
+  memory or the kernel says otherwise, and the only real ceilings are the
+  replica count and the rate limiter. "250 sockets" is what one laptop was shown
+  to hold, not a setting. The docs claimed otherwise for a while and disagreed
+  with each other about it.
 - **`edit_latency` from the k6 script is only meaningful against one Collab
   replica.** With two, a pod opening a room another pod holds asks for state on
   Redis and gets the whole document back, which it re-broadcasts to its own
