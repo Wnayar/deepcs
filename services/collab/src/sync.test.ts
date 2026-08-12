@@ -12,7 +12,7 @@ import { createRedis } from '@deepcs/shared/redis';
 import { createRoomManager, MESSAGE_SYNC, SESSION_ENDED_CODE, toUint8Array } from './rooms.js';
 
 /**
- * The regression tests for the hard part of this phase (the overview's
+ * The regression tests for the hard part of this service (the overview's
  * "distributed-systems moment"): two people matched into one session can land
  * on *different* Collab instances, and an edit made on one has to reach the
  * other through Redis rather than through anything in-process.
@@ -252,7 +252,7 @@ describe.skipIf(!process.env.CI && process.env.QUESTIONS_URL === undefined)('col
    * because Collab authorizes against Matching's participant check and never
    * heard about ending at all. A socket already open kept accepting edits, and
    * the 30s snapshot kept saving them — so the document carried on changing
-   * after the session was over, and phase 6's summary would read whatever it
+   * after the session was over, and the session summary would read whatever it
    * had drifted to.
    */
   it('closes an open socket and stops persisting edits once the session ends', async (ctx) => {
@@ -300,7 +300,7 @@ describe.skipIf(!process.env.CI && process.env.QUESTIONS_URL === undefined)('col
   }, 20_000);
 
   /**
-   * What `/metrics` reports, and the reason phase 7 can claim no leaked
+   * What `/metrics` reports, and the reason the load run can claim no leaked
    * sockets: the counts come from the manager's own bookkeeping, so a socket
    * that closed while its room forgot to release it is exactly what would
    * leave this above zero.

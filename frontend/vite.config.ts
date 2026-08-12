@@ -6,12 +6,12 @@ import react from '@vitejs/plugin-react';
  *
  * `services/gateway/src/index.ts` turns Helmet's CSP off with the note that it
  * serves JSON rather than HTML, so a policy there protects nothing and belongs
- * "on whatever serves the frontend (phase 5)" — this is that.
+ * on whatever serves the frontend — which is this.
  *
  * Injected on build only. The dev server needs inline scripts for hot reload,
  * and a policy loose enough to allow those is not a policy worth shipping; the
- * built bundle has no inline scripts, so production gets the strict version.
- * Phase 10 moves this to a CDN response header, which is where a CSP really
+ * built bundle has no inline scripts, so the built one gets the strict version.
+ * A response header from whatever serves the files is where a CSP really
  * belongs — a meta tag cannot express `frame-ancestors` or report endpoints.
  */
 const CSP = [

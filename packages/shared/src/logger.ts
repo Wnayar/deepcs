@@ -3,8 +3,8 @@ import type { ServiceName } from './services';
 
 /**
  * Stats is a job, so it has no Fastify instance and therefore no Fastify
- * logger — but its lines still have to land in Cloud Logging in the same shape
- * as everything else, or a six-service trace has a hole in it.
+ * logger — but its lines still have to come out in the same shape as everything
+ * else, or a six-service trace has a hole in it.
  */
 export function createJobLogger(name: ServiceName): Logger {
   return pino({

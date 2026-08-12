@@ -35,7 +35,7 @@ export async function applyEvent(client: pg.PoolClient, event: DomainEvent): Pro
    *
    * The limitation that buys: a permanently malformed entry is retried for
    * ever, because nothing here moves it aside. A dead-letter path is what fixes
-   * that, and it is not built. See the phase doc.
+   * that, and it is not built. See docs/system/06-events-and-stats.md.
    */
   const need = (field: string): string => {
     const value = event.data[field];

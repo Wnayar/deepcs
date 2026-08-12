@@ -14,9 +14,9 @@ import type Redis from 'ioredis';
  * That property is the reason this is worth building at all.
  *
  * The interface has three methods because those are the three that Redis
- * Streams and Kafka genuinely share. Phase 9 adds a Kafka adapter behind it for
- * development only, and the point of keeping the surface this small is that the
- * adapter is the only thing that changes.
+ * Streams and Kafka genuinely share. A Kafka adapter behind it is in the
+ * backlog and is not built; the point of keeping the surface this small is
+ * that such an adapter would be the only thing that changes.
  */
 
 /** The six moments. Named after what happened, in the past tense, because an

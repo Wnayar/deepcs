@@ -7,7 +7,7 @@ import type { SessionSummary } from '../App';
  * `/match/join`, and whether the answer was revealed is something this tab
  * just did. There is deliberately no summary endpoint: the richer version
  * (how many sessions, popular topics) is fed by the event log, and that is
- * phase 7's job.
+ * the Stats job's work.
  */
 export function SummaryPage() {
   const navigate = useNavigate();

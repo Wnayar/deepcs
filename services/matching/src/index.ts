@@ -43,7 +43,7 @@ if (!usersUrl) throw new Error('USERS_URL is not set');
 const questionsUrl = process.env.QUESTIONS_URL;
 if (!questionsUrl) throw new Error('QUESTIONS_URL is not set');
 
-app.get('/', async () => ({ service: 'matching', phase: 3 }));
+app.get('/', async () => ({ service: 'matching' }));
 
 app.get('/health/deps', deps);
 

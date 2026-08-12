@@ -89,7 +89,10 @@ used to be X", it belongs in a decision file or nowhere.
 
 - [docs/system/](./docs/system/) — **read this to understand the repo.**
   `00-overview.md` is the whole system: the six services, what each owns, how a
-  request travels through them, and how it is run and tested.
+  request travels through them, and how it is run and tested. Then one page per
+  part — `01-gateway` through `06-events-and-stats`, plus `07-frontend`,
+  `08-data` and `09-running-it` — each holding that part's failure modes,
+  measured numbers and code pointers.
 - [docs/adr/](./docs/adr/) — the decisions worth knowing, one file each: why the
   split is six services, why a CRDT rather than OT, why identity is bought and
   the gateway is built, why one database with a schema and role per service, and
@@ -117,7 +120,7 @@ used to be X", it belongs in a decision file or nowhere.
 - **Postgres access is `pg` + hand-written parameterized SQL** (ADR-10). No ORM.
   Migrations are numbered `.sql` files in `packages/db/migrations`, applied by
   `pnpm --filter @deepcs/db migrate`. Drizzle is deferred, not rejected — it is
-  item 1 in the overview §10's additive backlog. Don't introduce it ad hoc.
+  the first item in the additive backlog. Don't introduce it ad hoc.
 - **Every service connects as its own Postgres role** and queries are fully
   schema-qualified (`users.profiles`). A query that crosses a schema is a bug the
   database will reject, not a shortcut.

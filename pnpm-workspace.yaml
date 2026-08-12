@@ -8,7 +8,7 @@ packages:
   # either — that matrix assumes each entry is a Docker-buildable server with a
   # /health/ready endpoint, and this is a static bundle.
   - 'frontend'
-  # The k6 load test (phase 7). A workspace package only so that the Yjs
+  # The k6 load test. A workspace package only so that the Yjs
   # libraries it bundles into the k6 script come from the same catalog
   # versions Collab itself runs — a load generator speaking a different
   # protocol version to the server would measure something that does not
@@ -42,10 +42,11 @@ catalog:
   typescript: ^5.9.2
   vitest: ^3.2.4
 
-  # ── phase 1 ────────────────────────────────────────────────────────────────
+  # ── gateway and users ──────────────────────────────────────────────────────
   # jose, not firebase-admin: verification needs only Google's public keys, so
   # the Gateway holds no service-account credential and cannot mint or revoke a
-  # token (DESIGN.md §5). createRemoteJWKSet also does the fetch, the cache and
+  # token (docs/system/01-gateway.md). createRemoteJWKSet also does the fetch,
+  # the cache and
   # the key-rotation that Firebase requires, which is the whole JWKS story.
   jose: ^6.1.0
   ioredis: ^5.8.2
@@ -56,12 +57,12 @@ catalog:
   '@fastify/helmet': ^13.0.2
   '@fastify/http-proxy': ^11.3.0
 
-  # ── phase 4 ────────────────────────────────────────────────────────────────
+  # ── collab ─────────────────────────────────────────────────────────────────
   # yjs + y-protocols (not the y-websocket server package): the sync and
   # awareness wire protocols are used directly so the room map, the
   # cross-instance Redis relay and Postgres snapshotting are first-class code
   # here rather than bolted onto someone else's connection bookkeeping
-  # (DESIGN.md §5 — "the learning is in the sync topology").
+  # (docs/system/05-collab.md — "the learning is in the sync topology").
   yjs: ^13.6.32
   y-protocols: ^1.0.7
   lib0: ^0.2.117
@@ -69,7 +70,7 @@ catalog:
   ws: ^8.21.3
   '@types/ws': ^8.18.1
 
-  # ── phase 5 ────────────────────────────────────────────────────────────────
+  # ── frontend ───────────────────────────────────────────────────────────────
   # The browser half. `firebase` is the web SDK — the client that *obtains* a
   # token, as opposed to the Gateway's `jose`, which only verifies one; the two
   # never swap roles. `y-monaco` is the binding between the Yjs document the

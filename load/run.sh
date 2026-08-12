@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
-# The phase 7 load run. Needs `make up` first — it drives the real stack.
+# The k6 load run. Needs `make up` first — it drives the real stack.
 #
 #   ./load/run.sh                          the full run, 250 sockets
 #   PEAK_VUS=50 HOLD=1m ./load/run.sh      a smaller one
 #
-# Two things happen at once, and that is the point (DESIGN.md §8): k6 measures
-# from the client side while this samples Collab's own /metrics. One of them
-# saying "250 connections, 4 ms" is a claim about the load generator; both of
-# them saying it is a claim about the server.
+# Two things happen at once, and that is the point: k6 measures from the client
+# side while this samples Collab's own /metrics. One of them saying "250
+# connections, 4 ms" is a claim about the load generator; both of them saying
+# it is a claim about the server.
 set -euo pipefail
 
 cd "$(dirname "$0")"

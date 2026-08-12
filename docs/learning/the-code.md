@@ -11,7 +11,7 @@ English by the end. Those two files use nearly every construct the rest of the
 repo uses, so clearing them clears the repo.
 
 Part 5 is a line-by-line walk of both. Parts 1–4 are what you need first. Part 6
-covers the tests. Part 7 is a preview of what phases 1+ will put in front of you,
+covers the tests. Part 7 previews the shapes the services put in front of you,
 so nothing arrives cold.
 
 **How to read it.** Every part opens with a paragraph on what the layer is *for*
@@ -423,7 +423,8 @@ const port = 8080;           // what runs
 
 Consequence: types cannot check anything at runtime. If JSON arrives from the
 network shaped wrong, TypeScript will not catch it — it already finished its job
-before the program started. Validating input is separate work (phase 1 does it).
+before the program started. Validating input is separate work, which is what
+zod does on every endpoint.
 
 ## Annotating things
 
@@ -704,7 +705,7 @@ const app = Fastify({ ...options });
 **Handle a route:**
 
 ```ts
-app.get('/', async () => ({ service: 'gateway', phase: 0 }));
+app.get('/', async () => ({ service: 'gateway' }));
 ```
 
 A path and a function. Return an object and Fastify serialises it to JSON and
@@ -766,9 +767,10 @@ pino({
 ```
 
 - `level` — the minimum severity to emit. `debug` lines vanish at `info`.
-- `messageKey` — pino defaults to `msg`; Google Cloud Logging reads `message`.
+- `messageKey` — pino defaults to `msg`; log collectors conventionally read
+  `message`.
 - `base` — fields stamped on **every** line from this logger.
-- `formatters.level` — pino writes `level: 30`; Cloud Logging wants
+- `formatters.level` — pino writes `level: 30`; the same convention wants
   `severity: "INFO"`.
 
 Those last three exist so that logs from six services land in one searchable
@@ -815,7 +817,7 @@ const ms = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
 log.info({ drained, duration_ms: ms }, 'stats job finished');
 ```
 
-Monotonic timer, a placeholder for phase 6, then a log line. `{ drained, ... }`
+Monotonic timer, the drain itself, then a log line. `{ drained, ... }`
 is shorthand — the field is named `drained` because the variable is.
 
 ```ts
@@ -1014,7 +1016,7 @@ happen to look alike. This is the single most common early confusion.
 
 `toMatchObject` — the object contains at least these fields. Extra fields are
 allowed. That's the right choice here: the health response also carries
-`checks`, and the test shouldn't break when a future phase adds another field.
+`checks`, and the test shouldn't break when another field is added.
 
 Others you'll reach for: `toContain`, `toThrow`, `toBeDefined`, and `.not`
 (`expect(x).not.toBe(1)`).
@@ -1086,10 +1088,9 @@ pnpm --filter @deepcs/gateway test         # one
 
 # Part 7 — What's coming
 
-**The big picture.** Nothing below is in the repo yet. This exists so that when
-phase 1 drops a new shape into a file, you recognise it instead of stopping.
-Each block is enough to read the code, not enough to write it from scratch —
-that comes when you build the thing.
+**The big picture.** This exists so that when one of these shapes turns up in a
+file, you recognise it instead of stopping. Each block is enough to read the
+code, not enough to write it from scratch.
 
 ## Input validation
 
@@ -1194,7 +1195,7 @@ than the syntax does.
 
 ## Redis and streams
 
-Redis is memory-speed key/value storage. Phase 6's Stats job reads a **stream** —
+Redis is memory-speed key/value storage. The Stats job reads a **stream** —
 an append-only log that remembers how far each consumer got, so a job that
 crashes resumes rather than reprocessing or skipping.
 

@@ -10,9 +10,9 @@ import { getRoadmap, joinQueue, matchStatus, type Difficulty, type Session } fro
  * holds open, immediately and without asking. This covers the one case a
  * message cannot: the pair claim lives in Redis and the session row in
  * Postgres with no transaction spanning them, so a crash between the two
- * leaves somebody claimed with no session and no event ever published. Phase 3
- * documented `GET /match/status` answering `none` as the recovery, and nothing
- * else detects it.
+ * leaves somebody claimed with no session and no event ever published.
+ * Matching documents `GET /match/status` answering `none` as the recovery, and
+ * nothing else detects it.
  *
  * A minute apart, because it is a crash window rather than a race, and one
  * request a minute while somebody watches a waiting screen is not worth
@@ -49,7 +49,7 @@ function usePreset(): { topic: string | null; difficulty: Difficulty | null } {
  * Join the queue and wait.
  *
  * The polling here is not laziness about push — it is the crash-recovery
- * contract phase 3 designed. The pair claim lives in Redis and the session row
+ * contract Matching exposes. The pair claim lives in Redis and the session row
  * in Postgres, with no transaction spanning them, so a crash between the two
  * would leave a claimed partner with no session. `GET /match/status` answering
  * `none` is the signal to re-join, and it is the only thing that unsticks that
@@ -155,7 +155,7 @@ export function MatchPage({ active, onJoined, onQueueChanged }: Props) {
   };
 
   // Joining while already matched hands back the same session rather than
-  // queueing — phase 3's idempotence guard, which is what stops one person
+  // queueing — Matching's idempotence guard, which is what stops one person
   // being in two rooms. Saying so is the point: without this the button
   // silently teleports you into a room you thought you had left.
   if (active) {

@@ -1242,8 +1242,8 @@ That's the invalidation rule from Part 3, visible.
 
 # Part 8 — What Kubernetes adds
 
-Everything so far is one machine running containers directly. The cluster
-(phase 8) keeps the same images and changes who starts them.
+Everything so far is one machine running containers directly. The cluster in
+`k8s/` keeps the same images and changes who starts them.
 
 ## What replaces Compose
 
@@ -1276,7 +1276,7 @@ to start.
 
 Conflating them is how a service that is merely still connecting to Postgres
 gets killed repeatedly instead of being given a moment. It is also the mechanism
-behind the one claim phase 8 exists to make: during a rolling update, a new pod
+behind the one claim the cluster exists to make: during a rolling update, a new pod
 receives no traffic until it reports ready, and the old pod is not removed until
 the new one does, so no request lands anywhere that cannot serve it.
 

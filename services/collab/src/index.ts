@@ -37,7 +37,7 @@ if (!questionsUrl) throw new Error('QUESTIONS_URL is not set');
 
 const rooms = createRoomManager({ pool, redis, questionsUrl, log: app.log });
 
-app.get('/', async () => ({ service: 'collab', phase: 4 }));
+app.get('/', async () => ({ service: 'collab' }));
 
 app.get('/health/deps', deps);
 
@@ -52,8 +52,8 @@ app.get('/health/deps', deps);
  *
  * Deliberately not routed through the Gateway, so it is reachable from the
  * compose network and from nowhere else. §6 wants request-rate, error-rate and
- * latency histograms here too, on every service; those arrive in phase 10 with
- * the Grafana push, and none of them is what this phase measures.
+ * latency histograms here too, on every service; none of those is built, and
+ * none of them is what the load run measures.
  */
 app.get('/metrics', async (_req, reply) => {
   const { sockets, rooms: openRooms } = rooms.stats();

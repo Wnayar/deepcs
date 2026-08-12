@@ -2,13 +2,13 @@
 -- cross-service read is rejected by Postgres rather than discouraged by
 -- convention.
 --
--- This is phase 1 work on purpose. The overview §10: "a boundary that isn't
--- enforced from the first table will be violated by the third, and retrofitting
--- grants means untangling queries that already cross."
+-- It lands before the first table on purpose: a boundary that is not enforced
+-- from the first table will be violated by the third, and retrofitting grants
+-- means untangling queries that already cross.
 --
--- The passwords here are local-only and match the compose convention
--- (role name as password). On Neon these become generated secrets held in
--- Secret Manager (§6); nothing in this file is a production credential.
+-- The passwords here are local-only and match the compose convention (role
+-- name as password). Nothing in this file is a credential for anything that
+-- is reachable from outside this machine.
 
 -- CREATE ROLE has no IF NOT EXISTS, and this file must be safe to re-run
 -- against a database where the runner's bookkeeping table was wiped.
@@ -71,6 +71,6 @@ END
 $$;
 
 -- Deliberately absent: any GRANT that crosses a boundary. Stats reads other
--- services' data in phase 7 through the event log, not through their tables —
--- if a GRANT ever appears here, ADR-09 has been abandoned and the doc should
--- say so rather than the schema quietly disagreeing with it.
+-- services' data through the event log, not through their tables — if a GRANT
+-- ever appears here, ADR-09 has been abandoned and the doc should say so
+-- rather than the schema quietly disagreeing with it.

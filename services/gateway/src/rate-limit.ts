@@ -105,9 +105,9 @@ export interface RateLimitResult {
  * university NAT, while a user is one person.
  *
  * §6 also asks for a tighter bucket on /match/* specifically. That one is not
- * built: phases 3 and 4 shipped without it, and those routes turned out cheap
- * enough that this allowance covers them. Noted here rather than silently
- * dropped, because the design doc still calls for it.
+ * built: the matching routes turned out cheap enough that this allowance
+ * covers them. Noted here rather than silently dropped, because the design
+ * doc still calls for it.
  */
 export const BUCKETS = {
   ip: { capacity: 60, refillPerSecond: 1 },

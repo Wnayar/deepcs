@@ -40,10 +40,10 @@ export default tseslint.config(
     },
   },
   {
-    // The k6 load script (phase 7), which is neither Node nor a browser: k6
-    // runs its own JS runtime, providing `__ENV` and the timer globals but no
-    // `process` and no `require`. The bundle it actually executes is built into
-    // load/dist, which the ignore list above already covers.
+    // The k6 load script, which is neither Node nor a browser: k6 runs its own
+    // JS runtime, providing `__ENV` and the timer globals but no `process` and
+    // no `require`. The bundle it actually executes is built into load/dist,
+    // which the ignore list above already covers.
     files: ['load/**/*.js'],
     languageOptions: {
       globals: {

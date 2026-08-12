@@ -3,7 +3,7 @@
 -- Delivery from the event log is at-least-once: a job that crashes after
 -- processing an entry but before acknowledging it will be handed that entry
 -- again. So every write here has to be safe to repeat, and the way that is
--- achieved is worth stating because it is the whole point of the phase.
+-- achieved is worth stating because it is the whole point of this schema.
 --
 -- **Rows keyed by a natural key, not counters.** A summary is keyed by its
 -- session id and a signup by its user id, so reprocessing an event updates the
