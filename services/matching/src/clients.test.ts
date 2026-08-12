@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { checkUserExists, fetchReferenceMd, findQuestion } from './clients.js';
 
 /**
- * Contract tests (§8) — these call the *real* Users and Questions HTTP APIs,
+ * Contract tests: these call the *real* Users and Questions HTTP APIs,
  * not mocks, so a response-shape change in either service breaks this test
  * instead of breaking Matching in production. That's the whole point of
  * `clients.ts` parsing every response with zod: a shape drift throws here,

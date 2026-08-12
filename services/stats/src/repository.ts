@@ -16,10 +16,10 @@ export interface SessionSummary {
  * One summary, but only for somebody who was in it.
  *
  * The membership test is part of the query rather than a check after it, so
- * there is no arrangement of this code where the row is fetched and the check
- * is forgotten. `participants` is compared against and never selected: the
- * caller already knows they are in the session, and the other person's uid is
- * not theirs to be told (that is the same rule the whole matching flow follows).
+ * there is no arrangement of this code where the row is loaded and the check is
+ * forgotten. `participants` is compared against and never selected: the other
+ * person's uid is not the caller's to be told, which is the rule the whole
+ * matching flow follows.
  */
 export async function readSummary(
   pool: pg.Pool,

@@ -24,15 +24,12 @@ const REVEAL_POLL_MS = 2_500;
 /**
  * Rebuilds the session from its URL, then renders it.
  *
- * This is what a URL for a session has to buy to be worth having: the page was
- * previously handed a session object by whatever navigated to it, so reloading
- * mid-session dropped you out of the room. Asking the server which session you
- * are in makes a refresh, a bookmark and the Back button all land you back in
- * the same document.
- *
- * The id in the path is checked against the answer rather than trusted. A stale
- * link to a session that has ended, or to someone else's, is not an error worth
- * a screen of its own: the roadmap is where you would go next anyway.
+ * Asking the server which session the caller is in — rather than trusting a
+ * session object handed over by whatever navigated here — is what makes a
+ * refresh, a bookmark and the Back button all land back in the same document.
+ * The id in the path is checked against that answer, and a stale link to an
+ * ended session or somebody else's goes to the roadmap rather than to a screen
+ * of its own.
  */
 export function SessionRoute({ onEnded }: { onEnded: () => void }) {
   const { id } = useParams();
@@ -168,14 +165,13 @@ export function SessionPage({ session, question, onEnded }: Props) {
     if (status === 'ended') editorRef.current?.updateOptions({ readOnly: true });
   }, [status]);
 
-  /** Poll only while we have agreed and the answer has not arrived — not a
-   * background timer for the whole session. */
+  /** Runs only while we have agreed and the answer has not arrived, which is
+   * usually seconds — not a background timer for the whole session. */
   useEffect(() => {
     if (reference || !consent.you) return;
     const timer = setInterval(async () => {
       // Nobody is reading a hidden tab, and the answer is still there when it
-      // comes back. Cheap on its own, but this is the third fixed-interval
-      // poll in the app and they add up to whether the database ever sleeps.
+      // comes back.
       if (document.hidden) return;
       try {
         const state = await revealState(session.id);
@@ -215,9 +211,9 @@ export function SessionPage({ session, question, onEnded }: Props) {
     }
   };
 
-  // Waiting is specifically *you* having agreed and them not having. The old
-  // check was "anyone has agreed", which showed "waiting for your partner"
-  // to the person their partner was in fact waiting on.
+  // Specifically *you* having agreed and them not having. "Anyone has agreed"
+  // would show "waiting for your partner" to the person their partner is in
+  // fact waiting on.
   const waitingOnPartner = consent.you && !consent.partner && reference === null;
 
   return (
@@ -316,14 +312,9 @@ export function SessionPage({ session, question, onEnded }: Props) {
 }
 
 /**
- * The two things a person in a session needs to know, said in words rather
- * than in a state name.
- *
- * There are two of them because they fail independently and the fix differs:
- * your own socket can be down while your partner's is fine, and the reverse.
- * The old single line read "live · partner connected", where "live" was the
- * status of *your* connection — which nothing on the page said, so it could
- * equally have been read as the session, the document, or the other person.
+ * Your own connection, in words rather than a state name. It is reported
+ * separately from the partner's presence because the two fail independently:
+ * your socket can be down while your partner's is fine, and the reverse.
  */
 function connectionLabel(status: CollabStatus): { text: string; tone: 'ok' | 'wait' | 'bad' } {
   switch (status) {

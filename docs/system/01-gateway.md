@@ -11,8 +11,8 @@ is hand-written anyway. The reason is in
 limiter is the only race in this system that a product would otherwise solve on
 my behalf.
 
-Code: [`services/gateway/src/`](../../services/gateway/src/) — `auth.ts` (207
-lines), `rate-limit.ts` (155), `index.ts` (256).
+Code: [`services/gateway/src/`](../../services/gateway/src/) — `auth.ts`,
+`rate-limit.ts`, `index.ts`.
 
 ---
 

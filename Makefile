@@ -47,15 +47,15 @@ migrate:
 	DATABASE_URL="postgresql://deepcs:deepcs@127.0.0.1:5432/deepcs" pnpm --filter @deepcs/db migrate
 
 # Needs `make up` first: the suites run against the real Postgres and Redis
-# rather than mocks, which is the rule in docs/system/00-overview.md §8.
+# rather than mocks (docs/system/00-overview.md §7).
 #
 # The six variables below are why this target is not simply `pnpm -r test`.
 # Every integration suite is guarded on one of them with
 #   describe.skipIf(!process.env.CI && process.env.X === undefined)
 # so that a checkout with nothing running still passes instead of failing with
-# connection errors. CI sets CI=true and gets all of them; locally, without
-# these, `make test` silently skipped 42 of the 140 tests and reported success
-# for the 98 that are left — a green run that had not touched a database.
+# connection errors. CI sets CI=true and gets all of them; without these,
+# `make test` locally would silently skip every suite that touches a database
+# and report success for the rest.
 #
 # Values, not just presence: the suites connect to them. These are compose's
 # published ports on the host, which is where the tests run.
@@ -85,8 +85,7 @@ TEST_WAIT_URLS = \
 # `make up` returns once compose has created the containers, which is several
 # seconds before the Node process inside each one is listening. Running the two
 # back to back without this wait fails the frontend suites, which drive the
-# whole chain and assert on timing. That was invisible until the variables
-# above stopped those suites from skipping.
+# whole chain and assert on timing.
 test:
 	@for url in $(TEST_WAIT_URLS); do \
 		i=0; \

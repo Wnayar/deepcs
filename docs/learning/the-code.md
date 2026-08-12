@@ -812,7 +812,8 @@ Async, resolves with nothing.
 ```ts
 const startedAt = process.hrtime.bigint();
 log.info('stats job started');
-const drained = 0;
+let drained = 0;
+// ...the drain itself, which adds to `drained`
 const ms = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
 log.info({ drained, duration_ms: ms }, 'stats job finished');
 ```
@@ -844,10 +845,12 @@ Node built-in; default + two named (one of them type-only); a type-only import.
 export interface ServiceOptions {
   name: ServiceName;
   port: number;
+  ready?: () => Promise<ReadinessChecks>;
 }
 ```
 
-The shape callers must pass. `name` can only be one of the six.
+The shape callers must pass. `name` can only be one of the six, and the `?` on
+`ready` makes it optional — see below for why.
 
 ```ts
 class DeepcsLogController extends LogController {
@@ -863,7 +866,7 @@ options. The only change is the label: Fastify writes `reqId`, everything else
 in this system writes `request_id`.
 
 ```ts
-export function createService({ name, port }: ServiceOptions): {
+export function createService({ name, port, ready }: ServiceOptions): {
   app: FastifyInstance;
   start: () => Promise<void>;
 } {

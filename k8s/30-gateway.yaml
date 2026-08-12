@@ -65,7 +65,7 @@ spec:
             - configMapRef:
                 name: deepcs-config
           # No DATABASE_URL, and its absence is load-bearing. The Gateway holds
-          # no domain data (the overview §6), which is also why authorization
+          # no domain data, which is also why authorization
           # cannot live here — it has nothing to authorize against.
           startupProbe:
             httpGet:

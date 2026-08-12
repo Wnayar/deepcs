@@ -1,18 +1,14 @@
 import pg from 'pg';
 
 /**
- * One `pg.Pool` per service process (ADR-10).
+ * One `pg.Pool` per service process.
  *
- * The pool here is the *application-side* one: it avoids a TCP+TLS handshake
- * per query within this process. It is not, and cannot be, the thing that
- * bounds total connections — every replica runs its own copy of this file and
- * none of them can see the others. Bounding the total needs something every
- * replica passes through, which is a connection pooler in front of Postgres
- * (ADR-09).
- *
- * Which means `max` below is a per-instance number, and the figure that matters
- * is `max × maxInstances × services`. Five services × 2 instances × 5 is 50
- * client connections — fine through the pooler, fatal without it.
+ * This is the *application-side* pool: it avoids a TCP handshake per query
+ * within this process. It is not, and cannot be, the thing that bounds total
+ * connections — every replica runs its own copy and none of them can see the
+ * others. So `max` is a per-instance number and the figure that matters is
+ * `max × replicas × services`. Bounding the total needs a connection pooler in
+ * front of Postgres. See docs/system/08-data.md §5.
  */
 const DEFAULT_MAX = 5;
 
@@ -32,28 +28,23 @@ export function createPool(options: PoolOptions = {}): pg.Pool {
     connectionString,
     max: options.max ?? DEFAULT_MAX,
 
-    /**
-     * Return a connection to the pool after 30s idle. A connection held open
-     * across a long idle gap is one Postgres backend process doing nothing,
-     * and Postgres charges for it in memory and in its connection limit
-     * whether or not a query ever arrives.
-     */
+    // A connection held open across a long idle gap is one Postgres backend
+    // process doing nothing, charged for in memory and in the connection limit
+    // whether or not a query ever arrives.
     idleTimeoutMillis: 30_000,
 
-    /**
-     * Fail fast rather than hang. Without this a service with a bad
-     * DATABASE_URL reports itself live and merely never answers, which reads
-     * as a slow dependency instead of a misconfiguration.
-     */
+    // Fail fast rather than hang. Without this a service with a bad
+    // DATABASE_URL reports itself live and merely never answers, which reads as
+    // a slow dependency instead of a misconfiguration.
     connectionTimeoutMillis: 5_000,
   });
 }
 
 /**
- * Readiness probe for `/health/ready` (§6). Deliberately `SELECT 1` and not a
- * query against a real table: readiness asks whether traffic may be routed
- * here, and a service whose own tables are missing is a migration problem that
- * a restart will not fix — which is a *liveness* answer, not a readiness one.
+ * The readiness probe. `SELECT 1` and not a query against a real table:
+ * readiness asks whether traffic may be routed here, and a service whose own
+ * tables are missing is a migration problem a restart will not fix — which is a
+ * *liveness* answer, not a readiness one.
  */
 export async function pingDb(pool: pg.Pool): Promise<void> {
   await pool.query('SELECT 1');

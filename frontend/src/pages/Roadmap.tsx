@@ -34,10 +34,10 @@ const DRAG_THRESHOLD_PX = 4;
  *      tracked on `window` instead, and a press that never moves stays an
  *      ordinary click on whatever it landed on.
  *   2. The wheel listener is attached natively with `passive: false`, because
- *      React's onWheel cannot call preventDefault, and it depends on `topics`
+ *      React's onWheel cannot call preventDefault. It depends on `topics`
  *      because the canvas does not exist until they arrive.
- *   3. Text selection is off in the stylesheet. Dragging across a label
- *      otherwise turns into a highlight halfway through.
+ *   3. Text selection is off in the stylesheet, or dragging across a label
+ *      turns into a highlight halfway through.
  */
 export function RoadmapPage() {
   const navigate = useNavigate();

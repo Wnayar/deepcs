@@ -25,17 +25,14 @@ import type { DomainEvent } from '@deepcs/shared/events';
  */
 export async function applyEvent(client: pg.PoolClient, event: DomainEvent): Promise<void> {
   /**
-   * A field the event is required to carry.
-   *
-   * Missing means the producer and this consumer disagree about the payload,
-   * which is a bug rather than a data condition, so it throws with the entry id
-   * rather than writing a row with a hole in it. The batch then rolls back and
-   * the entries stay unacknowledged, which is right for a deploy that shipped
-   * a bad producer and is retried once it is rolled back.
+   * A field the event is required to carry. Missing means the producer and this
+   * consumer disagree about the payload, which is a bug rather than a data
+   * condition, so it throws with the entry id rather than writing a row with a
+   * hole in it. The batch rolls back and the entries stay unacknowledged, which
+   * is right for a deploy that shipped a bad producer.
    *
    * The limitation that buys: a permanently malformed entry is retried for
-   * ever, because nothing here moves it aside. A dead-letter path is what fixes
-   * that, and it is not built. See docs/system/06-events-and-stats.md.
+   * ever, because nothing moves it aside. A dead-letter path is not built.
    */
   const need = (field: string): string => {
     const value = event.data[field];

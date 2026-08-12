@@ -31,7 +31,7 @@ migration while the stack is already running.
 
 `make test` needs the stack up. The suites use real Postgres and Redis rather
 than mocks, which is a deliberate choice recorded in
-[`00-overview.md`](00-overview.md) §8 — the permission-denied tests in
+[`00-overview.md`](00-overview.md) §7 — the permission-denied tests in
 particular assert that the *database* refuses a cross-schema query, and a mock
 cannot refuse anything.
 

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 /**
- * The reveal rule, exercised over real HTTP against real services (§8).
+ * The reveal rule, exercised over real HTTP against real services.
  *
  * These drive the routes rather than the repository because the property
  * being protected is a route-level one: ADR-06 says Questions holds the answer

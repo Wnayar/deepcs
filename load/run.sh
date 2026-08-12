@@ -55,7 +55,7 @@ trap 'kill "$sampler" 2>/dev/null || true' EXIT
 # --network, so the load generator talks to the Gateway over the compose
 # network rather than through published ports. It goes through the Gateway
 # rather than straight to Collab because that is the path a browser takes, and
-# §5 is explicit that one collab socket occupies a slot on both.
+# one collab socket occupies a concurrency slot on both.
 status=0
 docker run --rm -i --network "$NETWORK" \
   -e GATEWAY_URL="$GATEWAY_URL" \

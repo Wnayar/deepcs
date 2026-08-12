@@ -5,15 +5,13 @@ import { createRedisEventLog } from '@deepcs/shared/events';
 import { applyBatch } from './consumer.js';
 
 /**
- * Stats is a JOB, not a server (the overview §5, ADR-01).
- *
- * There is no `listen()` here and there never will be. Its trigger is time, not
+ * The draining half of Stats, and the image's default entrypoint. A scheduler
+ * starts it, it drains the event log, it exits: its trigger is time rather than
  * a request, and a service that is not running between requests has no process
- * for a timer to fire inside — so it cannot be a server at all. A scheduler
- * starts it, it drains the event log, it exits.
+ * for a timer to fire inside. The reads are a second entrypoint, `server.ts`.
  *
  * The exit code is the contract: 0 tells whatever started it that the run
- * succeeded, anything else marks it failed and makes it retryable.
+ * succeeded, anything else marks it failed and retryable.
  */
 const log = createJobLogger('stats');
 
@@ -23,7 +21,7 @@ const BATCH = 200;
 
 /** A backstop, not a target. The job is meant to reach an empty log and stop;
  * this only bounds the damage if something is appending faster than it reads,
- * so a run cannot become the always-on consumer §7 rules out. */
+ * so a run cannot quietly become an always-on consumer. */
 const MAX_BATCHES = 50;
 
 async function run(): Promise<void> {

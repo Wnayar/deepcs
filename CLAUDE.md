@@ -91,8 +91,9 @@ used to be X", it belongs in a decision file or nowhere.
   `00-overview.md` is the whole system: the six services, what each owns, how a
   request travels through them, and how it is run and tested. Then one page per
   part — `01-gateway` through `06-events-and-stats`, plus `07-frontend`,
-  `08-data` and `09-running-it` — each holding that part's failure modes,
-  measured numbers and code pointers.
+  `08-data`, `09-running-it` and `10-the-workspace` (packages, the lockfile and
+  every config file) — each holding that part's failure modes, measured numbers
+  and code pointers.
 - [docs/adr/](./docs/adr/) — the decisions worth knowing, one file each: why the
   split is six services, why a CRDT rather than OT, why identity is bought and
   the gateway is built, why one database with a schema and role per service, and
@@ -114,6 +115,15 @@ used to be X", it belongs in a decision file or nowhere.
 - Skip inline citations (the overview section numbers, ADR numbers) in comments
   that explain *what to do* or *how to call something*. Save citations for
   comments whose whole point is *why* a decision was made.
+- **A citation names its document.** `docs/system/08-data.md §6`, never a bare
+  `§6` or "the overview §8" — a section number with no document attached is
+  unresolvable from where the reader is standing, and it silently goes stale
+  when that document is renumbered.
+- **One fact, one home.** A comment carries the mechanism and the consequence,
+  then points at the page for the rest. If the same reasoning is in a comment
+  *and* in `docs/`, the copy nobody updates is the one in the comment. The
+  rate-limiter trace and the polling-to-SSE story were each in three or four
+  places before this rule.
 
 ### Working conventions
 
@@ -128,17 +138,15 @@ used to be X", it belongs in a decision file or nowhere.
   Downstream, absent means *anonymous*, never "skip the check".
 - **Shared code uses subpath exports, no barrel** (`@deepcs/shared/db`, not
   `@deepcs/shared`). The reason is in `packages/shared/src/service.ts`.
-- **Tests use real Postgres and Redis, not mocks** (§8). CI provides both as
-  service containers.
+- **Tests use real Postgres and Redis, not mocks.** CI provides both as service
+  containers, and `make test` needs `make up`.
 
 ### More conventions
 
 - **Fix content at the source, never at render time.** If stored text is in the
   wrong shape, change the seed and re-run the migration. A fix applied while
   rendering has to be remembered at every place that text is displayed, and the
-  place that gets forgotten is the one nobody looks at. This rule is why
-  `frontend/src/reference.ts` no longer exists; see
-  [docs/system/00-overview.md](./docs/system/00-overview.md) §2.
+  place that gets forgotten is the one nobody looks at.
 - **No em dashes in anything a reader sees**, including seeded lesson and
   question text. A test asserts this against the database. Code comments and
   these docs are exempt.
@@ -175,9 +183,10 @@ used to be X", it belongs in a decision file or nowhere.
 - **The browser is told, not asked.** A client that needs to know about an event
   another user caused subscribes to `GET /match/events` rather than polling.
   Polling kept the database awake and every service warm for people who were
-  only waiting, and slowing it down enough to afford made the news late. The one
-  remaining timer is the crash-recovery check in `Match.tsx`, which detects a
-  lost pair claim, not a match.
+  only waiting, and slowing it down enough to afford made the news late. Two
+  timers remain and neither is watching for a match: the crash-recovery check in
+  `Match.tsx`, which detects a lost pair claim, and the reveal check in
+  `Session.tsx`, which runs only in the gap between one consent and the other.
 - **Events go through `@deepcs/shared/events`, never a log line.** Six types,
   one Redis stream, appended fire-and-forget so a statistics pipeline can never
   fail a user's request. Adding a seventh means adding it to `EventType`, to the
@@ -202,6 +211,12 @@ used to be X", it belongs in a decision file or nowhere.
   measures this laptop. What a local run can claim is zero dropped requests
   during a rolling update, which is a property of the readiness probes and is
   hardware-independent.
+- **Nothing configures a concurrency limit, so do not describe one.** There is
+  no per-process request cap on any service; Fastify accepts connections until
+  memory or the kernel says otherwise, and the only real ceilings are the
+  replica count and the rate limiter. "250 sockets" is what one laptop was shown
+  to hold, not a setting. The docs claimed otherwise for a while and disagreed
+  with each other about it.
 - **`edit_latency` from the k6 script is only meaningful against one Collab
   replica.** With two, a pod opening a room another pod holds asks for state on
   Redis and gets the whole document back, which it re-broadcasts to its own

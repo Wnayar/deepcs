@@ -15,45 +15,46 @@ const pool = createPool();
 const redis = createRedis();
 const events = createRedisEventLog(redis);
 
-// Both are load-bearing: Postgres holds the snapshots a room is rebuilt from,
-// and Redis is the only path between two instances holding the same session.
-const deps = async () => {
-  const [postgres, redisState] = await Promise.all([probe(pingDb(pool)), probe(pingRedis(redis))]);
-  return { postgres, redis: redisState };
-};
-
 const { app, start } = createService({
   name: 'collab',
   port: SERVICES.collab.port,
-  ready: deps,
+  // Both are load-bearing: Postgres holds the snapshots a room is rebuilt from,
+  // and Redis is the only path between two instances holding one session.
+  ready: async () => {
+    const [postgres, redisState] = await Promise.all([
+      probe(pingDb(pool)),
+      probe(pingRedis(redis)),
+    ]);
+    return { postgres, redis: redisState };
+  },
 });
 
 await app.register(websocket);
 
-const matchingUrl = process.env.MATCHING_URL;
-if (!matchingUrl) throw new Error('MATCHING_URL is not set');
-const questionsUrl = process.env.QUESTIONS_URL;
-if (!questionsUrl) throw new Error('QUESTIONS_URL is not set');
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is not set`);
+  return value;
+}
+
+const matchingUrl = requiredEnv('MATCHING_URL');
+const questionsUrl = requiredEnv('QUESTIONS_URL');
 
 const rooms = createRoomManager({ pool, redis, questionsUrl, log: app.log });
 
 app.get('/', async () => ({ service: 'collab' }));
 
-app.get('/health/deps', deps);
-
 /**
- * Prometheus-format counters for the load run (§8) — e.g.
+ * Prometheus-format gauges for the load run — e.g.
  *   curl http://localhost:8084/metrics
- * The two that matter are the socket count and the resident memory, because
- * they are the pair the k6 run is checked against: the client's own view can
- * say "I have 250 connections open", and only this can say whether the server
- * agrees. A hold that ends with connections back at zero and memory where it
- * started is what "no leaked sockets, flat memory" means.
+ * The socket count and the resident memory are the pair the k6 run is checked
+ * against: the client can say "I have 250 connections open", and only this can
+ * say whether the server agrees. A hold that ends with connections back at zero
+ * and memory where it started is what "no leaked sockets" means.
  *
- * Deliberately not routed through the Gateway, so it is reachable from the
- * compose network and from nowhere else. §6 wants request-rate, error-rate and
- * latency histograms here too, on every service; none of those is built, and
- * none of them is what the load run measures.
+ * Deliberately not routed through the Gateway, so it is reachable from inside
+ * the network and nowhere else. Request rate, error rate and latency histograms
+ * are not here, on this service or any other.
  */
 app.get('/metrics', async (_req, reply) => {
   const { sockets, rooms: openRooms } = rooms.stats();
@@ -93,14 +94,14 @@ const connectQuery = z.object({ sessionId: z.string().uuid() });
 /**
  * Authorizes a WebSocket handshake before it upgrades — e.g.
  *   wss://gateway/collab/connect?sessionId=<id>&token=<firebase-id-token>
- * (the Gateway verifies `token` and forwards `X-User-Id`; Collab never sees
- * the token itself, same trust model as every other service.) 401 if the
- * Gateway didn't authenticate the caller, 400 for a missing/malformed
- * sessionId, 403 if the caller isn't one of the two people in that session.
- * A rejection here sends a normal HTTP response and the socket never
- * upgrades — the underlying @fastify/websocket route only hijacks the
- * connection once every hook, this one included, has let the request
- * through.
+ * The Gateway verifies `token` and forwards `X-User-Id`; Collab never sees the
+ * token itself, the same trust model as every other service. 401 with no
+ * identity, 400 for a malformed sessionId, 403 for someone who is not in the
+ * session, 503 if Matching is unreachable.
+ *
+ * A rejection here sends a normal HTTP response and the socket never upgrades:
+ * the @fastify/websocket route only hijacks the connection once every hook,
+ * this one included, has let the request through.
  */
 async function authorizeConnect(req: FastifyRequest, reply: FastifyReply) {
   const uid = getUserId(req);
@@ -115,7 +116,7 @@ async function authorizeConnect(req: FastifyRequest, reply: FastifyReply) {
 
   let authorization;
   try {
-    authorization = await checkSessionParticipant(matchingUrl!, query.data.sessionId, uid);
+    authorization = await checkSessionParticipant(matchingUrl, query.data.sessionId, uid);
   } catch (err) {
     req.log.error({ err }, 'matching service unavailable');
     return reply.code(503).send({ error: 'matching service unavailable' });
@@ -158,10 +159,10 @@ app.get(
 );
 
 app.addHook('onClose', async () => {
-  // Every room this instance is still holding gets one last snapshot before
-  // the process exits — the SIGTERM leg of "every 30s, on disconnect, and
-  // before SIGTERM" (the overview). Best-effort: a failed snapshot here is a
-  // window of lost edits, not a crash.
+  // Every room this instance is still holding gets one last snapshot before the
+  // process exits. This is the path that makes a killed pod cost a reconnect
+  // and not any edits. Best-effort: a failed snapshot here is a window of lost
+  // edits, not a crash.
   await rooms.snapshotAllRooms();
   await pool.end();
   redis.disconnect();

@@ -26,7 +26,7 @@ const validClaims = (overrides: Record<string, unknown> = {}) => ({
 
 describe('bearerToken', () => {
   it('returns null when there is no Authorization header at all', () => {
-    // Not an error: the question bank and /stats are public (§6), so "no
+    // Not an error: the bank, the roadmap and /stats are public, so "no
     // token" is a valid state that must fall through to anonymous.
     expect(bearerToken(undefined)).toBeNull();
   });
@@ -84,7 +84,7 @@ describe('emulator verification', () => {
   });
 
   it('rejects a token issued for a different Firebase project', async () => {
-    // The classic mistake this guards (§5): Google signs every project's tokens
+    // The classic mistake this guards: Google signs every project's tokens
     // with the same key set, so without an audience check a validly-signed
     // token from someone else's project would be accepted here.
     const token = emulatorToken(validClaims({ aud: 'someone-elses-project' }));
@@ -123,8 +123,8 @@ describe('the production guard', () => {
   });
 
   it('refuses to construct a verifier with the emulator enabled in production', () => {
-    // the overview §7: the emulator issues UNSIGNED tokens, so this flag must be
-    // impossible to set in production. "Impossible" is enforced by refusing to
+    // The emulator issues UNSIGNED tokens, so this flag has to be impossible
+    // to set in production. "Impossible" is enforced by refusing to
     // boot — a Gateway that started this way would accept tokens anyone could
     // forge in a text editor, and would look perfectly healthy doing it.
     process.env.NODE_ENV = 'production';

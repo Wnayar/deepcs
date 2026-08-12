@@ -4,20 +4,15 @@ import { SERVICES, type ServiceName } from './services.js';
 
 /**
  * `createService` is compiled into all six images, so a bug here is a bug
- * everywhere. This used to live as five byte-identical `health.test.ts` files,
- * one per service — which tested this file five times under five different
- * name strings and tested the services themselves not at all.
- *
- * Needs no Postgres or Redis: everything here goes through `app.inject`, so
- * the CI lint job runs it rather than the matrix job that provisions both.
+ * everywhere. Needs no Postgres or Redis: everything goes through
+ * `app.inject`, so the CI lint job runs it rather than the matrix job that
+ * provisions both.
  */
-const HTTP_SERVICES = (Object.keys(SERVICES) as ServiceName[]).filter(
-  (name) => SERVICES[name].port !== null,
-);
+const ALL_SERVICES = Object.keys(SERVICES) as ServiceName[];
 
 describe('createService', () => {
-  it.each(HTTP_SERVICES)('answers /health/live and /health/ready for %s', async (name) => {
-    const { app } = createService({ name, port: SERVICES[name].port! });
+  it.each(ALL_SERVICES)('answers /health/live and /health/ready for %s', async (name) => {
+    const { app } = createService({ name, port: SERVICES[name].port });
     await app.ready();
 
     for (const url of ['/health/live', '/health/ready']) {
@@ -30,7 +25,7 @@ describe('createService', () => {
   });
 
   it('propagates an inbound x-request-id instead of minting a new one', async () => {
-    const { app } = createService({ name: 'gateway', port: SERVICES.gateway.port! });
+    const { app } = createService({ name: 'gateway', port: SERVICES.gateway.port });
     await app.ready();
 
     const res = await app.inject({
@@ -44,7 +39,7 @@ describe('createService', () => {
   });
 
   it('mints a request id when the caller sent none', async () => {
-    const { app } = createService({ name: 'gateway', port: SERVICES.gateway.port! });
+    const { app } = createService({ name: 'gateway', port: SERVICES.gateway.port });
     await app.ready();
 
     const res = await app.inject({ method: 'GET', url: '/health/live' });
@@ -54,7 +49,7 @@ describe('createService', () => {
   });
 
   it('reports no checks at all when a service declares no dependencies', async () => {
-    const { app } = createService({ name: 'gateway', port: SERVICES.gateway.port! });
+    const { app } = createService({ name: 'gateway', port: SERVICES.gateway.port });
     await app.ready();
 
     const res = await app.inject({ method: 'GET', url: '/health/ready' });
@@ -69,7 +64,7 @@ describe('createService', () => {
   it('is ready when every declared dependency answers', async () => {
     const { app } = createService({
       name: 'users',
-      port: SERVICES.users.port!,
+      port: SERVICES.users.port,
       ready: async () => ({ postgres: 'ok' }),
     });
     await app.ready();
@@ -89,7 +84,7 @@ describe('createService', () => {
   it('is 503 when a declared dependency is unreachable', async () => {
     const { app } = createService({
       name: 'users',
-      port: SERVICES.users.port!,
+      port: SERVICES.users.port,
       ready: async () => ({ postgres: 'unreachable' }),
     });
     await app.ready();
@@ -104,7 +99,7 @@ describe('createService', () => {
   it('is 503, not a 500, when the probe itself throws', async () => {
     const { app } = createService({
       name: 'users',
-      port: SERVICES.users.port!,
+      port: SERVICES.users.port,
       ready: async () => {
         throw new Error('pool exploded');
       },
@@ -122,7 +117,7 @@ describe('createService', () => {
     // is not a wedged process, and restarting it fixes nothing.
     const { app } = createService({
       name: 'users',
-      port: SERVICES.users.port!,
+      port: SERVICES.users.port,
       ready: async () => ({ postgres: 'unreachable' }),
     });
     await app.ready();
@@ -140,7 +135,7 @@ describe('createService', () => {
    * bucket.
    */
   it('reads the client address from X-Forwarded-For', async () => {
-    const { app } = createService({ name: 'gateway', port: SERVICES.gateway.port! });
+    const { app } = createService({ name: 'gateway', port: SERVICES.gateway.port });
     app.get('/whoami', async (req) => ({ ip: req.ip }));
     await app.ready();
 
@@ -162,7 +157,7 @@ describe('createService', () => {
    * per request just by varying the header.
    */
   it('ignores a forged X-Forwarded-For entry to the left of the real one', async () => {
-    const { app } = createService({ name: 'gateway', port: SERVICES.gateway.port! });
+    const { app } = createService({ name: 'gateway', port: SERVICES.gateway.port });
     app.get('/whoami', async (req) => ({ ip: req.ip }));
     await app.ready();
 

@@ -74,11 +74,13 @@ until you know it could have reported something else.
 ## Running it
 
 ```bash
-make up      # backend: Postgres, Redis, the Auth emulator, six services
+make up      # backend: Postgres, Redis, the Auth emulator, the six services
 make web     # frontend on http://localhost:5173
 make test    # the suites, against real Postgres and Redis rather than mocks
 make load    # the k6 load run against the running stack
 ```
+
+`make up` applies the migrations too, and `make test` needs it running.
 
 The same system also runs on a local Kubernetes cluster:
 
@@ -96,12 +98,12 @@ failure are demonstrated. Both can be up at once, on 8080 and 8090.
 
 ## The docs
 
-|                                  |                                                 |
-| -------------------------------- | ----------------------------------------------- |
-| [docs/system/](docs/system/)     | How it works now. Start at `00-overview.md`     |
-| [docs/adr/](docs/adr/)           | The decisions worth knowing, one file each      |
-| [docs/learning/](docs/learning/) | How the tooling works: Docker, Kubernetes, CI   |
-| [docs/future/](docs/future/)     | Things not built, and what deploying would cost |
+|                                  |                                                                                                                                                |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| [docs/system/](docs/system/)     | How it works now. Start at `00-overview.md`, then one page per part. `10-the-workspace.md` is the packages, the lockfile and every config file |
+| [docs/adr/](docs/adr/)           | The decisions worth knowing, one file each                                                                                                     |
+| [docs/learning/](docs/learning/) | How the tooling works: Docker, Kubernetes, CI, and the JavaScript this repo leans on                                                           |
+| [docs/future/](docs/future/)     | Things not built, and what deploying would cost                                                                                                |
 
 ---
 

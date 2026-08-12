@@ -8,17 +8,14 @@ import { readSummary, readStats } from './repository.js';
 /**
  * The read side of Stats, and the second entrypoint of this image.
  *
- * the overview §3 says Stats "can't be a server at all", and that argument is
- * right about the thing it is arguing: a job whose trigger is time cannot live
- * inside a process that is not running between requests, so *draining the log*
- * has to be a job. It does not follow that Stats can have no HTTP surface.
- * Serving a summary is request-driven like any other read.
+ * Draining the log has to be a job, because its trigger is time. Serving a
+ * summary does not: that is request-driven like any other read, and it can only
+ * be served from here, because the rows live in the `stats` schema and no other
+ * role may read it (ADR-09).
  *
- * Something has to serve these, and it can only be this service: the rows live
- * in the `stats` schema and no other role may read it (ADR-09). So the image
- * has two entrypoints, `index.ts` to drain and this to read — under compose a
- * one-shot `stats` container and a long-running `stats-api`, and on the
- * cluster a CronJob and a Deployment running the same image.
+ * So the image runs two ways: `index.ts` drains and exits, this serves reads.
+ * Under compose that is a one-shot `stats` container and a long-running
+ * `stats-api`; on the cluster, a CronJob and a Deployment.
  */
 const pool = createPool();
 
@@ -36,9 +33,9 @@ app.get('/', async () => ({ service: 'stats' }));
  * returns sessions per day, the most-solved topics, and how long people wait
  * to be matched.
  *
- * No authentication, deliberately (§6): these are counts of activity with
- * nobody named in them, and an empty stats page is what a first-time visitor
- * would otherwise be shown.
+ * No authentication, deliberately: these are counts of activity with nobody
+ * named in them, and an empty stats page is what a first-time visitor would
+ * otherwise be shown.
  *
  * Every number is computed by grouping over the summary rows rather than read
  * from a running total. That is not a performance choice, it is what keeps the

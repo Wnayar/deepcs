@@ -10,9 +10,10 @@ import * as lib0encoding from 'lib0/encoding';
 import * as syncProtocol from 'y-protocols/sync';
 
 /**
- * The load run of the overview §8: ramp real collaboration sockets onto Collab up
- * to the 250-per-instance ceiling §7 configures, hold them there, and measure
- * how long an edit takes to travel from one member of a pair to the other.
+ * The load run: ramp 250 real collaboration sockets onto Collab, hold them
+ * there, and measure how long an edit takes to travel from one member of a pair
+ * to the other. Nothing caps concurrency, so 250 is what this machine was shown
+ * to hold comfortably, not a configured limit.
  *
  * Run it with `make load`, which bundles this file first — k6 cannot resolve
  * `node_modules`, so the Yjs libraries are compiled in by load/bundle.mjs.
@@ -67,7 +68,7 @@ export const options = {
       executor: 'ramping-vus',
       startVUs: 0,
       // Ramp rather than slam, because a flat run only answers pass/fail and a
-      // ramp shows where latency stops being flat (§8).
+      // ramp shows where latency stops being flat and starts climbing.
       stages: [
         { duration: '30s', target: Math.max(2, 2 * Math.round(PEAK_VUS / 10)) },
         { duration: '1m', target: Math.max(2, 2 * Math.round(PEAK_VUS / 10)) },

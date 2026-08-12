@@ -16,11 +16,10 @@ import { getQuestion } from './clients.js';
 import { loadSnapshot, saveSnapshot } from './repository.js';
 
 /**
- * The outer envelope multiplexing sync and awareness messages over one
- * socket — the same convention y-websocket uses, so a reader who already
- * knows the Yjs ecosystem recognizes it rather than having to learn a new
- * one. (`y-protocols/sync`'s own message-type constants are a level below
- * this: they distinguish sync step 1/step 2/update *within* a sync message.)
+ * The outer envelope multiplexing sync and awareness over one socket, using
+ * y-websocket's convention so a reader who knows the Yjs ecosystem recognizes
+ * it. `y-protocols/sync` has its own message types a level below these, which
+ * distinguish step 1 / step 2 / update *within* a sync message.
  */
 export const MESSAGE_SYNC = 0;
 export const MESSAGE_AWARENESS = 1;
@@ -28,15 +27,16 @@ export const MESSAGE_AWARENESS = 1;
 const SNAPSHOT_INTERVAL_MS = 30_000;
 
 /**
- * The clientID every seeded document is built under.
+ * The clientID every seeded document is built under, and the one line holding
+ * cross-instance convergence together.
  *
- * Yjs identifies each character by the pair (clientID, clock). Two instances
- * seeding the same question under two random clientIDs would hold documents
- * that *read* identically and are structurally unrelated — so an edit made on
- * one references structs the other has never seen, Yjs parks it unapplied,
- * and the two sides silently stop converging while both look healthy. Seeding
- * through one fixed id makes the scaffold byte-identical on every instance,
- * so a second copy merges into the first instead of duplicating it.
+ * Yjs identifies each character by the pair (clientID, clock), and a fresh
+ * `Y.Doc` picks a random clientID. Two instances seeding the same question
+ * independently would hold documents that *read* identically out of entirely
+ * unrelated structs — so an edit on one references structs the other has never
+ * seen, Yjs parks it unapplied, and both sides silently stop converging while
+ * looking healthy. One fixed id makes the scaffold byte-identical everywhere,
+ * so a second copy merges into the first. See docs/system/05-collab.md §3.
  */
 const SEED_CLIENT_ID = 0;
 
@@ -84,13 +84,11 @@ function matchChannel(sessionId: string): string {
 }
 
 /**
- * The close code sent to a socket whose session was ended by its partner.
- *
- * In the 4000-4999 range, which the WebSocket spec leaves to applications. It
- * exists so the browser can tell "this is over" from "the connection dropped"
- * — the client reconnects on the second and must not on the first, and without
- * a distinct code both look identical. The frontend matches on the same number
- * in frontend/src/collab.ts.
+ * The close code for a socket whose session was ended by its partner. In the
+ * 4000-4999 range the WebSocket spec leaves to applications, so the browser can
+ * tell "this is over" from "the connection dropped" — it reconnects on the
+ * second and must not on the first. The frontend matches the same number in
+ * frontend/src/collab.ts.
  */
 export const SESSION_ENDED_CODE = 4001;
 
@@ -113,13 +111,10 @@ async function seedUpdate(questionsUrl: string, questionId: string): Promise<Uin
     throw new Error(`question ${questionId} not found`);
   }
 
-  // A numbered list of the questions, and room under each to answer it.
-  //
-  // Not markdown headings, and no "Our answer" or "Scratch" sections. The
+  // A numbered list of the questions, and room under each to answer it. Plain
+  // text, no headings and no separate "answer" and "scratch" areas: the
   // scaffold's whole job is to say which question you are on and give the two
-  // of you somewhere to type; separate answer and scratch areas meant deciding
-  // where a thought belonged before writing it down, and the numbering now
-  // matches how the questions read everywhere else in the app.
+  // of you somewhere to type.
   const lines: string[] = [];
   question.parts.forEach((part, i) => {
     lines.push(`${i + 1}. ${part}`, '', '', '');
@@ -155,45 +150,40 @@ export interface RoomManager {
    */
   attachSocket(socket: WebSocket, sessionId: string, questionId: string): Promise<boolean>;
 
-  /** Snapshots every room this manager currently holds — the SIGTERM leg of
-   * The overview's "every 30s, on disconnect, and before SIGTERM". */
+  /** Snapshots every room this manager holds. The SIGTERM leg of "every 30s,
+   * on disconnect, and before the process exits". */
   snapshotAllRooms(): Promise<void>;
 
   /**
-   * What this instance believes it is holding, for `/metrics`. Both numbers
-   * are counted from the manager's own state rather than from the operating
-   * system's open sockets, and that is the point: a leak is precisely the case
-   * where the two disagree, because the connection is gone and the bookkeeping
-   * still has it.
+   * What this instance believes it is holding, for `/metrics`. Counted from the
+   * manager's own state rather than from the operating system's open sockets,
+   * and that is the point: a leak is precisely the case where the two disagree,
+   * because the connection is gone and the bookkeeping still has it.
    */
   stats(): { sockets: number; rooms: number };
 }
 
 /**
- * One manager per Collab process, holding that process's in-memory rooms —
- * a factory rather than module-level state (same shape as `createQueue` in
- * matching/src/queue.ts) so a test can construct two independent managers
- * sharing one real Redis/Postgres, the way two real Collab instances would,
- * and prove the cross-instance relay actually crosses instances.
+ * One manager per Collab process, holding that process's in-memory rooms. A
+ * factory rather than module-level state, so a test can construct two
+ * independent managers sharing one real Redis and Postgres — the way two real
+ * instances would — and prove the cross-instance relay actually crosses.
  */
 export function createRoomManager(deps: RoomDeps): RoomManager {
   const rooms = new Map<string, Promise<Room>>();
 
   /**
-   * Identifies this manager on the state-request channel so its rooms ignore
-   * the echo of their own request — Redis delivers a published message to
+   * Identifies this manager on the state-request channel so its own rooms
+   * ignore the echo of their own request: Redis delivers a published message to
    * every subscriber, the publisher included. Per manager rather than per
-   * process because the manager is what owns the subscription; two managers
-   * sharing one process (which is how the tests model two instances) have to
-   * be able to answer each other.
+   * process, so two managers sharing one process can still answer each other.
    */
   const instanceId = randomUUID();
 
   /**
-   * The rooms that finished building, which `rooms` cannot report on because
-   * it holds promises and a metrics scrape has to answer without awaiting one.
-   * Membership is added once a build resolves and removed in `teardown`, the
-   * single place a room stops existing.
+   * The rooms that finished building, which `rooms` cannot report on because it
+   * holds promises and a metrics scrape has to answer without awaiting one.
+   * Added once a build resolves, removed in `teardown`.
    */
   const live = new Set<Room>();
 
@@ -288,18 +278,15 @@ export function createRoomManager(deps: RoomDeps): RoomManager {
   }
 
   /**
-   * Closes a session for good, because Matching says it ended.
+   * Closes a session for good, because Matching says it ended. Authorization
+   * runs once, at the door, so a rule that has to hold for the whole life of a
+   * connection needs something that can reach in and close what is already
+   * open — otherwise the document goes on changing after the session is over.
    *
-   * Without this, ending only stopped *new* sockets: the participant check
-   * refused them, but a socket already open kept accepting edits and the 30s
-   * snapshot kept saving them, so the document went on changing after the
-   * session was over — and the session summary would read whatever it had
-   * drifted to.
-   *
-   * Ordering matters twice here. `closing` goes up first so nothing else is
-   * relayed or published while we work. And the sockets are closed *after* the
-   * room leaves the map, so each one's close handler finds nothing in `rooms`
-   * and returns immediately rather than racing this teardown.
+   * Ordering matters twice. `closing` goes up first so nothing else is relayed
+   * or published while we work, and the sockets are closed *after* the room
+   * leaves the map, so each close handler finds nothing in `rooms` and returns
+   * immediately rather than racing this teardown.
    */
   async function endRoom(sessionId: string): Promise<void> {
     const promise = rooms.get(sessionId);
@@ -324,13 +311,13 @@ export function createRoomManager(deps: RoomDeps): RoomManager {
     sessionId: string,
     questionId: string,
   ): Promise<boolean> {
-    // `getOrCreateRoom` does real work before it resolves — a Postgres round
-    // trip, and on a new session an HTTP call to Questions. The listeners go
-    // on *first*, and anything arriving while we wait is queued: `ws` keeps
-    // no backlog for an event that has no listener yet, so a frame sent in
-    // that window would simply vanish.
-    // One object rather than two variables so the listener below closes over
-    // something it can still read after this function has moved on.
+    // `getOrCreateRoom` does real work before it resolves: a Postgres round
+    // trip, and on a new session an HTTP call to Questions. A real client does
+    // not wait for that — it sends the moment `onopen` fires — and `ws` keeps no
+    // backlog for an event with no listener yet, so a frame sent in that window
+    // would simply vanish. The listeners therefore go on *first* and early
+    // frames are queued. One object rather than two variables, so the listener
+    // closes over something it can still read after this function moves on.
     const inbox: { room?: Room; early: Uint8Array[] } = { early: [] };
     let joined = false;
 
@@ -408,22 +395,20 @@ async function buildRoom(
   Y.applyUpdate(doc, snapshot ?? (await seedUpdate(deps.questionsUrl, questionId)));
 
   const awareness = new Awareness(doc);
-  // Constructing an Awareness registers its own doc as a client with an empty
-  // state. The server is not a participant: left in place it shows up in
-  // the editor's cursor UI as a peer who never types, and it re-announces itself
-  // to every other instance every few seconds for as long as the room lives.
+  // Constructing an Awareness registers its own doc as a client. The server is
+  // not a participant: left in place it shows up in the editor's cursor UI as a
+  // peer who never types, and re-announces itself to every other instance every
+  // few seconds for as long as the room lives.
   awareness.setLocalState(null);
 
   const sockets = new Set<WebSocket>();
   const socketAwarenessIds = new Map<WebSocket, Set<number>>();
 
-  // A subscribed ioredis connection can't issue any other command, so this is
-  // a dedicated one — duplicate() copies the main connection's options
-  // without re-reading REDIS_URL. enableOfflineQueue goes back on for it:
-  // @deepcs/shared/redis turns the queue off so a user-facing request fails
-  // fast instead of hanging, but this is a long-lived listener rather than a
-  // request, and subscribing before the socket finishes connecting should
-  // queue rather than throw.
+  // A subscribed ioredis connection cannot issue any other command, so this is
+  // a dedicated one; duplicate() copies the main connection's options without
+  // re-reading REDIS_URL. enableOfflineQueue goes back on because this is a
+  // long-lived listener rather than a request, and subscribing before the
+  // socket finishes connecting should queue rather than throw.
   const subscriber = deps.redis.duplicate({ enableOfflineQueue: true });
   try {
     await subscriber.subscribe(
@@ -469,11 +454,12 @@ async function buildRoom(
       const event = parseSessionEvent(message);
       if (event?.type === 'session.ended') onSessionEnded();
     } else if (name === syncChannel(sessionId) && message.toString() !== instanceId) {
-      // Another instance just opened this session and is asking whoever
-      // already holds it for the current state. The reply is the *whole*
-      // document rather than a delta: a full state is self-contained, so it
-      // integrates regardless of what the asker started from, and it also
-      // releases any deltas Yjs parked while the asker was still catching up.
+      // Another instance just opened this session and is asking whoever holds
+      // it for the current state. The reply is the *whole* document rather than
+      // a delta: a full state is self-contained, so it integrates regardless of
+      // what the asker started from, and it releases any deltas Yjs parked
+      // while the asker was catching up. Its cost is in
+      // docs/system/09-running-it.md §6.
       deps.redis
         .publish(docChannel(sessionId), Buffer.from(Y.encodeStateAsUpdate(doc)))
         .catch((err: unknown) =>
@@ -589,10 +575,10 @@ export function toUint8Array(data: WebSocket.RawData): Uint8Array {
  * Applies one frame, and contains the damage if it is malformed.
  *
  * The catch is the load-bearing part. `handleMessage` throws on a truncated
- * frame, an empty one, an unknown sync sub-type, or awareness bytes that
- * aren't JSON — and a throw inside a `ws` listener is not a failed request,
- * it is an uncaughtException that kills the process and every other session
- * on this instance with it. One bad client must only cost that client.
+ * frame, an empty one, an unknown sync sub-type, or awareness bytes that are
+ * not JSON — and a throw inside a `ws` listener is not a failed request, it is
+ * an uncaughtException that kills the process and every other session on this
+ * instance with it. One bad client must cost only that client.
  */
 function deliver(room: Room, socket: WebSocket, data: Uint8Array, log: Logger): void {
   try {

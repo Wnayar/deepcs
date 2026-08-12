@@ -10,8 +10,8 @@ ever sees a password
 ([`../adr/04-managed-auth.md`](../adr/04-managed-auth.md)). What is left after
 buying identity is this: the app-owned data Firebase knows nothing about.
 
-Code: [`services/users/src/`](../../services/users/src/) — `repository.ts` (104
-lines), `index.ts` (102).
+Code: [`services/users/src/`](../../services/users/src/) — `repository.ts`,
+`index.ts`.
 
 ---
 

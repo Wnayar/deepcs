@@ -1,4 +1,4 @@
-# Redis does five jobs here (the overview §4): rate-limit state, the match
+# Redis does five jobs here (docs/system/08-data.md §6): rate-limit state, the match
 # queue, cross-instance pub/sub, the event stream, and the question cache.
 #
 # Persistence is turned off explicitly rather than left at the default. Redis

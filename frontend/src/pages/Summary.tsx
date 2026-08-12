@@ -2,12 +2,11 @@ import { Navigate, useLocation, useNavigate } from 'react-router';
 import type { SessionSummary } from '../App';
 
 /**
- * Step 8 of the product loop, built from state the browser already holds —
- * the question, the partner and the start time all came back from
- * `/match/join`, and whether the answer was revealed is something this tab
- * just did. There is deliberately no summary endpoint: the richer version
- * (how many sessions, popular topics) is fed by the event log, and that is
- * the Stats job's work.
+ * The last screen of a session, built from state the browser already holds: the
+ * question and the start time came back from `/match/join`, the end time from
+ * `/match/sessions/:id/end`, and whether the answer was revealed is something
+ * this tab just did. There is deliberately no summary endpoint here — the
+ * richer version is fed by the event log, and that is the Stats job's work.
  */
 export function SummaryPage() {
   const navigate = useNavigate();

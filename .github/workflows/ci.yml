@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   # ── Which services actually changed? ─────────────────────────────────────────
-  # the overview §7 wants CI path-filtered per service: a change under
+  # CI is path-filtered per service: a change under
   # services/questions/ builds only Questions. Independent deployability is most
   # of the point of the six-way split (ADR-01) and it does not exist unless the
   # pipeline is wired for it.
@@ -154,7 +154,7 @@ jobs:
         service: ${{ fromJSON(needs.changes.outputs.services) }}
     name: ${{ matrix.service }}
 
-    # Real Postgres and Redis, not mocks (§8). The two properties worth proving
+    # Real Postgres and Redis, not mocks. The two properties worth proving
     # — a Lua script's atomicity, and a role being refused another schema — are
     # properties of those systems. A mock would only prove the mock agrees with
     # itself.
@@ -297,6 +297,6 @@ jobs:
 
     # There is no deploy step, and there is not going to be one: this project
     # runs locally, under docker compose and on a local Kubernetes cluster
-    # (the overview §7). What this job proves is that each service's production
+    # (ADR-05). What this job proves is that each service's production
     # image builds and answers /health/ready on its own, which is the property
     # a rolling update on the cluster depends on.

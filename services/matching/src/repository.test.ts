@@ -10,7 +10,7 @@ import {
 } from './repository.js';
 
 /**
- * Real Postgres, not a mock (§8) — schema isolation is a database property, a
+ * Real Postgres, not a mock: schema isolation is a database property, a
  * mock would only prove itself self-consistent. Mirrors
  * services/users/src/repository.test.ts and services/questions/src/repository.test.ts.
  *

@@ -1,14 +1,17 @@
 import Redis, { type RedisOptions } from 'ioredis';
 
 /**
- * Redis does five jobs in this system (§4): rate-limit state, match queue,
- * cross-instance pub/sub, event stream, question cache.
+ * Redis does five jobs here: rate-limit state, the match queue, cross-instance
+ * pub/sub, the event stream, and the question cache. See docs/system/08-data.md §6.
  *
- * ioredis rather than node-redis: `defineCommand` registers a Lua script once
- * and then calls it by SHA with an automatic fallback to EVAL if Redis has
- * forgotten it (after a restart, or on a replica that has never seen it). The rate
- * limiter's atomicity depends on that script, so the client's script handling
- * is not an incidental detail.
+ * ioredis rather than node-redis for one reason: `defineCommand` registers a
+ * Lua script once and calls it by SHA thereafter, falling back to EVAL if Redis
+ * has forgotten it (after a restart, or on a replica that has never seen it).
+ * The rate limiter's atomicity depends on that script, so the client's script
+ * handling is not an incidental detail.
+ *
+ * TLS is requested by the URL scheme, `rediss://` rather than `redis://`, which
+ * ioredis reads on its own. Compose and the cluster both use plain `redis://`.
  */
 export function createRedis(url = process.env.REDIS_URL, overrides: RedisOptions = {}): Redis {
   if (!url) {
@@ -31,26 +34,12 @@ export function createRedis(url = process.env.REDIS_URL, overrides: RedisOptions
     enableOfflineQueue: false,
 
     /**
-     * A TLS connection is requested by the URL scheme: `rediss://` rather
-     * than `redis://`, which ioredis reads on its own. Compose and the cluster
-     * both use plain `redis://` on a private network. Noted because the
-     * missing extra `s` is the usual cause of a client that refuses to connect
-     * to a Redis that requires TLS.
-     */
-
-    /**
-     * Overrides, and there is only one thing anybody overrides: the offline
-     * queue, back on. The default suits a client whose first command arrives
-     * with a user's request, long after the socket connected. It is wrong for
-     * two other shapes, both of which exist here:
-     *
-     *   - a long-lived subscriber, which subscribes at startup (Collab's rooms,
-     *     Matching's event stream),
-     *   - a job, whose first command races its own connect because there is no
-     *     request to wait for.
-     *
-     * In both, failing fast means failing at startup for a socket that is
-     * about to be ready, which is not a useful kind of fast.
+     * The only thing anybody overrides is the offline queue, back on. The
+     * default above suits a client whose first command arrives with a user's
+     * request, long after the socket connected. It is wrong for a long-lived
+     * subscriber (Collab's rooms, Matching's event stream) and for a job whose
+     * first command races its own connect. In both, failing fast means failing
+     * at startup for a socket that is about to be ready.
      */
     ...overrides,
   });

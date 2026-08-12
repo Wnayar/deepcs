@@ -10,7 +10,7 @@ project, so the bank is seeded by migration and nothing serves a route that
 writes a row.
 
 Code: [`services/questions/src/`](../../services/questions/src/) —
-`repository.ts`, `cache.ts` (~25 lines), `index.ts`.
+`repository.ts`, `cache.ts`, `index.ts`.
 
 ---
 
@@ -182,7 +182,7 @@ second copy of the thing this service works hardest not to hand out.
 
 ## 5. The cache, and why it needs none of the rate limiter's rigour
 
-[`cache.ts`](../../services/questions/src/cache.ts) is about twenty-five lines,
+[`cache.ts`](../../services/questions/src/cache.ts) is a read-through cache,
 and the whole point is what happens when it fails:
 
 ```ts

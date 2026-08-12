@@ -3,7 +3,7 @@ import { createPool } from '@deepcs/shared/db';
 import { getQuestion, getRoadmap, getStep, listQuestions } from './repository.js';
 
 /**
- * Real Postgres, not a mock (§8). The properties under test — cursor
+ * Real Postgres, not a mock. The properties under test — cursor
  * pagination not skipping/duplicating rows, `reference_md` never leaving the
  * repository, and a role being refused another schema — are database
  * semantics or a deliberate omission from a SELECT list; a mock would only

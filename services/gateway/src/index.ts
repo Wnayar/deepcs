@@ -11,13 +11,11 @@ import { BUCKETS, createRateLimiter } from './rate-limit.js';
 const { app, start } = createService({ name: 'gateway', port: SERVICES.gateway.port });
 
 /**
- * @fastify/http-proxy's WebSocket proxying reads `wsClientOptions.rewriteRequestHeaders`
- * at runtime (its index.js merges it straight into the client options and calls it
- * directly), but the package's published types omit that field entirely — the whole
- * options object it hands to `fastify.register` ends up structurally impossible to
- * satisfy from a caller's side no matter how the value is shaped or cast, so the
- * escape hatch lives in one place, at the actual call, rather than as a per-property
- * cast that still fails the surrounding object's own check.
+ * @fastify/http-proxy reads `wsClientOptions.rewriteRequestHeaders` at runtime
+ * but omits the field from its published types, which makes the whole options
+ * object impossible to satisfy from a caller's side. The cast lives here, at
+ * the one call, rather than as a per-property cast that still fails the
+ * surrounding object's own check.
  */
 async function registerProxyRoute(options: Record<string, unknown>): Promise<void> {
   await app.register(proxy, options as unknown as Parameters<typeof proxy>[1]);
@@ -31,18 +29,16 @@ const verify = createVerifier({
 });
 
 /**
- * CORS locked to one origin (§6). Not `*`: the frontend sends an Authorization
- * header, and a wildcard origin cannot be combined with credentialed requests
- * anyway — so `*` would be both less safe and non-functional.
+ * One origin, not `*`: the frontend sends an Authorization header, and a
+ * wildcard origin cannot be combined with credentialed requests anyway, so `*`
+ * would be both less safe and non-functional.
  */
 await app.register(cors, {
   origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
   credentials: true,
   // A response header a browser cannot read may as well not be sent: `fetch`
-  // hides everything outside the CORS-safelist unless it is named here.
-  // `retry-after` is the one the 429 above depends on — a frontend backing off
-  // would otherwise read null — and `x-cache` is what makes the Questions
-  // cache visible from anywhere other than curl.
+  // hides everything outside the CORS-safelist unless it is named here. The
+  // frontend backs off on `retry-after` and would otherwise read null.
   exposedHeaders: [
     'x-request-id',
     'x-ratelimit-limit',
@@ -53,49 +49,42 @@ await app.register(cors, {
 });
 
 await app.register(helmet, {
-  /**
-   * CSP off at the Gateway: it serves JSON, not HTML, so a content policy here
-   * protects nothing. It belongs on whatever serves the frontend, which is
-   * where it is (frontend/vite.config.ts).
-   */
+  // The Gateway serves JSON, not HTML, so a content policy here protects
+  // nothing. It belongs on whatever serves the frontend, which is where it is
+  // (frontend/vite.config.ts).
   contentSecurityPolicy: false,
 });
 
 declare module 'fastify' {
   interface FastifyRequest {
-    /** Set by the auth hook. Null on public routes with no token — see §6. */
+    /** Set by the auth hook. Null on public routes with no token. */
     userId: string | null;
   }
 }
 
 /**
- * Authentication, once, at the Gateway (§6). Downstream services never
- * re-verify; they read X-User-Id and trust it.
+ * Authentication, once, here. Downstream services never re-verify; they read
+ * X-User-Id and trust it. Three cases, and the middle one gets missed:
  *
- * Three cases, and the middle one is the one that gets missed:
+ *   no token      -> anonymous. Valid: the bank, the roadmap and /stats are
+ *                    public. Falls back to per-IP rate limiting.
+ *   broken token  -> 401. Presenting something malformed or expired is an
+ *                    attempt to authenticate, and a failed one.
+ *   valid token   -> X-User-Id injected from `sub`.
  *
- *   no token          -> anonymous. Valid: the question bank and /stats are
- *                        public. Falls back to per-IP rate limiting.
- *   broken token      -> 401. Presenting something malformed or expired is an
- *                        attempt to authenticate, and a failed one.
- *   valid token       -> X-User-Id injected from `sub`.
- *
- * A WebSocket upgrade (Collab) is a fourth case in practice: a
- * browser's native WebSocket constructor cannot set an Authorization header,
- * so the token arrives as `?token=` instead. That fallback is read only when
- * the request is actually a WS upgrade, so it never widens how an ordinary
- * HTTP route can be authenticated.
+ * A WebSocket upgrade is a fourth case: a browser's native WebSocket
+ * constructor cannot set an Authorization header, so the token arrives as
+ * `?token=`. That fallback is read only for an actual upgrade, so it never
+ * widens how an ordinary HTTP route can be authenticated.
  */
 app.addHook('onRequest', async (req, reply) => {
   req.userId = null;
 
   /**
-   * Strip any inbound X-User-Id before doing anything else.
-   *
-   * Without this line the entire authentication scheme is decorative: a client
-   * could send `X-User-Id: <someone else>` and, since downstream services trust
-   * the header by design, be that person. Deleting it unconditionally means the
-   * only way the header exists downstream is because this file put it there.
+   * Without this line the entire scheme is decorative: a client could send
+   * `X-User-Id: <someone else>` and, since downstream services trust the header
+   * by design, be that person. Deleting it unconditionally means the only way
+   * the header exists downstream is because this file put it there.
    */
   delete req.headers[USER_ID_HEADER];
 
@@ -110,11 +99,9 @@ app.addHook('onRequest', async (req, reply) => {
     req.headers[USER_ID_HEADER] = uid;
   } catch (err) {
     if (err instanceof TokenError) {
-      /**
-       * The reason is logged but not returned. Telling a caller whether a token
-       * was expired, forged, or issued for another project is free information
-       * about what to try next.
-       */
+      // The reason is logged, not returned. Telling a caller whether a token
+      // was expired, forged, or issued for another project is free information
+      // about what to try next.
       req.log.warn({ reason: err.reason }, 'token rejected');
       return reply.code(401).send({ error: 'unauthorized' });
     }
@@ -123,24 +110,19 @@ app.addHook('onRequest', async (req, reply) => {
 });
 
 /**
- * Rate limiting, after authentication, because the bucket a request draws on
- * depends on whether it turned out to be authenticated.
- *
- * Per-user for authenticated traffic and per-IP otherwise (§6). Keying an
- * authenticated request by IP instead would make one user on a shared NAT able
- * to exhaust everyone else's allowance.
+ * Rate limiting runs *after* authentication, because which bucket a request
+ * draws on depends on whether it turned out to be authenticated. Keying an
+ * authenticated request by IP would let one user on a shared NAT exhaust
+ * everyone else's allowance.
  */
 app.addHook('onRequest', async (req, reply) => {
   /**
-   * Health checks are exempt, and the reason is not tidiness.
-   *
-   * Registering the health routes in createService *before* this hook exists
-   * does not exempt them — Fastify binds hooks to every route at boot, not at
-   * registration — so without this line an uptime probe drew from the same
-   * anonymous bucket as real traffic. At more than one probe a second it
-   * exhausts capacity 60 on its own and a perfectly healthy Gateway starts
-   * answering 429, which reads as an outage and, in the CI smoke test, is one
-   * loop-count change away from failing the build.
+   * Health checks are exempt, and not for tidiness. Registering those routes in
+   * createService before this hook exists does not exempt them — Fastify binds
+   * hooks to every route at boot — so without this line an uptime probe draws
+   * from the same anonymous bucket as real traffic, and at more than one probe
+   * a second it exhausts capacity 60 on its own. A healthy Gateway then answers
+   * 429, which reads as an outage.
    */
   if (req.url.startsWith('/health')) return;
 
@@ -153,13 +135,10 @@ app.addHook('onRequest', async (req, reply) => {
     result = await limiter.consume(key, bucket);
   } catch (err) {
     /**
-     * Fail *open* on a Redis outage, and log it loudly.
-     *
-     * The alternative — fail closed — turns a cache outage into a total
-     * outage. This is a deliberate availability-over-enforcement choice and it
-     * is only defensible because the thing being protected is request volume,
-     * not money or data. The replica count still caps what the traffic that
-     * gets through can cost.
+     * Fail *open* on a Redis outage, and log it loudly. Failing closed turns a
+     * cache outage into a total outage. This is a deliberate
+     * availability-over-enforcement choice, defensible only because the thing
+     * being protected is request volume rather than money or data.
      */
     req.log.error({ err }, 'rate limiter unavailable; allowing request');
     return;
@@ -175,10 +154,10 @@ app.addHook('onRequest', async (req, reply) => {
 });
 
 /**
- * Readiness reflects the dependency this service actually needs. The Gateway
- * holds no database, so Redis is the whole answer — and a Gateway that cannot
- * reach Redis still serves traffic (it fails open above), so this is
- * information for a dashboard rather than a reason to withdraw the instance.
+ * Redis state as information rather than as a readiness answer. The Gateway
+ * holds no database, and it still serves traffic when Redis is down because the
+ * limiter fails open above — so this is for a dashboard, not a reason to
+ * withdraw the instance. That is why `createService` was given no `ready`.
  */
 app.get('/health/deps', async () => {
   try {
@@ -192,20 +171,20 @@ app.get('/health/deps', async () => {
 app.get('/', async () => ({ service: 'gateway' }));
 
 /**
- * Routing (§5). One registration per downstream service.
+ * The routing table, and it is a security boundary rather than a convenience: a
+ * prefix is forwarded wholesale with no filtering on what follows, so every
+ * path under a listed prefix is reachable from a browser. That is why the route
+ * releasing a reference answer sits under `/internal`, which nothing proxies.
  *
- * Three prefixes reach Questions, one per screen it feeds: `/roadmap` is the
- * map, `/steps` is a lesson with its questions, and `/questions` is the bank
- * that matching searches. They are one service and could have been one prefix,
- * but everything under `/questions/` takes a uuid as its next segment and
- * `/questions/:id/reference` is where the answer lives. A prefix meaning "read
- * the material" should not be nested inside one meaning "read a question".
+ * Three prefixes reach Questions, one per screen it feeds. They could have been
+ * one, but everything under `/questions/` takes a uuid as its next segment, and
+ * a prefix meaning "read the material" should not be nested inside one meaning
+ * "read a question".
  *
- * `websocket: true` on collab is what makes the upgrade proxy at all, and every
- * WebSocket is proxied through here — the tradeoff §5 names explicitly: one
- * collab connection occupies a concurrency slot on the Gateway *and* one on
- * Collab, and the Gateway's slots are shared with every HTTP request in the
- * system.
+ * `websocket: true` on collab is what makes the upgrade proxy at all. Every
+ * socket is proxied here, so one collab connection occupies a concurrency slot
+ * on the Gateway *and* one on Collab, and the Gateway's slots are shared with
+ * every HTTP request in the system.
  */
 const ROUTES = [
   { prefix: '/users', service: 'users', websocket: false },
@@ -214,17 +193,16 @@ const ROUTES = [
   { prefix: '/steps', service: 'questions', websocket: false },
   { prefix: '/match', service: 'matching', websocket: false },
   { prefix: '/collab', service: 'collab', websocket: true },
-  // Both reach the Stats read server. `/stats` is public aggregates; a
-  // session's summary is under `/sessions` because it is about one session and
-  // not about the whole system, and the two would read wrong sharing a prefix.
+  // Both reach the Stats read server. A session's summary is under `/sessions`
+  // because it is about one session rather than the whole system.
   { prefix: '/stats', service: 'stats', websocket: false },
   { prefix: '/sessions', service: 'stats', websocket: false },
 ] as const;
 
 /**
  * Forward the identity and the trace id. `X-User-Id` is present only if the
- * hook above verified a token; on a public route it is absent, and absent
- * must be read downstream as anonymous rather than as "skip the check" (§6).
+ * hook above verified a token; on a public route it is absent, and absent must
+ * be read downstream as anonymous rather than as "skip the check".
  */
 function rewriteHttpHeaders(req: unknown, headers: Record<string, unknown>) {
   return {
@@ -237,14 +215,11 @@ function rewriteHttpHeaders(req: unknown, headers: Record<string, unknown>) {
 }
 
 /**
- * The WebSocket upgrade to the upstream is a *second*, separate proxied
- * connection (@fastify/http-proxy opens it itself), with its own header
- * rewrite hook — `rewriteHttpHeaders` above only applies to the plain HTTP
- * path. The default here forwards nothing but `cookie`, so without this,
- * Collab's `/collab/connect` would never see `X-User-Id` at all and would
- * 401 every socket, authorized or not. Note the reversed argument order
- * versus the HTTP variant — that's the proxy library's own inconsistency,
- * not a typo.
+ * A WebSocket upgrade opens a *second*, separate proxied connection with its
+ * own header rewrite hook, and its default forwards nothing but `cookie` — so
+ * without this Collab would never see `X-User-Id` and would 401 every socket,
+ * authorized or not. The reversed argument order against the HTTP variant is
+ * the proxy library's own inconsistency, not a typo.
  */
 function rewriteWsHeaders(headers: Record<string, unknown>, req: unknown) {
   return rewriteHttpHeaders(req, headers);
@@ -262,8 +237,8 @@ for (const route of ROUTES) {
     websocket: route.websocket,
     replyOptions: { rewriteRequestHeaders: rewriteHttpHeaders },
     // Passed on every route rather than only the WebSocket one: http-proxy
-    // constructs its WebSocketProxy only when `websocket` is true, so on the
-    // other four this is read by nobody.
+    // builds its WebSocketProxy only when `websocket` is true, so elsewhere
+    // this is read by nobody.
     wsClientOptions: { rewriteRequestHeaders: rewriteWsHeaders },
   });
 }
