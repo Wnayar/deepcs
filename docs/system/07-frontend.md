@@ -1,11 +1,51 @@
 # The frontend
 
-The frontend is a set of files a browser downloads. This is the detail
-underneath that, using the real files in this repo.
+The frontend is a set of files a browser downloads. That is the whole difference
+between it and the six services, and it is worth being explicit about before any
+of the detail, because everything else follows from it.
 
-Parts 1 to 6 are the mechanics: what a visitor receives and what is in it. Parts
-7 onward are the parts with a contract to break — the reveal rule, the browser's
-half of the collab protocol, and what a URL is required to promise.
+**A service computes an answer per request.** `GET /roadmap` runs Questions'
+code, which queries Postgres and builds JSON. Ask twice a minute apart and the
+answer can differ, because the database can.
+
+**The frontend is *static*** — the bytes are identical for every visitor, and no
+code of ours runs to produce them:
+
+```
+GET /roadmap               Questions runs code, queries Postgres, builds JSON.
+                           The answer depends on the database right now.
+
+GET /assets/index-*.js     A file is handed over unchanged. Same bytes for
+                           everyone, nothing of ours executes to produce it.
+```
+
+The program *inside* that file then runs on the visitor's own machine, and that
+is what calls the six services for data. So our code does run — just not on our
+side of the wire.
+
+**Which means serving it is a job for anything that can return a file:** a CDN
+(a network of caches near the visitor), an nginx container, an object store with
+static hosting switched on. It is not a Node process. It has no database, no
+port in `SERVICES`, and no `/health/ready`, which is why it is not under
+`services/` and gets no Docker image
+([`10-the-workspace.md`](10-the-workspace.md) §1).
+
+**What serves it here: `make web`, and nothing else.** That is Vite's
+development server. There is no production server for the frontend anywhere in
+this repo — no image, no compose service, no Kubernetes manifest — because there
+is nothing deployed for it to serve to
+([ADR-05](../adr/05-kubernetes-locally-no-deployment.md)).
+`pnpm --filter @deepcs/web build` produces the files that *would* be served, and
+Part 3 is what changes between the two.
+
+**The one obligation a static server still has**, and the one that gets missed:
+answer `index.html` for paths it has never heard of, or every link into the app
+except the root returns 404. Part 13 has why.
+
+The rest of this page is the detail underneath all of that, using the real files
+in this repo. Parts 1 to 6 are the mechanics: what a visitor receives and what is
+in it. Parts 7 onward are the parts with a contract to break — the reveal rule,
+the browser's half of the collab protocol, and what a URL is required to promise.
 
 ---
 
@@ -484,6 +524,5 @@ which is what the rest of this page is for.
   page for it needs an endpoint on each of two services because neither role may
   read the other's schema.
 - **No search.** Nine topics fit on one screen.
-- **The frontend has no container.** It runs with `make web` rather than under
-  compose: it is a static bundle, and the shared Dockerfile builds Node servers
-  out of `services/`.
+- **Nothing serves the built bundle.** `make web` is the dev server; there is no
+  production server for it here, for the reason at the top of this page.
