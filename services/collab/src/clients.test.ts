@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { checkSessionParticipant, getQuestion } from './clients.js';
 
 /**
- * Contract tests (§8) — these call the *real* Users, Matching and Questions
+ * Contract tests: these call the *real* Users, Matching and Questions
  * HTTP APIs, not mocks, mirroring services/matching/src/clients.test.ts.
  * Needs all three actually running (`docker compose up`), or the URLs below
  * pointed at wherever they're reachable. Skipped, not failed, if they aren't.

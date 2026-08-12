@@ -13,25 +13,24 @@ export interface UpsertResult {
   /**
    * True only when this call was the one that created the row.
    *
-   * This is the entire reason the upsert is written the way it is. The overview §5:
-   * "there is no signup endpoint", so this flag is the only place
+   * This is the entire reason the upsert is written the way it is. There is no
+   * signup endpoint anywhere in this system, so this flag is the only place
    * `user.signed_up` can be emitted from. Get it wrong and the event fires on
-   * every request and the sign-up count in /stats means nothing.
+   * every sign-in and the sign-up count in /stats is a request counter.
    */
   created: boolean;
 }
 
 /**
- * Lazy upsert (the overview §5).
+ * The lazy upsert, run by `GET /users/me`.
  *
- * The client calls GET /users/me immediately after sign-in and this runs. The
- * `RETURNING` is load-bearing: `ON CONFLICT ... DO NOTHING` returns **no row**
- * when the UID already existed, so an empty result is the signal that this was
- * *not* a first sight — which is what makes `created` trustworthy.
+ * The `RETURNING` is load-bearing: `ON CONFLICT ... DO NOTHING` returns **no
+ * row** when the uid already existed, so an empty result is proof this was not
+ * a first sight — which is what makes `created` trustworthy.
  *
  * `DO NOTHING` rather than `DO UPDATE SET firebase_uid = EXCLUDED.firebase_uid`:
- * the update form would return a row every time and destroy the signal, and it
- * would also take a row lock on every sign-in for no reason.
+ * the update form returns a row every time, destroying the signal, and takes a
+ * row lock on every sign-in for no reason.
  */
 export async function upsertProfile(pool: pg.Pool, firebaseUid: string): Promise<UpsertResult> {
   const inserted = await pool.query<ProfileRow>(
@@ -47,10 +46,10 @@ export async function upsertProfile(pool: pg.Pool, firebaseUid: string): Promise
   }
 
   /**
-   * The row existed. A second query rather than one clever statement, because
-   * this is the common path and it is a primary-key lookup on a unique index —
-   * the cost is a round trip, and the alternative (a CTE, or DO UPDATE) buys
-   * back that round trip by destroying the `created` signal above.
+   * The row existed. A second query rather than one clever statement: this is
+   * the common path and a lookup on a unique index, so the cost is one round
+   * trip, and the alternative (a CTE, or DO UPDATE) buys that round trip back
+   * by destroying the `created` signal above.
    */
   const existing = await pool.query<ProfileRow>(
     `SELECT id, firebase_uid, display_name, preferred_topics, created_at
@@ -61,12 +60,9 @@ export async function upsertProfile(pool: pg.Pool, firebaseUid: string): Promise
 
   const row = existing.rows[0];
   if (!row) {
-    /**
-     * Reachable only if the row was deleted between the two statements — the
-     * account-deletion flow (§5) is the one thing that does this. Surfacing it
-     * rather than returning a null profile keeps "deleted mid-request" from
-     * looking like "never existed".
-     */
+    // Reachable only if the row was deleted between the two statements.
+    // Surfacing it keeps "deleted mid-request" from looking like "never
+    // existed".
     throw new Error(`profile for ${firebaseUid} vanished between insert and select`);
   }
 
@@ -89,9 +85,9 @@ interface ProfileRow {
 }
 
 /**
- * The hand-written mapping ADR-10 accepts as the cost of deferring Drizzle:
- * this function is the only place the snake_case schema and the camelCase API
- * meet, so schema drift shows up here rather than in five call sites.
+ * The hand-written mapping ADR-10 accepts as the cost of deferring an ORM: the
+ * only place the snake_case schema and the camelCase API meet, so schema drift
+ * shows up here rather than at five call sites.
  */
 function toProfile(row: ProfileRow): Profile {
   return {

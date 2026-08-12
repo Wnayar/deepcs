@@ -7,8 +7,7 @@ import { createRateLimiter, type RateLimiter } from './rate-limit.js';
  *
  * The thing under test is a Lua script's atomicity, and a mock that
  * reimplements the script in JavaScript would prove only that the mock agrees
- * with itself. §8 makes the same argument for testcontainers over mocks: the
- * bugs worth catching are in real Redis semantics.
+ * with itself. The bugs worth catching are in real Redis semantics.
  *
  * CI provides Redis as a service container; locally, `docker compose up redis`.
  */

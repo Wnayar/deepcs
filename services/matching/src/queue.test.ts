@@ -3,7 +3,7 @@ import { createRedis } from '@deepcs/shared/redis';
 import { createQueue, type Queue } from './queue.js';
 
 /**
- * Real Redis, not a mock (§8) — the thing under test is the Lua script's
+ * Real Redis, not a mock: the thing under test is the Lua script's
  * atomicity, and a mock reimplementing the script in JS would only prove the
  * mock agrees with itself. Same reasoning as gateway/rate-limit.test.ts.
  */

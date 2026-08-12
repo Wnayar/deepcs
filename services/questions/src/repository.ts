@@ -36,11 +36,9 @@ const SUMMARY_COLUMNS = 'id, title, difficulty, parts, tags, created_at';
  *   getReferenceMd(pool, '3f2e1c9a-...')
  * returns the markdown, or `null` if the id doesn't exist.
  *
- * The only function in this service that touches `reference_md`, and its one
- * caller is the internal route Matching uses after it has verified both
- * participants consented (ADR-06). Questions cannot make that check itself —
- * it has no idea who is in a session — which is exactly why the answer is
- * released to Matching rather than to a browser.
+ * The only function here that touches `reference_md`. Questions cannot check
+ * who consented — it has no idea who is in a session — which is exactly why the
+ * answer is released to Matching rather than to a browser (ADR-06).
  */
 export async function getReferenceMd(pool: pg.Pool, id: string): Promise<string | null> {
   const { rows } = await pool.query<{ reference_md: string }>(

@@ -122,7 +122,7 @@ services:
         condition: service_healthy
     restart: 'no'
 
-  # ── Services (the overview §3) ────────────────────────────────────────────────
+  # ── Services ────────────────────────────────────────────────
   gateway:
     <<: *service
     build:
@@ -131,7 +131,7 @@ services:
       target: dev
       args:
         SERVICE: gateway
-    # No DATABASE_URL: the Gateway has no domain data (§6), which is also why
+    # No DATABASE_URL: the Gateway has no domain data, which is also why
     # authorization cannot live here.
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -253,7 +253,7 @@ services:
 
   # ── The job ────────────────────────────────────────────────────────────────
   # Stats is expected to show as `exited (0)` seconds after `up`. That is not a
-  # failure — it is the whole point (the overview §5): it drains the event log and
+  # failure — it is the whole point: it drains the event log and
   # exits, rather than sitting there as a server. Run it on demand with
   #   docker compose run --rm stats
   # and on the cluster it is a Kubernetes CronJob (k8s/40-stats-cronjob.yaml).

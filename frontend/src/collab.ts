@@ -8,11 +8,9 @@ import { GATEWAY_WS_URL } from './config';
 /**
  * The browser half of the Collab protocol.
  *
- * There is no `y-websocket` here on purpose. The server side was written
- * directly against `y-protocols` (see the note in pnpm-workspace.yaml), so its
- * framing is this project's own and a stock provider would not speak it. It is
- * about eighty lines either way, and writing it means the wire format is
- * visible rather than hidden behind a dependency.
+ * No `y-websocket`, for the same reason the server does not use its server
+ * package: the framing is this project's own, so a stock provider would not
+ * speak it. Writing it keeps the wire format visible.
  */
 
 /** The outer envelope. `y-protocols/sync` has its own message types *inside* a
@@ -35,15 +33,14 @@ export type CollabStatus =
   'connecting' | 'connected' | 'unauthorized' | 'refused' | 'ended' | 'closed';
 
 /**
- * The code Collab closes a socket with when the session was ended by the other
- * participant. Matches `SESSION_ENDED_CODE` in services/collab/src/rooms.ts —
- * duplicated rather than shared because the alternative is importing from
- * @deepcs/shared, whose other subpaths drag Fastify and pg into a browser
- * bundle.
+ * The code Collab closes a socket with when the partner ended the session.
+ * Matches `SESSION_ENDED_CODE` in services/collab/src/rooms.ts, duplicated
+ * rather than shared because importing from @deepcs/shared would drag Fastify
+ * and pg into a browser bundle.
  *
- * Without a distinct code this is indistinguishable from a dropped
- * connection, and the client below would reconnect forever against a session
- * that will never accept it again.
+ * Without a distinct code this is indistinguishable from a dropped connection,
+ * and the client below would reconnect forever against a session that will
+ * never accept it again.
  */
 const SESSION_ENDED_CODE = 4001;
 

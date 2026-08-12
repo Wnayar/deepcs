@@ -1,25 +1,18 @@
 import type { Difficulty } from './api';
 
 /**
- * Whether this browser is waiting for a partner.
+ * Whether this browser is waiting for a partner, which is what decides whether
+ * to hold a `matchEvents.ts` stream open at all.
  *
- * The app is *told* when a match happens, over the stream in `matchEvents.ts`,
- * so nothing is spent while nothing is happening. What this module decides is
- * narrower but still worth deciding: whether to hold a stream open at all.
- *
- * Holding one open for everybody signed in would put the earlier problem back
- * in a new shape. A connection is not free either: it occupies a concurrency
- * slot for its whole life, so every person quietly reading a lesson would pin a
- * service for as long as they read. A stream is
- * opened only by somebody actually waiting for a partner, and it is given up
- * after a while, because a tab abandoned mid-queue should not hold a connection
- * open for the rest of the day.
+ * Opening one for everybody signed in would be its own problem: a connection
+ * occupies a concurrency slot for its whole life, so every person quietly
+ * reading a lesson would pin a service for as long as they read.
  */
 
 const KEY = 'deepcs.queued';
 
-/** After this, stop watching and forget. Somebody who queued and walked away
- * should not leave a connection open for the rest of the day. */
+/** After this, stop watching and forget. A tab abandoned mid-queue should not
+ * hold a connection open for the rest of the day. */
 export const MAX_WAIT_MS = 15 * 60_000;
 
 export interface Queued {
@@ -30,9 +23,8 @@ export interface Queued {
 }
 
 /** Remember that this browser joined the queue, so the shell keeps watching
- * even after the match screen is navigated away from. In storage rather than
- * in React state because that is exactly the case that broke: the state was
- * lost on navigation and on refresh. */
+ * after the match screen is navigated away from. In storage rather than React
+ * state, which navigation and refresh both discard. */
 export function markQueued(topic: string, difficulty: Difficulty): void {
   try {
     localStorage.setItem(KEY, JSON.stringify({ topic, difficulty, since: Date.now() }));

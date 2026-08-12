@@ -46,21 +46,14 @@ async function* frames(body: ReadableStream<Uint8Array>): AsyncGenerator<string>
 }
 
 /**
- * Watches for a partner and calls back once, with the session.
+ * Watches for a partner and calls back once, with the session. Returns a
+ * function that stops watching.
  *
- * This replaced polling. Being matched is caused by somebody else's request, so
- * a client that wants to know either asks repeatedly or is told, and asking
- * repeatedly cost two things: it kept the database awake and every service warm
- * for people who were only waiting, and slowing it down enough to be affordable
- * meant hearing about a partner up to twenty seconds after they arrived.
- *
- * `fetch` rather than `EventSource`, which is the built-in API for this. It
+ * `fetch` rather than `EventSource`, which is the built-in API for this: it
  * cannot set request headers, so it cannot send `Authorization`, and the token
- * would have to travel in the query string. Reading the stream by hand costs
- * this file's frame parsing and keeps authentication identical to every other
- * request the app makes.
- *
- * Returns a function that stops watching.
+ * would have to travel in the query string instead. Reading the stream by hand
+ * costs this file's frame parsing and keeps authentication identical to every
+ * other request the app makes.
  */
 export function watchForMatch(
   onMatched: (session: Session) => void,

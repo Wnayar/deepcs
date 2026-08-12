@@ -4,7 +4,7 @@ import { createPool } from '@deepcs/shared/db';
 import { loadSnapshot, saveSnapshot } from './repository.js';
 
 /**
- * Real Postgres, not a mock (§8) — mirrors
+ * Real Postgres, not a mock. Mirrors
  * services/matching/src/repository.test.ts. Assumes migrations have been
  * applied: `pnpm --filter @deepcs/db migrate`.
  */

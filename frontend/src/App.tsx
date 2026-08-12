@@ -22,14 +22,11 @@ export interface SessionSummary {
 /**
  * The shell: the header, and which screen is on the page.
  *
- * Screens are URLs rather than a `useState` switch. That switch was fine at
- * three screens and stopped being fine at six: the whole site lived at one
- * address, so the browser held a single history entry for it, Back left the
- * site entirely, refreshing lost your place, and no lesson could be linked to.
- *
- * A URL is a promise that the page can be rebuilt from it, and every route here
- * keeps that promise by refetching rather than relying on state it was handed.
- * The one exception is the summary, which is why it has no URL of its own.
+ * **A URL is a promise that the page can be rebuilt from it**, and every route
+ * here keeps that promise by refetching rather than relying on state it was
+ * handed. The one exception is `/summary`, which is assembled from what the
+ * session page knew and has no endpoint behind it, so it travels in history
+ * state and a refresh goes to the roadmap.
  */
 export function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -72,16 +69,14 @@ export function App() {
   /**
    * Watch for a partner, from wherever the reader happens to be.
    *
-   * Being matched is caused by somebody else's request: whoever queues first is
-   * matched when the second person joins. The match screen could watch for
-   * that, but only while it is on screen, so somebody who queued and went to
-   * read a lesson was put into a session nobody told them about. Watching from
-   * the shell means it is noticed from any page.
+   * Being matched is caused by somebody else's request. The match screen could
+   * watch for it, but only while it is on screen, so somebody who queued and
+   * went to read a lesson would be put into a session nobody told them about.
+   * Watching from the shell means it is noticed from any page.
    *
-   * It is a stream rather than a timer, and the guard is narrower than it used
-   * to be. What is left of it still matters: a held-open connection occupies a
-   * concurrency slot and keeps a service alive, so it is opened only by someone
-   * actually waiting, and given up once the queue flag expires.
+   * The guard matters: a held-open stream occupies a concurrency slot and keeps
+   * a service alive, so one is opened only by somebody actually waiting, and
+   * given up once the queue flag expires.
    */
   useEffect(() => {
     if (!user || active) return;
@@ -109,9 +104,7 @@ export function App() {
           {/* Links, not buttons that navigate. A `<button>` inside an `<a>` is
               invalid markup and behaves unpredictably, and a link is what these
               actually are: middle-click and open-in-new-tab work for free.
-              `.navlink` gives them the look of the buttons beside them, and
-              NavLink marks the current route itself so the highlight cannot
-              drift out of step with what is on screen. */}
+              `.navlink` gives them the look of the buttons beside them. */}
           <NavLink className="navlink" to="/">
             Roadmap
           </NavLink>
@@ -204,14 +197,11 @@ export function App() {
 }
 
 /**
- * The header entry for a session in progress.
- *
- * Three states rather than two, and the third is the one worth having.
- * "Return to session" is the right words for somebody who stepped out of a room
- * they have been in. It is the wrong words for the person who queued, wandered
- * off, and was matched by their partner's request without ever seeing the room:
- * nothing has happened yet that they could return from. They are told a partner
- * turned up instead.
+ * The header entry for a session in progress, in three states rather than two.
+ * "Return to session" is right for somebody who stepped out of a room they have
+ * been in, and wrong for the person who queued, wandered off, and was matched
+ * by their partner's request without ever seeing it: nothing has happened that
+ * they could return from. They are told a partner turned up instead.
  */
 function SessionNavEntry({
   sessionId,

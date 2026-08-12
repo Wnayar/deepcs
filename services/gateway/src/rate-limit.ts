@@ -1,10 +1,9 @@
 import type Redis from 'ioredis';
 
 /**
- * Token-bucket rate limiting (the overview §5, ADR-08).
- *
- * Each client gets a bucket of N tokens; a request spends one; tokens refill at
- * a steady rate. Bursts are allowed, sustained flooding is not.
+ * Token-bucket rate limiting. Each client gets a bucket of N tokens, a request
+ * spends one, and tokens refill at a steady rate: bursts allowed, sustained
+ * flooding blocked.
  *
  * **The bug this file exists to prevent.** Two Gateway instances, one user's
  * bucket, one token left:
@@ -14,18 +13,13 @@ import type Redis from 'ioredis';
  *     instance A: write tokens = 0    <- A lets its request through
  *     instance B: write tokens = 0    <- B lets its through too
  *
- * A's decrement is lost. Note what that does *not* require: no threads, no
- * shared memory — two ordinary processes on two different machines are enough.
- * Which is also why an in-process mutex is not a fix: it would guard one
- * instance's own memory, at an address the other instance cannot reach.
+ * A's decrement is lost, and note what that does *not* require: no threads, no
+ * shared memory — two ordinary processes on two machines are enough. Which is
+ * also why an in-process mutex is not a fix. Atomicity has to live where the
+ * single copy of the state lives, and that is Redis, which runs one script
+ * start to finish before beginning the next.
  *
- * Atomicity has to live where the single copy of the state lives, and that is
- * Redis, which runs one script start-to-finish before beginning the next.
- *
- * *Why a script and not INCR?* A fixed-window counter needs only INCR, which is
- * already atomic — that is how Kong's plugin does it. A token bucket reads two
- * values (tokens, last refill), computes a refill from elapsed time, and writes
- * both back. That is multi-step, so atomicity has to be wrapped around it.
+ * Full reasoning, including why not Kong: docs/system/01-gateway.md §4.
  */
 
 const SCRIPT = `
@@ -100,14 +94,13 @@ export interface RateLimitResult {
 }
 
 /**
- * §6: per-IP at the Gateway for unauthenticated traffic, per-user for
- * authenticated. The per-user allowance is larger because an IP can be a whole
- * university NAT, while a user is one person.
+ * Per-IP for unauthenticated traffic, per-user for authenticated. The per-user
+ * allowance is larger because an IP can be a whole university NAT, while a user
+ * is one person.
  *
- * §6 also asks for a tighter bucket on /match/* specifically. That one is not
- * built: the matching routes turned out cheap enough that this allowance
- * covers them. Noted here rather than silently dropped, because the design
- * doc still calls for it.
+ * Both numbers matter outside this file: `make k8s-check` runs forty identities
+ * rather than one, because a single prober flat out would measure the rate
+ * limiter instead of the rolling update.
  */
 export const BUCKETS = {
   ip: { capacity: 60, refillPerSecond: 1 },
@@ -118,40 +111,37 @@ export interface RateLimiter {
   consume(key: string, bucket: Bucket, cost?: number): Promise<RateLimitResult>;
 }
 
+/** `defineCommand` adds a method ioredis cannot know the shape of, so the cast
+ * happens once, here, rather than at the call site. */
+interface WithTokenBucket {
+  tokenBucket(
+    key: string,
+    capacity: string,
+    refill: string,
+    cost: string,
+  ): Promise<[allowed: number, remaining: number, retryAfterMs: number]>;
+}
+
 export function createRateLimiter(redis: Redis): RateLimiter {
   /**
-   * `defineCommand` registers the script once and calls it by SHA thereafter,
-   * falling back to a full EVAL automatically if Redis has forgotten it — which
-   * happens after a restart, and on any replica that has not seen the script
-   * before. Doing this by hand is the usual source of a rate limiter that works
-   * until the first failover.
+   * Registers the script once and calls it by SHA thereafter, falling back to a
+   * full EVAL if Redis has forgotten it — which happens after a restart, and on
+   * any replica that has not seen it. Doing this by hand is the usual source of
+   * a rate limiter that works until the first failover.
    */
   redis.defineCommand('tokenBucket', { numberOfKeys: 1, lua: SCRIPT });
+  const script = redis as unknown as WithTokenBucket;
 
   return {
     async consume(key, bucket, cost = 1): Promise<RateLimitResult> {
-      const [allowed, remaining, retryAfterMs] = (await (
-        redis as unknown as {
-          tokenBucket(
-            key: string,
-            capacity: string,
-            refill: string,
-            cost: string,
-          ): Promise<[number, number, number]>;
-        }
-      ).tokenBucket(
+      const [allowed, remaining, retryAfterMs] = await script.tokenBucket(
         key,
         String(bucket.capacity),
         String(bucket.refillPerSecond),
         String(cost),
-      )) as [number, number, number];
+      );
 
-      return {
-        allowed: allowed === 1,
-        remaining,
-        retryAfterMs,
-        limit: bucket.capacity,
-      };
+      return { allowed: allowed === 1, remaining, retryAfterMs, limit: bucket.capacity };
     },
   };
 }
