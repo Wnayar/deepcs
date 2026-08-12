@@ -131,13 +131,12 @@ point ([`06-events-and-stats.md`](06-events-and-stats.md) §4).
 
 ## 4. Migrations
 
-[`packages/db/migrate.mjs`](../../packages/db/migrate.mjs) is about seventy-five
-lines: numbered `.sql` files applied in filename order, each inside a
-transaction, each recorded in `public.schema_migrations` so it is never applied
-twice.
+[`packages/db/migrate.mjs`](../../packages/db/migrate.mjs) is the whole runner:
+numbered `.sql` files applied in filename order, each inside a transaction, each
+recorded in `public.schema_migrations` so it is never applied twice.
 
-It is this short because **Postgres has transactional DDL** — a migration that
-fails halfway leaves nothing behind. In MySQL each statement commits on its own
+It is under a hundred lines because **Postgres has transactional DDL** — a
+migration that fails halfway leaves nothing behind. In MySQL each statement commits on its own
 and a half-applied file has to be unwound by hand, which is where migration
 libraries earn their weight.
 

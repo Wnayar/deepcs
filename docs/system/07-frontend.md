@@ -218,7 +218,7 @@ public.
 
 # Part 8 — The browser's half of the collab protocol
 
-`frontend/src/collab.ts` is about eighty lines and there is no `y-websocket` in
+`frontend/src/collab.ts` has no `y-websocket` in
 it, for the same reason the server does not use its server package: the framing
 is this project's own, so a stock provider would not speak it. Writing it keeps
 the wire format visible.
