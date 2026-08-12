@@ -11,7 +11,7 @@ half of the collab protocol, and what a URL is required to promise.
 
 # Part 1 — The page a visitor receives is nearly empty
 
-This is `frontend/index.html`, the entire thing:
+This is `frontend/index.html`, all of it bar a comment:
 
 ```html
 <html lang="en" data-theme="dark">
