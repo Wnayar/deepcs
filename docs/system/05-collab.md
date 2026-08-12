@@ -354,9 +354,13 @@ concurrency and timeout settings from every other service here. Bundling it with
 the question bank means a hundred idle sockets starve a browse request, and the
 two scale on incompatible signals with no way to configure both.
 
-The number also changes meaning. For a request/response service, concurrency is a
-throughput knob: 80 in-flight requests are 80 small heap objects waiting on
-Postgres. For Collab it is a **hard ceiling on concurrent users**, and the one
-past the ceiling is rejected at connect. That is a number to be careful not to
-mistake for a measurement — what has been measured is 250 sockets on one laptop,
-which is a fact about the laptop.
+Concurrency also *means* something different here. For a request/response
+service it is a throughput knob: 80 in-flight requests are 80 small heap objects
+waiting on Postgres for 30 ms each. For Collab it is a **population** — each
+socket is held for the length of a session, so the count is how many people are
+in the system at once rather than how fast it gets through work.
+
+**Nothing configures a limit on either.** No per-process concurrency setting
+exists in this repo, so what has been established is that 250 sockets are
+comfortable on one laptop, which is a fact about the laptop and not a ceiling
+anybody chose ([`09-running-it.md`](09-running-it.md) §7).

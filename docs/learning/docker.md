@@ -7,7 +7,7 @@ question wasn't "what does this line do" but "what *is* the thing being built".
 
 **The goal is bounded on purpose.** Not "learn Docker". The goal is that those
 two files read as ordinary English by the end, and that the sentence *"one
-Dockerfile, six images, nine containers"* stops being confusing. Between them
+Dockerfile, six images, eleven containers"* stops being confusing. Between them
 they use the entire Docker vocabulary this repo has.
 
 **Don't read this front to back.** It's a reference as much as a primer, and most
@@ -86,7 +86,7 @@ cannot reach `../elsewhere`), and everything in the context is shipped every
 build whether copied or not — which is what [`.dockerignore`](../../.dockerignore)
 exists to prevent. Its own comment notes `node_modules` alone is 116 MB.
 
-## So: one Dockerfile, six images, nine containers
+## So: one Dockerfile, six images, eleven containers
 
 **One Dockerfile**, because the six services are near-identical Node processes
 ([`Dockerfile:5-9`](../../Dockerfile#L5) has the reasoning). Six copies would mean
@@ -106,16 +106,16 @@ docker build --build-arg SERVICE=questions ...  →  the questions image
 compiles and copies gateway's code. The six images are fully independent
 afterwards — nothing links them.
 
-**Nine containers**, locally: the 5 servers + the Stats job + Postgres + Redis +
-the Firebase Auth emulator. Seven come from images built here — the five servers,
-Stats, and the Firebase Auth emulator; two are downloaded ready-made — Postgres
-and Redis.
+**Eleven containers**, locally. Nine stay up: the five servers, the Stats read
+API, Postgres, Redis and the Firebase Auth emulator. Two run to completion and
+exit — `migrate`, which applies the schema before anything else starts, and the
+Stats job, which drains the event log. Postgres and Redis are downloaded
+ready-made; everything else is built here.
 
-## Where Google Cloud fits — the sentence that matters
+## An image is built once and only ever started afterwards
 
-**Images are built once, on GitHub's machines, and merely started on Google
-Cloud.** Google never reads your Dockerfile, never runs `pnpm install`, never sees
-your TypeScript.
+**Whatever runs a container never reads your Dockerfile, never runs `pnpm
+install`, and never sees your TypeScript.** It receives a finished artifact.
 
 The chain, all of it on this machine:
 
@@ -489,7 +489,7 @@ stage is never built. Conversely `--target dev` (what Compose uses) never builds
 
 **The big picture.** A Dockerfile describes one image. Compose describes a whole
 *system*: which containers exist, how they reach each other, what's plugged into
-them, and what order they may start in. It exists because "run nine containers on
+them, and what order they may start in. It exists because "run eleven containers on
 a shared network with the right dependencies and env vars" is not something you
 want to type by hand.
 
@@ -1351,14 +1351,16 @@ live means "is this process wedged, restart it", ready means "may traffic be
 routed here" — a service still connecting to Postgres is live but not ready.
 
 **"How do you develop against this locally?"**
-One `docker compose up` brings up nine containers: five services, the Stats job,
-Postgres, Redis, and a Firebase Auth emulator. Source directories are
+One `docker compose up` brings up eleven containers, nine of which stay up: the
+five servers, the Stats read API, Postgres, Redis and a Firebase Auth emulator.
+The other two — the migration and the Stats job — run once and exit. Source
+directories are
 bind-mounted, so `tsx watch` picks up edits without a rebuild. The emulator means
 local dev and CI need no cloud account and no credentials — and the project id is
 prefixed `demo-`, which makes the emulator refuse to contact real Google services.
 
-**The two numbers worth memorising:** 583 MB → 251 MB (multi-stage payoff), and
-9 containers / 6 images / 1 Dockerfile.
+**The two numbers worth memorising:** 583 MB to 251 MB (the multi-stage payoff),
+and 11 containers / 6 service images / 1 Dockerfile.
 
 ---
 

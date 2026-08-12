@@ -4,19 +4,9 @@ import { clearQueued, markQueued } from '../queue';
 import { getRoadmap, joinQueue, matchStatus, type Difficulty, type Session } from '../api';
 
 /**
- * How often to check that the claim still exists.
- *
- * This is not how a match is noticed. That arrives on the stream the shell
- * holds open, immediately and without asking. This covers the one case a
- * message cannot: the pair claim lives in Redis and the session row in
- * Postgres with no transaction spanning them, so a crash between the two
- * leaves somebody claimed with no session and no event ever published.
- * Matching documents `GET /match/status` answering `none` as the recovery, and
- * nothing else detects it.
- *
- * A minute apart, because it is a crash window rather than a race, and one
- * request a minute while somebody watches a waiting screen is not worth
- * optimising.
+ * How often to check that the claim still exists. A minute apart, because it is
+ * a crash window rather than a race, and one request a minute while somebody
+ * watches a waiting screen is not worth optimising.
  */
 const CLAIM_CHECK_MS = 60_000;
 
@@ -46,24 +36,11 @@ function usePreset(): { topic: string | null; difficulty: Difficulty | null } {
 }
 
 /**
- * Join the queue and wait.
- *
- * The polling here is not laziness about push — it is the crash-recovery
- * contract Matching exposes. The pair claim lives in Redis and the session row
- * in Postgres, with no transaction spanning them, so a crash between the two
- * would leave a claimed partner with no session. `GET /match/status` answering
- * `none` is the signal to re-join, and it is the only thing that unsticks that
- * case. Every topic and difficulty resolves to a question, so a join never
- * dead-ends on an empty combination.
- */
-/**
- * The topic list, fetched rather than written out here.
- *
- * It was a constant duplicated in two screens, and the database is the thing
- * that actually decides which topics exist: a topic seeded but missing from a
- * hard-coded list is a question set nobody can ever be matched on, and it
- * fails silently. Falling back to an empty list would leave the form unusable,
- * so a failed fetch leaves the select empty and the error visible instead.
+ * The topic list, fetched rather than written out here. The database is what
+ * actually decides which topics exist: a topic seeded but missing from a
+ * hard-coded list is a question set nobody can ever be matched on, and it fails
+ * silently. A failed fetch leaves the select empty rather than substituting a
+ * list that might be wrong.
  */
 function useTopics(): { topic: string; title: string }[] {
   const [topics, setTopics] = useState<{ topic: string; title: string }[]>([]);
@@ -75,6 +52,15 @@ function useTopics(): { topic: string; title: string }[] {
   return topics;
 }
 
+/**
+ * Join the queue and wait.
+ *
+ * A match arrives on the stream the app shell holds open, not from anything on
+ * this screen. What this screen adds is the crash-recovery check: the pair
+ * claim lives in Redis and the session row in Postgres with no transaction
+ * spanning them, so a crash between the two leaves somebody claimed with no
+ * session and no event ever published. Nothing else detects that.
+ */
 export function MatchPage({ active, onJoined, onQueueChanged }: Props) {
   const topics = useTopics();
   const navigate = useNavigate();

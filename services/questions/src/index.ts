@@ -26,6 +26,8 @@ const LIST_CACHE_TTL_SECONDS = 60;
 
 app.get('/', async () => ({ service: 'questions' }));
 
+// Redis state as information rather than as a readiness answer, since readiness
+// above deliberately leaves it out.
 app.get('/health/deps', async () => {
   const [postgres, redisState] = await Promise.all([probe(pingDb(pool)), probe(pingRedis(redis))]);
   return { postgres, redis: redisState };
@@ -155,13 +157,11 @@ app.get('/questions/:id', async (req, reply) => {
  *
  * Being signed in is the whole check, and that is a deliberate narrowing of
  * what the reveal rule claims. It cannot be about secrecy: the lesson for this
- * question teaches the same material and is public. What mutual consent still
- * buys is coordination *inside a session* — the answer does not appear on a
- * shared screen until both people say they are done attempting it. Whether you
- * look something up on your own is your business.
- *
- * Anonymous callers get nothing, so the bank stays browsable signed out
- * without the answer key coming with it.
+ * question teaches the same material and is public. What mutual consent buys is
+ * coordination *inside a session* — the answer does not appear on a shared
+ * screen until both people say they are done attempting it. Anonymous callers
+ * get nothing, so the bank stays browsable signed out without the answer key
+ * coming with it.
  */
 app.get('/questions/:id/reference', async (req, reply) => {
   const parsed = idParams.safeParse(req.params);
@@ -185,22 +185,18 @@ app.get('/questions/:id/reference', async (req, reply) => {
  *   GET /internal/questions/3f2e1c9a-...-b1a4/reference
  * returns `{ referenceMd: "## Process vs thread?\n\n..." }`, or 404.
  *
- * The same bytes as the route above, for a different caller. That one answers
- * a signed-in browser and identifies it by `X-User-Id`; this one answers
- * Matching, which is acting for a *pair* and holds no user token of its own —
- * it has already checked both participants consented, which is a question this
- * service cannot ask.
+ * The same bytes as the route above, for a different caller. That one answers a
+ * signed-in browser and identifies it by `X-User-Id`; this one answers Matching,
+ * which acts for a *pair*, holds no user token of its own, and has already
+ * checked that both participants consented — a question this service cannot ask.
  *
- * The `/internal` prefix is what keeps it that way. The Gateway proxies a
- * fixed list of prefixes — `/users`, `/questions`, `/lessons`, `/match`,
- * `/collab` — with no filtering on what follows, so anything under
+ * The `/internal` prefix is what keeps it internal. The Gateway proxies a fixed
+ * list of prefixes with no filtering on what follows, so anything under
  * `/questions/` is reachable from a browser and has to carry its own check.
- * Nothing proxies `/internal`, so this route is callable only from inside the
- * network.
+ * Nothing proxies `/internal`.
  *
- * Deliberately not cached: `cached()` wraps list queries, and putting answer
- * text into a shared Redis key is a second copy of the thing this service
- * works hardest not to hand out.
+ * Deliberately not cached: putting answer text into a shared Redis key would be
+ * a second copy of the thing this service works hardest not to hand out.
  */
 app.get('/internal/questions/:id/reference', async (req, reply) => {
   const parsed = idParams.safeParse(req.params);

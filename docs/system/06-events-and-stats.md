@@ -153,17 +153,14 @@ a poison counter and a side table, and it is not built.
 
 ---
 
-## 5. Stats is a job *and* a server, and the design said otherwise
+## 5. Stats is a job *and* a server
 
-[`00-overview.md`](00-overview.md) §3 says Stats "can't be a server at all", the
-same document puts a public stats endpoint in scope, and the schema decision says
-only `stats_svc` may read the `stats` schema. All three cannot hold, and building
-it is what surfaced the contradiction.
-
-**The §3 argument is correct about what it argues.** A timer cannot fire inside a
+"Stats is a job" is right about the thing it argues: a timer cannot fire inside a
 service that is not running between requests, so *draining the log* has to be a
-job. The conclusion overreaches: serving a summary is request-driven like every
-other read.
+job. It does not follow that Stats can have no HTTP surface — serving a summary
+is request-driven like every other read, and it can only be served from here,
+because those rows live in the `stats` schema and no other role may read it
+([ADR-09](../adr/09-one-database-one-schema-per-service.md)).
 
 So Stats is one image with two entrypoints. `index.ts` drains and exits;
 `server.ts` answers reads. Under compose that is `docker compose run --rm stats`
