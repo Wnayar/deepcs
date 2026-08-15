@@ -18,3 +18,5 @@ firebase-debug.log
 ui-debug.log
 .turbo/
 *.tsbuildinfo
+# Personal interview prep for this repo, kept alongside it but not part of it.
+interview-prep-guideline.md
