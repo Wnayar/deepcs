@@ -2,8 +2,8 @@
 
 ## The situation you're actually in
 
-You have ~4,500 lines of backend source and ~2,400 lines of docs that already
-explain it well. That ratio matters: **you cannot fail this by not knowing
+You have ~4,100 lines of backend source and ~4,200 lines of system docs and
+ADRs that already explain it well. That ratio matters: **you cannot fail this by not knowing
 enough — you fail it by not being able to retrieve it in the shape a question
 arrives in.**
 
@@ -59,8 +59,9 @@ everything else. Level 4 everywhere is not achievable in your timeframe and
 isn't what's being tested.
 
 1. **Names it.** "It's six services with a gateway, Postgres and Redis."
-2. **Explains the mechanism.** "The gateway verifies the Firebase token against
-   Google's JWKS, strips any inbound `X-User-Id` header, and sets its own."
+2. **Explains the mechanism.** "The gateway strips any inbound `X-User-Id`
+   header, verifies the Firebase token against Google's JWKS, and sets its own
+   from `sub`."
 3. **Explains why, including the alternative.** "...and authorization *can't*
    live there, because the gateway holds no domain data — it can't answer 'is
    this user in that session'. That's Collab asking Matching."
@@ -352,8 +353,9 @@ project's actual difficulty lives, and they are small:
   Lua: read-modify-write across multiple Redis commands isn't atomic, so two
   requests can each read 1 token remaining and both spend it. Lua runs as one
   operation on the server.
-- `services/matching/src/queue.ts` — the atomic pair claim. Same class of
-  problem: two users joining at the same instant race for the same partner.
+- `services/matching/src/queue.ts` (90 lines) — the atomic pair claim. Same
+  class of problem: two users joining at the same instant race for the same
+  partner.
 - `services/collab/src/rooms.ts` (608 lines, the biggest file) — rooms, the
   Redis fan-out between pods, the state reply, snapshots.
 - `packages/shared/src/service.ts` (168 lines) — the four shared HTTP concerns
@@ -410,8 +412,8 @@ Answer out loud. The pointer is where to check, not where to read first.
 2. Why is the roadmap the front door rather than the question bank?
    → overview §1
 3. What's deliberately *not* in it, and why? → overview §1 ("Not in scope")
-4. How long did it take and how big is it? *(Three weeks, 117 commits, ~4.5k
-   lines of backend source.)*
+4. How long did it take and how big is it? *(About four weeks, ~120 commits,
+   ~4,100 lines of backend source.)*
 
 ### Architecture
 5. Why six services and not one? What's the actual forcing function?
@@ -507,9 +509,10 @@ Answer out loud. The pointer is where to check, not where to read first.
     `/health/ready` is removed from the Service endpoints.)*
 34. Why are `/health/live` and `/health/ready` separate endpoints?
 35. What's the highest-value line in the Dockerfile? *(The `manifests` stage
-    copying eight `package.json` files by name rather than `COPY . .` — Docker
-    invalidates a cached layer when any copied file changes, so `COPY . .` +
-    `pnpm install` reinstalls everything whenever you edit a `.ts` file.)*
+    copying every `package.json` by name — the root plus the eight workspace
+    manifests — rather than `COPY . .`. Docker invalidates a cached layer when
+    any copied file changes, so `COPY . .` + `pnpm install` reinstalls
+    everything whenever you edit a `.ts` file.)*
 36. Why does CI run the built image and curl `/health/ready` when typecheck and
     tests already passed? *(Because it once passed with a bundle that died at
     import — `tsup` exits 0 on a broken bundle and `pnpm test` runs from source
@@ -538,7 +541,7 @@ hardest. Name **files**, not concepts.
 41. **How would you add a seventh service?** *(A schema and a role in a
     migration; a route prefix on the Gateway; a Deployment, Service and probes
     in `k8s/`; the CI path filter. And the one people forget: the Dockerfile's
-    `manifests` stage copies the eight `package.json` files **by name**, so
+    `manifests` stage lists every workspace `package.json` **by name**, so
     missing it means "module not found" for that service alone. That cost is
     accepted knowingly in exchange for the layer cache.)*
 42. **Walk me through adding one endpoint, end to end.** *(zod schema on the
@@ -554,19 +557,41 @@ hardest. Name **files**, not concepts.
     with a GIN index. Full text is a different index and a different query;
     say so rather than implying the current one stretches to cover it.)*
 45. **A user reports their partner's edits aren't showing up. Debug it live.**
-    *(Structured Pino logs, every line carrying `service` and `request_id`, with
-    `X-Request-Id` propagated across service calls — that propagation is what
-    makes a six-service path debuggable at all. Then Collab's `/metrics` for
-    socket and room counts. Then the honest part: there are **no** request-rate,
-    error-rate or latency histograms and **no** tracing, so past that point
-    you're reading logs. Naming your own blind spot here scores better than
-    inventing a dashboard that doesn't exist.)*
+    *(Structured Pino logs, every line carrying `service` and `request_id`.
+    Every service adopts an inbound `X-Request-Id` rather than minting its own,
+    and echoes it back — so the id the Gateway assigns follows the request into
+    the first service and out to the browser. Then Collab's `/metrics` for
+    socket and room counts. Then the honest part, and there are two: the
+    internal service-to-service calls do **not** forward the header, so a
+    Matching-to-Users hop starts a fresh id — the trace is grep-able per
+    service, not joined across them — and there are **no** request-rate,
+    error-rate or latency histograms and **no** tracing. Naming your own blind
+    spots here scores better than inventing a dashboard that doesn't exist.)*
 46. **Something in here you'd rip out and redo?** Have one real answer. The
     lack of an end-to-end test is the honest one.
 
 ### The killer question
 47. **What went wrong / what would you do differently?** Have three ready, and
     §6 gives you them. This question decides more interviews than any other.
+
+### If they dig into the measurements
+Two that reward having actually read `docs/system/09-running-it.md` rather than
+its summary — both are real, and both end with a method point.
+
+48. **The load run's minimum edit latency was -522ms. What happened?** *(Both
+    VUs live in one k6 process reading one clock, so it cannot be two clocks
+    disagreeing — the one clock stepped backwards mid-run, which WSL2 does when
+    it resyncs against the Windows host. The tell that it was a step, not
+    noise: a handful of samples went negative by about half a second and
+    nothing went positive by that much. It moves neither p50 nor p95, and it
+    stays in the results — a script that silently discards impossible samples
+    cannot tell you when they stop being rare.)*
+49. **Why does `make k8s-check` probe with forty identities rather than one?**
+    *(An authenticated caller gets 120 tokens refilling at 2/s, so a single
+    prober running flat out would exhaust its own bucket and measure the rate
+    limiter instead of the rolling update. Forty identities at roughly 70
+    requests a second keeps every bucket comfortable — the harness has to be
+    designed around the system's own defences or it measures them.)*
 
 ### When they reach the edge
 
@@ -597,8 +622,8 @@ and it's avoidable, because your repo already does this correctly.
 | Number | The condition, always said in the same breath |
 |---|---|
 | **0 non-200 out of 1,230** during a rolling update | Travels. Property of readiness probes, not of the hardware. |
-| **250 concurrent sockets, p50 4ms / p95 11ms** | Does **not** travel. One laptop, AMD Ryzen AI 7 350, WSL2. Not a configured limit — nothing caps concurrency anywhere. |
-| **An edit written seconds before its pod was deleted survived** | Travels. By the SIGTERM snapshot path and no other — the 30s periodic and the on-disconnect snapshots were both ruled out. |
+| **250 concurrent sockets, p50 4ms / p95 11ms** | Does **not** travel. One laptop, AMD Ryzen AI 7 350, WSL2 — and one Collab replica (the cluster figure; compose read p50 3ms / p95 4ms). Not a configured limit — nothing caps concurrency anywhere. |
+| **An edit written seconds before its pod was deleted survived** | Travels. By the SIGTERM snapshot path and no other — the 30s periodic and the on-disconnect snapshots were both ruled out. It is why Collab's grace period is 45s, not the default 30: preStop plus the snapshot write have to fit inside it. |
 | **A service cannot read another's schema** | Travels. Asserted by a test that the *database* refuses the query. |
 
 **Three "what went wrong" stories, ready to tell.** Each is a real one from the
