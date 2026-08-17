@@ -101,8 +101,9 @@ flowchart TD
     GW --> STA["<b>Stats</b><br/>drain job + read API"]
 
     MCH -.->|"validate uid"| USR
-    MCH -.->|"parts and reference_md"| QST
+    MCH -.->|"find a question · reference_md"| QST
     COL -.->|"is this uid in the session?"| MCH
+    COL -.->|"parts, to seed the doc"| QST
 
     USR --> PG
     QST --> PG
@@ -124,18 +125,21 @@ Then narrate the path out loud, ~90 seconds. This is the version to rehearse:
 
 1. Signed-in browser holds a Firebase ID token. It sends
    `POST /match/join {topic, difficulty}`.
-2. **Gateway** verifies the token against Google's JWKS — signature, `exp`,
-   `iss`, and `aud` (an unchecked `aud` would accept a validly-signed token
-   minted for a *different* Firebase project). Strips any inbound `X-User-Id`,
-   sets its own from `sub`. Spends a rate-limit token in a Redis Lua script
-   (120 tokens refilling at 2/s for an authenticated caller). Proxies to
-   Matching.
-3. **Matching** zod-validates, calls **Users** over HTTP to check the uid
+2. **Gateway** strips any inbound `X-User-Id` before anything else, then
+   verifies the token against Google's JWKS — signature, `exp`, `iss`, and
+   `aud` (an unchecked `aud` would accept a validly-signed token minted for a
+   *different* Firebase project) — and sets its own header from `sub`. Spends a
+   rate-limit token in a Redis Lua script (120 tokens refilling at 2/s for an
+   authenticated caller). Proxies to Matching.
+3. **Matching** zod-validates, then calls **Users** over HTTP to check the uid
    exists — by API call, never by SQL, because the database refuses the
-   cross-schema join. Then reads the Redis queue for that (topic, difficulty)
-   and **claims a partner atomically in a Lua script**, or enqueues you.
-4. If it claimed one: fetch the question's `parts[]` from **Questions**, write
-   the session row to Postgres, publish to Redis so the *other* person hears.
+   cross-schema join — and **Questions** to find a question for that topic and
+   difficulty. Both checks run on *every* join, before anything in Redis or
+   Postgres changes, so a sibling outage fails the request cleanly.
+4. Only then the queue: one Lua script **claims a partner atomically**, or
+   enqueues you. If it claimed one: write the session row to Postgres, publish
+   to Redis so *both* people hear — the waiter through their event stream, the
+   joiner as insurance against a lost response.
 5. The waiting person hears via **server-sent events** — `GET /match/events`,
    one ordinary HTTP response held open. Not polling. (§5 has the story of why.)
 6. Both browsers open a WebSocket through the Gateway to **Collab**. Collab
@@ -172,37 +176,44 @@ sequenceDiagram
     Note over A,B: Both already signed in — browser talks to Firebase<br/>directly for this, never through the Gateway. ID token cached,<br/>silently refreshed before it expires.
 
     Note over B: B arrives first
-    B->>GW: POST /match/join
-    Note over GW: verify against JWKS (signature · exp · iss · aud)<br/>strip inbound X-User-Id, set it from sub<br/>spend a rate-limit token (Redis Lua)<br/>proxy by URL prefix
-    GW->>M: forward with X-User-Id
+    B->>GW: POST /match/join {topic, difficulty}
+    Note over GW: strip inbound X-User-Id — always, before anything<br/>verify against JWKS (signature · exp · iss · aud)<br/>set X-User-Id from sub<br/>spend a rate-limit token (Redis Lua)<br/>proxy by URL prefix
+    GW->>M: forward, with X-User-Id and X-Request-Id
+    Note over M: already in an active session? then that session<br/>is returned as-is — a retried join is always safe
     M->>U: does this uid exist? (HTTP, never SQL)
-    M->>Q: fetch a question for this topic/difficulty
-    M->>R: check the queue — nobody waiting, so enqueue (Lua)
+    M->>Q: find a question for this topic and difficulty
+    M->>R: one Lua script, check-and-claim-or-enqueue — queue empty, so enqueue B
     M-->>B: 200, waiting
     B->>GW: GET /match/events (SSE, held open)
-    GW->>M: proxy the still-open connection
+    GW->>M: proxy the still-open response
+    M->>R: SUBSCRIBE match:user:B, on a dedicated connection
+    Note over M: then re-check Postgres and resend the current session, if any —<br/>a partner who arrived in the gap is repeated, never missed
 
     Note over A: A arrives second
-    A->>GW: POST /match/join
-    Note over GW: same four Gateway steps as above — every request pays for them
+    A->>GW: POST /match/join, same topic and difficulty
+    Note over GW: identical Gateway steps — every request pays for them
     GW->>M: forward with X-User-Id
-    M->>U: does this uid exist?
-    M->>Q: fetch a question for this topic/difficulty
-    M->>R: claim the waiting partner atomically (Lua) — finds B
-    M->>M: create the session row in Postgres
-    M->>R: publish "matched" for B's uid
-    R-->>M: delivered to the subscriber holding B's stream
-    M-->>B: SSE event, matched — pushed into the connection opened above
-    M-->>A: 200, matched
+    M->>U: same uid check, on every join
+    M->>Q: same question fetch, on every join
+    M->>R: same Lua script — finds B waiting, claims and removes B atomically
+    M->>M: write the session row to Postgres — not one transaction with the claim
+    M->>R: PUBLISH matched on match:user:A and match:user:B
+    R-->>M: delivered to the instance that subscribed at 9
+    M-->>B: SSE event, matched — pushed into the response held open at 7
+    M-->>A: 201, matched — the ordinary reply to its own request
 
-    A->>GW: WebSocket upgrade, /collab/:sessionId
-    B->>GW: WebSocket upgrade, /collab/:sessionId
-    GW->>C: proxy the socket
-    C->>M: is this uid a participant in this session?
-    C-->>A: sync step 1, the whole document
-    A->>C: Yjs update (a keystroke)
-    C-->>B: broadcast to every other socket in the room
-    C->>R: publish on the session channel, for sockets on the other pod
+    A->>GW: WebSocket upgrade, /collab/connect?sessionId=…&token=…
+    B->>GW: the same upgrade
+    Note over GW: a browser WebSocket cannot set an Authorization header,<br/>so an upgrade — and only an upgrade — may authenticate by ?token=
+    GW->>C: proxy the socket — the ws proxy has its own header-rewrite hook
+    C->>M: is this uid a participant in this session? — before the upgrade completes
+    Note over C: first socket for this session on this pod builds the room:<br/>snapshot from Postgres, or seed from the question's parts under one fixed clientID<br/>subscribe to the session's Redis channels<br/>ask any other holder for state — answered with the whole document
+    C-->>A: sync step 1 — a state vector, plus everyone's current presence
+    A->>C: sync step 2 back, plus A's own step 1
+    C-->>A: sync step 2 — for a fresh editor, effectively the whole document
+    A->>C: a keystroke, as a Yjs update
+    C-->>B: broadcast to every other socket in the room — never the sender
+    C->>R: PUBLISH on the session's doc channel, for sockets on the other pod
     Note over C: snapshot to Postgres every 30s,<br/>on last disconnect, and before SIGTERM
 ```
 
@@ -213,34 +224,110 @@ next reading target.
 Every numbered arrow above, explained — read through this alongside the
 diagram, in order, so each step lands where it happens:
 
-**B joins first (1–8)**
-- **1** — token came from Firebase directly; the Gateway never issues one, only verifies.
-- **2** — verify → strip/set `X-User-Id` → rate-limit → proxy. Same four steps, every request.
-- **3** — Matching confirms the uid is real via Users, by HTTP.
-- **4** — fetches a question from Questions, HTTP not SQL — schema boundary is a database grant.
-- **5** — atomic Lua script: nobody waiting, so B is enqueued, scored by Redis' own clock.
-- **6** — B's request answered `"waiting"` and closed. Done.
-- **7** — a second, separate connection — proxied like any request, except Matching never finishes it.
-- **8** — the Gateway holds no state here; Matching is what's actually keeping the connection open.
+**B joins first (1–9)**
+- **1** — the ID token came from Firebase directly; the Gateway never issues
+  one, only verifies. It holds Google's public keys and no service-account
+  credential, so a compromised Gateway can read traffic but cannot mint or
+  revoke an identity.
+- **2** — the Gateway's steps, in their real order: delete any inbound
+  `X-User-Id` first, unconditionally — the only way the header exists
+  downstream is that the Gateway set it. Then verify against Google's JWKS —
+  signature, `exp`, `iss`, `aud` (skip `aud` and a validly-signed token for
+  someone *else's* Firebase project walks in) — and set the header from `sub`.
+  Then spend a rate-limit token in a Redis Lua script: 120 refilling at 2/s
+  per user, 60 at 1/s per IP for anonymous callers, failing *open* if Redis is
+  down. Then proxy by prefix, forwarding `X-Request-Id` — the trace id that
+  makes a six-service path debuggable. The note before 3: a retried join
+  returns the existing session instead of touching the queue, which is what
+  makes "call join again" a safe recovery move.
+- **3** — is this uid real? Asked of Users over HTTP (`GET /users/:uid/exists`),
+  never SQL — Matching's database role is refused Users' schema.
+- **4** — find one question for this topic and difficulty (the topic is a
+  Questions tag; it is a `limit=1` list query). Both 3 and 4 run before
+  anything in Redis or Postgres changes, so a sibling outage fails the join
+  cleanly — nothing half-created, nothing to roll back.
+- **5** — one Lua script does check, claim, *or* enqueue as a single atomic
+  operation. Nobody is waiting, so B is enqueued — scored by Redis' own clock,
+  not the caller's, so queue order survives Matching replicas whose clocks
+  disagree. A retried join while already queued is a no-op.
+- **6** — B's request is answered `"waiting"` and closed. (A `queue.joined`
+  event is appended to the Redis event stream on the way — fire-and-forget,
+  for Stats.)
+- **7** — a second, separate request: SSE [server-sent events — an ordinary
+  HTTP response the server declines to finish]. No upgrade, no second
+  protocol, so the Gateway proxies it like anything else and `X-User-Id`
+  arrives as usual. A `: ping` comment line every 20s stops proxies reaping
+  it as idle.
+- **8** — the Gateway holds no state for the stream; Matching owns the open
+  response and writes into it directly.
+- **9** — Matching subscribes to `match:user:<B>` on a dedicated Redis
+  connection [a subscribed ioredis connection can run no other commands].
+  Then the note: it re-reads Postgres and resends the current session if one
+  exists, closing the race where a partner arrived between the join response
+  and this stream opening — an announcement can be repeated, never missed.
 
-**A joins second — same checks, different outcome (9–18)**
-- **9** — A's own join request, independent of B's — A doesn't know B exists yet.
-- **10** — identical Gateway sequence as step 2. No "light" path — every request pays for it.
-- **11–12** — same validate-uid, fetch-question calls Matching makes on *every* join.
-- **13** — same atomic script this time finds B waiting — claims them, removes them from the queue.
-- **14** — session row written to Postgres. Not one transaction with the Redis claim — why `GET /match/status` → `none` is the documented recovery.
-- **15** — Matching publishes on Redis, naming B's uid, not A's.
-- **16** — Redis delivers that back to whichever instance is holding B's stream from step 7.
-- **17** — written directly into that connection — no new request from B.
-- **18** — A gets `"matched"` immediately, as the normal reply to its own request.
+**A joins second — same checks, different outcome (10–19)**
+- **10** — A's own join request, independent of B's — A doesn't know B exists.
+- **11** — identical Gateway treatment as 2. No "light" path exists.
+- **12–13** — the uid check and the question fetch run on *every* join, before
+  the queue is touched — not only for whoever ends up waiting.
+- **14** — the same Lua script now finds B: removes B from the queue and
+  returns B's uid plus how long B waited, measured inside the script — the
+  claim deletes the queue entry, so this is the last moment the wait exists
+  to be read.
+- **15** — the session row is written to Postgres. The Redis claim and this
+  row are *not* one transaction: a crash between them leaves a claimed
+  partner with no session, which is exactly the state `GET /match/status`
+  answering `none` ("call join again") recovers from.
+- **16** — the `matched` announcement is published on *both* users' channels,
+  not just B's — the joiner's own HTTP response can be lost too. The payload
+  names the session and never the partner: sessions are anonymous, and no
+  response anywhere in the flow carries the other person's uid. (A
+  `match.created` also goes to the event stream for Stats.)
+- **17** — Redis delivers it to whichever Matching instance subscribed at 9 —
+  publisher and subscriber can be different processes, which is what lets
+  this work with more than one replica.
+- **18** — written straight into B's still-open response from 7. No new
+  request from B, ever.
+- **19** — A learns the same thing as the ordinary `201` reply to its own
+  request from 10.
 
-**Both connect to Collab (19–26)**
-- **19–20** — both browsers open a WebSocket to `/collab/:sessionId`, through the Gateway.
-- **21** — proxied to Collab, which needs its own header rewrite or `X-User-Id` never arrives.
-- **22** — Collab has no session data of its own, so it asks Matching: is this uid a participant?
-- **23** — the whole document, not a delta — self-contained, merges onto any base.
-- **24–25** — a keystroke lands as a Yjs update, broadcast to every other local socket in the room.
-- **26** — and published on the session's Redis channel, for sockets on the other pod.
+**Both connect to Collab (20–29)**
+- **20–21** — both browsers upgrade to a WebSocket at
+  `/collab/connect?sessionId=…&token=<ID token>`. The token rides the query
+  string because a browser's WebSocket constructor cannot set an
+  `Authorization` header — and the Gateway reads `?token=` only on an actual
+  upgrade, so ordinary routes cannot authenticate that way.
+- **22** — the upgrade opens a second proxied connection whose default
+  forwards almost no headers, so the Gateway's ws proxy has its own
+  header-rewrite hook — without it Collab would 401 every socket, authorized
+  or not.
+- **23** — Collab holds no session data, so before the upgrade completes it
+  asks Matching: is this uid a participant? Authorization lives with whoever
+  owns the record. A "no" is a plain HTTP 403 and the socket never comes into
+  being — and an ended session answers "no", which is what stops finished
+  sessions being rejoined. Then the note: the first socket for a session on a
+  pod builds the room — load the Postgres snapshot, or seed the scaffold from
+  the question's `parts` (fetched from Questions) under one fixed `clientID`
+  so every pod's seed is byte-identical; subscribe to the session's Redis
+  channels; publish a state request that any pod already holding the room
+  answers with the *whole* document — self-contained, merges onto any base.
+- **24** — the server opens sync with step 1: a **state vector** [a compact
+  summary of how much of each client's edits it holds] — not the document —
+  plus everyone's current presence.
+- **25** — A answers with step 2, whatever the server was missing, and sends
+  its own step 1 back.
+- **26** — the server's step 2 in return: everything A is missing — for a
+  fresh editor, effectively the entire document.
+- **27** — a keystroke lands as a Yjs update: a delta naming exactly which
+  (clientID, clock) positions changed.
+- **28** — broadcast to every other open socket in the room — never echoed to
+  the sender, which is why the load script needed `edits_received: count>0`
+  to prove it was measuring anything at all.
+- **29** — and published on the session's doc channel for sockets on other
+  pods — skipped when the update itself arrived *from* Redis, the one check
+  that prevents an infinite republish loop. The final note: snapshots to
+  Postgres every 30 seconds, on last disconnect, and before SIGTERM.
 
 ---
 
