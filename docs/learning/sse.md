@@ -151,7 +151,11 @@ Before the match, there is nothing to connect *to*.
 1. What is SSE, mechanically? *(One normal answer the server never
    finishes; news is more text appended to it; a blank line ends an event.)*
 2. Why does the Gateway need zero special handling for it, when WebSockets
-   needed two settings?
+   needed two settings? *(SSE never switches modes. It is one normal request
+   and one normal answer that simply never ends, so the Gateway's ordinary
+   request forwarding — including its ordinary header handling — already
+   covers it. No second connection type, no second header path, nothing to
+   configure.)*
 3. What's the silent failure, and why can't reading the code catch it?
    *(Buffering in the path; the code is correct — hence a wall-clock test
    through the real Gateway.)*

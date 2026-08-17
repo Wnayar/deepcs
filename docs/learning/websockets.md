@@ -131,12 +131,32 @@ again) and re-sends the document (from the copy saved in Postgres). This is
 why a killed Collab server costs you a two-second reconnect and not your
 work.
 
-**4. Every machine in the path has to cooperate.** A proxy that doesn't
-understand the "switch modes" request will mangle it. The Gateway needed an
-explicit setting (`websocket: true`) to forward these at all — and a second,
-separate setting to keep attaching the "who is this user" header during the
-switch. Missing that second one caused a real bug class: every connection
-rejected as "not logged in", even for people who were.
+**4. Every machine in the path has to cooperate.** This one needs unpacking,
+because it's really two separate settings with two separate failure modes.
+
+First setting: *forward upgrades at all.* Remember what a proxy is: it reads
+your request, then makes its own request onward. A proxy that has never
+heard of "switch modes" treats the upgrade like any normal request — it
+forwards it expecting one answer, then considers the exchange finished. The
+endless two-way traffic that's supposed to follow has no place in its world,
+so the connection dies or hangs. The Gateway's proxy library ignores upgrade
+requests entirely unless told `websocket: true`, which means: "when one of
+these arrives, complete the handshake, open your own connection to the
+target, and run the copy loop."
+
+Second setting: *put the identity header on the second connection too.*
+Recall that connection 2 (Gateway to Collab) carries a request the Gateway
+**writes itself** — it is not the browser's request sliding through. For
+normal requests, one setting tells the proxy which headers to attach to its
+onward request; that's where `X-User-Id` gets added after the token check.
+But the upgrade path is a different piece of code with its **own** header
+setting, and its default attaches almost nothing. Configure headers only
+once — for the normal path — and here is the resulting bug: your token
+verifies fine, the Gateway knows exactly who you are, and then it writes
+Collab a request with no identity on it. Collab reads "no header" as
+"anonymous", and anonymous is never in any session — so **every** socket
+gets rejected as not-logged-in, while login itself is working perfectly.
+The identity wasn't wrong; it was dropped in the middle.
 
 ## The cost, in one paragraph
 
@@ -174,7 +194,11 @@ only if asked.
 2. What are the three phases of a WebSocket's life? *(A normal request asking
    to switch modes, answered with 101; two-way messages; a goodbye carrying a
    close code.)*
-3. Why is the login token in the URL here, and nowhere else?
+3. Why is the login token in the URL here, and nowhere else? *(A browser's
+   WebSocket cannot attach the normal login header — but the handshake is
+   still an HTTP request, and a request can carry a URL. The Gateway accepts
+   a token from the URL only when the request asks to switch modes, so
+   ordinary routes cannot be logged into that way.)*
 4. How can Collab refuse a connection with a plain 403? *(Before the 101 it
    is still just a normal request.)*
 5. Your partner stops receiving your edits but nothing errored. Name two
