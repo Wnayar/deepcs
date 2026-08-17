@@ -3,90 +3,96 @@
 ## The situation you're actually in
 
 You have ~4,100 lines of backend source and ~4,200 lines of system docs and
-ADRs that already explain it well. That ratio matters: **you cannot fail this by not knowing
-enough — you fail it by not being able to retrieve it in the shape a question
-arrives in.**
+ADRs that already explain it well. That ratio matters. **You cannot fail this
+by not knowing enough. You fail it by not being able to pull the right fact
+out when a question arrives in an unexpected shape.**
 
-Docs are organised by *component*. Interviews ask by *scenario* ("what happens
-when two people join at the same millisecond?") and by *decision* ("why not a
-monolith?") and, the one that separates people, by *failure* ("what broke?").
-Same facts, three different indexes. Preparing means building the two indexes
-the docs don't already give you.
+Here's the mismatch. The docs are organised by *part*: one page on the
+Gateway, one on Matching, and so on. Interviews don't ask by part. They ask
+by *scenario* ("what happens when two people join at the same millisecond?"),
+by *decision* ("why not a monolith?"), and — the one that separates people —
+by *failure* ("what broke?"). Same facts, three different ways in. Preparing
+means building those other two ways in, because the docs only give you the
+first.
 
-Rough size of the job: **8–10 hours of active work**, split across 4 sessions.
-Not more. Past that you're re-reading, which feels productive and isn't.
+Rough size of the job: **8–10 hours of active work, split across 4
+sessions.** Not more. Past that you're re-reading, which feels productive and
+isn't.
 
 ---
 
 ## Calibrate first: which interview is this?
 
-Three formats. **Prepare for the deep dive by default** — it is the most common
-and it strictly contains the other two.
+Three formats. **Prepare for the deep dive by default** — it is the most
+common, and it contains the other two completely.
 
 **1. Resume deep dive (assume this).** 30–45 minutes where the interviewer
-picks this project off your resume and drills until they find the edge of what
-you know. Extremely common: Meta, Amazon, most startups, many Google
-team-matching and host-matching conversations. It escalates — *what is it* →
-*how does that part work* → *why that way* → *walk me through the code* → *how
-would you change it*. This needs everything in this guide, **including the code
-session**. You will be asked to explain an implementation, not just a decision.
+picks this project off your resume and drills until they find the edge of
+what you know. Extremely common: Meta, Amazon, most startups, many Google
+team-matching conversations. It escalates in a fixed shape: *what is it*,
+then *how does that part work*, then *why that way*, then *walk me through
+the code*, then *how would you change it*. This needs everything in this
+guide, **including the code session**. You will be asked to explain an
+implementation, not just a decision.
 
-**2. Behavioural story.** 3–5 minutes with 2–4 follow-ups, in a round that is
-mostly about you rather than the system. A strict subset of the deep dive:
-spine (§2), numbers (§6), and the three failure stories. If you're ready for
-the deep dive you are already ready for this.
+**2. Behavioural story.** 3–5 minutes with a few follow-ups, in a round that
+is mostly about you rather than the system. A strict subset of the deep
+dive: the spine (§2), the numbers (§6), and the three failure stories. If
+you're ready for the deep dive you are already ready for this.
 
 **3. System design whiteboard.** The project becomes the starting point for
 "now scale it". Adds §7 on top of everything else.
 
-**What this means for code.** You are not memorising line by line. You are
-making sure that for the four load-bearing files (§3, session 2) you can say
-what the file does, why it's shaped that way, and what would break if it were
-shaped the obvious way instead — and that when asked "how would you add X" you
-can name the files you'd touch. That's §5's *Change it* group, and it is the
-single highest-signal thing in a deep dive, because it can't be faked by
-someone who read a design doc.
+**What this means for code.** You are not memorising lines. For the four
+load-bearing files (§3, session 2), you need three sentences each: what the
+file does, why it's shaped that way, and what would break if it were shaped
+the obvious way instead. And when asked "how would you add X", you need to
+name the files you'd touch. That's §5's *Change it* group, and it is the
+single highest-signal thing in a deep dive — because nobody who only read a
+design doc can do it.
 
-**On Google specifically:** the DS&A rounds are a separate, larger fight and
-this repo does not help you there. Don't let project prep eat that budget.
+**On Google specifically:** the data-structures-and-algorithms rounds are a
+separate, larger fight, and this repo does not help you there. Don't let
+project prep eat that budget.
 
 ---
 
 ## 1. What "solid" means, concretely
 
-Four levels. You want to hit level 4 on three or four topics, and level 3 on
-everything else. Level 4 everywhere is not achievable in your timeframe and
-isn't what's being tested.
+Four levels. You want level 4 on three or four topics, level 3 everywhere
+else. Level 4 everywhere is not achievable in your timeframe, and isn't what
+is being tested.
 
 1. **Names it.** "It's six services with a gateway, Postgres and Redis."
 2. **Explains the mechanism.** "The gateway strips any inbound `X-User-Id`
-   header, verifies the Firebase token against Google's JWKS, and sets its own
-   from `sub`."
-3. **Explains why, including the alternative.** "...and authorization *can't*
-   live there, because the gateway holds no domain data — it can't answer 'is
-   this user in that session'. That's Collab asking Matching."
-4. **Names what it cost, or where it's still wrong.** "The tradeoff is that a
-   revoked user's token stays valid up to an hour, because server-side
-   revocation needs the Admin SDK and a round trip per request. For a shared
+   header, verifies the Firebase token against Google's JWKS, and sets its
+   own from `sub`."
+3. **Explains why, including the alternative.** "...and authorization
+   *can't* live there, because the gateway holds no domain data — it cannot
+   answer 'is this user in that session'. That's Collab asking Matching."
+4. **Names what it cost, or where it's still wrong.** "The tradeoff is that
+   a revoked user's token stays valid up to an hour, because checking
+   revocation server-side needs a round trip on every request. For a shared
    answer doc that's acceptable; with money involved it wouldn't be."
 
-Level 4 is the whole game. It's also the level your docs are already written at
-— `00-overview.md` §5 literally contains that revocation paragraph. Your job is
-retrieval, not authoring.
+Level 4 is the whole game. It is also the level the docs are already written
+at — `00-overview.md` §5 literally contains that revocation paragraph. Your
+job is retrieval, not authoring.
 
 ---
 
 ## 2. The spine: one trace, drawn from memory
 
-Everything hangs off one story. Learn this first and learn it cold, because
-90% of follow-ups are branches off it, and because narrating a path is far
-easier under pressure than reciting a component list.
+Everything hangs off one story: two people join, get matched, and edit
+together. Learn this first and learn it cold, because 90% of follow-ups are
+branches off it — and because telling a story under pressure is far easier
+than reciting a parts list.
 
-**Draw this from a blank page before every study session.** Not read — draw, by
-hand or on a whiteboard. Two boxes for browsers, one for the gateway, five
-behind it, two cylinders. Solid arrows are the request path; **dotted arrows
-are service-to-service calls**, which exist because no service may read
-another's tables.
+**Draw this from a blank page before every study session.** Not read —
+draw, by hand or on a whiteboard. Two boxes for browsers, one for the
+gateway, five behind it, two cylinders. Solid arrows are requests; **dotted
+arrows are one service calling another over HTTP** — those calls exist
+because no service is allowed to read another service's database tables.
 
 ```mermaid
 flowchart TD
@@ -122,44 +128,55 @@ flowchart TD
     RD[("<b>Redis</b><br/>match queue · rate-limit buckets<br/>pub/sub · event stream · cache")]
 ```
 
-Then narrate the path out loud, ~90 seconds. This is the version to rehearse:
+Then say the story out loud, about 90 seconds. This is the version to
+rehearse:
 
-1. Signed-in browser holds a Firebase ID token. It sends
+1. A signed-in browser holds a Firebase ID token [the signed proof of who
+   you are, issued by Firebase when you log in]. It sends
    `POST /match/join {topic, difficulty}`.
-2. **Gateway** strips any inbound `X-User-Id` before anything else, then
-   verifies the token against Google's JWKS — signature, `exp`, `iss`, and
-   `aud` (an unchecked `aud` would accept a validly-signed token minted for a
-   *different* Firebase project) — and sets its own header from `sub`. Spends a
-   rate-limit token in a Redis Lua script (120 tokens refilling at 2/s for an
-   authenticated caller). Proxies to Matching.
-3. **Matching** zod-validates, then calls **Users** over HTTP to check the uid
-   exists — by API call, never by SQL, because the database refuses the
-   cross-schema join — and **Questions** to find a question for that topic and
-   difficulty. Both checks run on *every* join, before anything in Redis or
-   Postgres changes, so a sibling outage fails the request cleanly.
-4. Only then the queue: one Lua script **claims a partner atomically**, or
-   enqueues you. If it claimed one: write the session row to Postgres, publish
-   to Redis so *both* people hear — the waiter through their event stream, the
-   joiner as insurance against a lost response.
-5. The waiting person hears via **server-sent events** — `GET /match/events`,
-   one ordinary HTTP response held open. Not polling. (§5 has the story of why.)
-6. Both browsers open a WebSocket through the Gateway to **Collab**. Collab
-   asks Matching *"is this uid a participant in this session?"* — authorization
-   lives with whoever owns the record, not at the gateway.
-7. Collab holds one **Yjs document** (CRDT — a data structure where concurrent
-   edits merge deterministically without a server ordering them) per session in
-   memory. Edits fan out to other sockets on that pod directly, and to sockets
-   on the *other* pod over a Redis channel per session. Snapshot to Postgres
-   every 30 seconds, on last disconnect, and before SIGTERM.
-8. Reveal needs **both** consents; only then does Matching fetch `reference_md`
-   from Questions over the internal network. The answer never enters the shared
-   document (ADR-06).
-9. Session end appends to a Redis stream; the **Stats** job drains it into
-   summaries. At-least-once delivery, so every write is idempotent and there is
-   no counter column anywhere.
+2. The **Gateway** deletes any `X-User-Id` header the client tried to send —
+   always, before anything else. Then it verifies the token against Google's
+   JWKS [Google's published list of public keys]: the signature, the expiry,
+   the issuer, and the audience. The audience check matters most — without
+   it, a validly-signed token from a *different* Firebase project would be
+   accepted. Then it sets its own `X-User-Id` from the token's subject,
+   spends a rate-limit token (120 per user, refilling at 2 a second), and
+   forwards the request to Matching.
+3. **Matching** checks the request body shape, then makes two HTTP calls
+   before touching anything: asks **Users** "does this uid exist?" — over
+   HTTP, never SQL, because the database refuses cross-schema queries — and
+   asks **Questions** for a question matching the topic and difficulty. Both
+   checks run on *every* join, before anything changes, so an outage in
+   either service fails the request cleanly with nothing to undo.
+4. Only then the queue. One Lua script [a small program Redis runs as one
+   uninterruptible step] either **claims a waiting partner** or adds you to
+   the queue. If it claimed one: write the session row to Postgres, then
+   publish to Redis so *both* people hear — the waiter through their event
+   stream, the joiner as backup in case their own response gets lost.
+5. The waiting person hears through **server-sent events** — one HTTP
+   response held open, `GET /match/events`. Not polling. The full mechanism
+   is [`sse.md`](./sse.md); the story of why polling was removed is drill 25.
+6. Both browsers open a **WebSocket** ([`websockets.md`](./websockets.md))
+   through the Gateway to **Collab**. Collab asks Matching: "is this uid a
+   participant in this session?" — authorization lives with whoever owns the
+   record, not at the gateway.
+7. Collab holds one **Yjs document** per session in memory. Yjs is a CRDT
+   [a data structure where two people's simultaneous edits merge to the same
+   result on every machine, without a server deciding an order]. Edits fan
+   out to the other sockets on that pod directly, and to sockets on the
+   *other* pod over a Redis channel. The document is snapshotted to Postgres
+   every 30 seconds, when the last person disconnects, and before shutdown.
+8. Revealing the reference answer needs **both** people to consent. Only
+   then does Matching fetch `reference_md` from Questions, over the internal
+   network. The answer never enters the shared document (ADR-06).
+9. Ending the session appends an event to a Redis stream; the **Stats** job
+   drains the stream into summary rows. Delivery is at-least-once [the same
+   event can arrive twice], so every write is built to be safe to repeat —
+   which is why there is no counter column anywhere.
 
-The same nine steps as a sequence, which is the shape a deep-dive interviewer
-will keep interrupting. Every arrow here is a question they can stop you on:
+The same nine steps as a sequence, which is the shape a deep-dive
+interviewer will keep interrupting. Every numbered arrow is a place they can
+stop you:
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'sequenceNumberColor': '#111111'}}}%%
@@ -218,117 +235,146 @@ sequenceDiagram
     Note over C: snapshot to Postgres every 30s,<br/>on last disconnect, and before SIGTERM
 ```
 
-**Verify you have the spine:** narrate all nine steps to a wall, no notes, in
+**Verify you have the spine:** say all nine steps to a wall, no notes, in
 under two minutes, twice in a row. If you stall at a step, that step is your
 next reading target.
 
-Every numbered arrow above, explained — read through this alongside the
-diagram, in order, so each step lands where it happens:
+Every numbered arrow, explained. Read this alongside the diagram, in order,
+so each step lands where it happens.
 
 **B joins first (1–9)**
-- **1** — the ID token came from Firebase directly; the Gateway never issues
-  one, only verifies. It holds Google's public keys and no service-account
-  credential, so a compromised Gateway can read traffic but cannot mint or
-  revoke an identity.
-- **2** — the Gateway's steps, in their real order: delete any inbound
-  `X-User-Id` first, unconditionally — the only way the header exists
-  downstream is that the Gateway set it. Then verify against Google's JWKS —
-  signature, `exp`, `iss`, `aud` (skip `aud` and a validly-signed token for
-  someone *else's* Firebase project walks in) — and set the header from `sub`.
-  Then spend a rate-limit token in a Redis Lua script: 120 refilling at 2/s
-  per user, 60 at 1/s per IP for anonymous callers, failing *open* if Redis is
-  down. Then proxy by prefix, forwarding `X-Request-Id` — the trace id that
-  makes a six-service path debuggable. The note before 3: a retried join
-  returns the existing session instead of touching the queue, which is what
-  makes "call join again" a safe recovery move.
-- **3** — is this uid real? Asked of Users over HTTP (`GET /users/:uid/exists`),
-  never SQL — Matching's database role is refused Users' schema.
-- **4** — find one question for this topic and difficulty (the topic is a
-  Questions tag; it is a `limit=1` list query). Both 3 and 4 run before
-  anything in Redis or Postgres changes, so a sibling outage fails the join
-  cleanly — nothing half-created, nothing to roll back.
-- **5** — one Lua script does check, claim, *or* enqueue as a single atomic
-  operation. Nobody is waiting, so B is enqueued — scored by Redis' own clock,
-  not the caller's, so queue order survives Matching replicas whose clocks
-  disagree. A retried join while already queued is a no-op.
-- **6** — B's request is answered `"waiting"` and closed. (A `queue.joined`
-  event is appended to the Redis event stream on the way — fire-and-forget,
-  for Stats.)
-- **7** — a second, separate request: SSE [server-sent events — an ordinary
-  HTTP response the server declines to finish]. No upgrade, no second
-  protocol, so the Gateway proxies it like anything else and `X-User-Id`
-  arrives as usual. A `: ping` comment line every 20s stops proxies reaping
-  it as idle.
-- **8** — the Gateway holds no state for the stream; Matching owns the open
-  response and writes into it directly.
-- **9** — Matching subscribes to `match:user:<B>` on a dedicated Redis
-  connection [a subscribed ioredis connection can run no other commands].
-  Then the note: it re-reads Postgres and resends the current session if one
-  exists, closing the race where a partner arrived between the join response
-  and this stream opening — an announcement can be repeated, never missed.
+
+- **1** — The ID token came from Firebase directly. The Gateway never issues
+  tokens — it only checks them. It holds Google's *public* keys and no
+  secret credential, so even a fully hacked Gateway could read traffic but
+  could not create or revoke an identity.
+- **2** — The Gateway's steps, in their real order. First: delete any
+  `X-User-Id` header the client sent. Always, unconditionally — this is what
+  makes the header trustworthy, because the only way it can exist downstream
+  is that the Gateway itself wrote it. Second: verify the token — signature,
+  expiry, issuer, audience. Skip the audience check and a validly-signed
+  token for someone *else's* Firebase project walks straight in. Third: set
+  `X-User-Id` from the token's subject. Fourth: spend a rate-limit token —
+  each user gets a bucket of 120, refilling at 2 per second; anonymous
+  callers share a bucket per IP address (60, refilling at 1). If Redis is
+  down, the limiter lets requests through rather than blocking everything —
+  it "fails open". Then forward by URL prefix, attaching `X-Request-Id`
+  [an id stamped on the request so its log lines can be found later].
+  And the note before arrow 3: Matching first checks whether you are
+  *already* in an active session, and if so hands that same session back —
+  so retrying a join can never create a duplicate. That is what makes "just
+  call join again" safe recovery advice.
+- **3** — "Is this uid real?" Asked of Users over HTTP. It cannot be asked
+  with SQL: Matching's database login is refused access to Users' tables.
+- **4** — Find one question for this topic and difficulty. The topic is just
+  a tag on questions; the call is a list query with `limit=1`. Notice both
+  arrow 3 and arrow 4 happen *before* anything in Redis or Postgres changes.
+  So if Users or Questions is down, the join fails cleanly — nothing was
+  half-created, nothing needs undoing.
+- **5** — One Lua script does the whole queue interaction as a single
+  uninterruptible step: check for a waiting partner, claim one, *or* add
+  yourself. Nobody is waiting, so B is added — timestamped by Redis' own
+  clock, not the caller's, so queue order stays correct even if two Matching
+  servers disagree about the time. Calling join again while already queued
+  does nothing.
+- **6** — B's request is answered `"waiting"` and closed. (On the way out, a
+  `queue.joined` event is dropped onto the Redis event stream for Stats —
+  fire-and-forget, meaning a Redis hiccup there can never fail B's request.)
+- **7** — A second, separate request: the SSE stream. One ordinary HTTP
+  response the server never finishes ([`sse.md`](./sse.md)). Because it's
+  ordinary HTTP, the Gateway proxies it with zero special handling and the
+  identity header arrives as usual. A comment line every 20 seconds keeps
+  machines in the middle from hanging up a quiet connection.
+- **8** — The Gateway keeps no state for the stream. It's Matching that
+  holds the response open and writes into it.
+- **9** — Matching subscribes to B's personal Redis channel,
+  `match:user:B`, on a dedicated Redis connection [a subscribed Redis
+  connection can do nothing else, so each stream gets its own]. Then the
+  note: it re-checks Postgres and resends the current session if one exists.
+  That closes a race — a partner could have arrived in the gap between B's
+  join answer and this stream opening, published to a channel nobody was on
+  yet. With the re-check, news can arrive twice but can never be missed, and
+  twice is harmless because the browser acts on a session id.
 
 **A joins second — same checks, different outcome (10–19)**
-- **10** — A's own join request, independent of B's — A doesn't know B exists.
-- **11** — identical Gateway treatment as 2. No "light" path exists.
-- **12–13** — the uid check and the question fetch run on *every* join, before
-  the queue is touched — not only for whoever ends up waiting.
-- **14** — the same Lua script now finds B: removes B from the queue and
-  returns B's uid plus how long B waited, measured inside the script — the
-  claim deletes the queue entry, so this is the last moment the wait exists
-  to be read.
-- **15** — the session row is written to Postgres. The Redis claim and this
-  row are *not* one transaction: a crash between them leaves a claimed
-  partner with no session, which is exactly the state `GET /match/status`
-  answering `none` ("call join again") recovers from.
-- **16** — the `matched` announcement is published on *both* users' channels,
-  not just B's — the joiner's own HTTP response can be lost too. The payload
-  names the session and never the partner: sessions are anonymous, and no
-  response anywhere in the flow carries the other person's uid. (A
-  `match.created` also goes to the event stream for Stats.)
-- **17** — Redis delivers it to whichever Matching instance subscribed at 9 —
-  publisher and subscriber can be different processes, which is what lets
-  this work with more than one replica.
-- **18** — written straight into B's still-open response from 7. No new
-  request from B, ever.
-- **19** — A learns the same thing as the ordinary `201` reply to its own
-  request from 10.
+
+- **10** — A's own join request. Independent of B's; A has no idea B exists.
+- **11** — Identical Gateway treatment as arrow 2. There is no shortcut
+  path — every request pays the full toll.
+- **12–13** — The uid check and the question fetch run on *every* join,
+  before the queue is touched. Not just for whoever ends up waiting.
+- **14** — The same Lua script runs — and this time finds B waiting. It
+  removes B from the queue and returns two things: B's uid, and how long B
+  waited. The wait is measured inside the script because the claim deletes
+  the queue entry — this is the last instant the number exists to be read.
+- **15** — The session row is written to Postgres. Important: the Redis
+  claim (arrow 14) and this row are *not* one transaction. A crash between
+  them leaves B claimed out of the queue but with no session existing. That
+  exact state is what `GET /match/status` answering `none` detects — and the
+  recovery is "call join again", which arrow 2's note made safe.
+- **16** — The "matched" announcement is published on *both* users'
+  channels, not just B's. Why both? A's own HTTP response could also get
+  lost in transit, so A gets a backup copy too. The announcement names the
+  session and never the partner — sessions are anonymous, and nothing in the
+  whole flow ever tells you the other person's uid. (A `match.created` event
+  also goes onto the event stream for Stats.)
+- **17** — Redis delivers the message to whichever Matching instance
+  subscribed at arrow 9. Publisher and subscriber can be different
+  processes on different machines — that's what makes this work with more
+  than one replica of Matching.
+- **18** — Written straight into B's still-open response from arrow 7. B
+  sends no new request, ever.
+- **19** — A learns the same thing the boring way: as the `201` reply to its
+  own join request.
 
 **Both connect to Collab (20–29)**
-- **20–21** — both browsers upgrade to a WebSocket at
-  `/collab/connect?sessionId=…&token=<ID token>`. The token rides the query
-  string because a browser's WebSocket constructor cannot set an
-  `Authorization` header — and the Gateway reads `?token=` only on an actual
-  upgrade, so ordinary routes cannot authenticate that way.
-- **22** — the upgrade opens a second proxied connection whose default
-  forwards almost no headers, so the Gateway's ws proxy has its own
-  header-rewrite hook — without it Collab would 401 every socket, authorized
-  or not.
-- **23** — Collab holds no session data, so before the upgrade completes it
-  asks Matching: is this uid a participant? Authorization lives with whoever
-  owns the record. A "no" is a plain HTTP 403 and the socket never comes into
-  being — and an ended session answers "no", which is what stops finished
-  sessions being rejoined. Then the note: the first socket for a session on a
-  pod builds the room — load the Postgres snapshot, or seed the scaffold from
-  the question's `parts` (fetched from Questions) under one fixed `clientID`
-  so every pod's seed is byte-identical; subscribe to the session's Redis
-  channels; publish a state request that any pod already holding the room
-  answers with the *whole* document — self-contained, merges onto any base.
-- **24** — the server opens sync with step 1: a **state vector** [a compact
-  summary of how much of each client's edits it holds] — not the document —
-  plus everyone's current presence.
-- **25** — A answers with step 2, whatever the server was missing, and sends
-  its own step 1 back.
-- **26** — the server's step 2 in return: everything A is missing — for a
-  fresh editor, effectively the entire document.
-- **27** — a keystroke lands as a Yjs update: a delta naming exactly which
-  (clientID, clock) positions changed.
-- **28** — broadcast to every other open socket in the room — never echoed to
-  the sender, which is why the load script needed `edits_received: count>0`
-  to prove it was measuring anything at all.
-- **29** — and published on the session's doc channel for sockets on other
-  pods — skipped when the update itself arrived *from* Redis, the one check
-  that prevents an infinite republish loop. The final note: snapshots to
-  Postgres every 30 seconds, on last disconnect, and before SIGTERM.
+
+- **20–21** — Both browsers upgrade to a WebSocket at
+  `/collab/connect?sessionId=…&token=…`. The token rides the URL because a
+  browser's WebSocket cannot attach the normal login header — and the
+  Gateway accepts a token there *only* on upgrade requests, so normal routes
+  can't be authenticated that way.
+- **22** — The upgrade means the Gateway opens a second connection of its
+  own to Collab and copies messages between the two ([`websockets.md`](./websockets.md)
+  has the full picture). That second connection carries a request the
+  Gateway composes itself, and by default it would carry almost no headers —
+  so the ws proxy has its own separate header-rewrite step. Without it,
+  Collab would see no `X-User-Id` and reject every socket, logged-in or not.
+- **23** — Collab holds no session data of its own, so before agreeing to
+  the upgrade it asks Matching: "is this uid a participant in this
+  session?" The rule behind this: authorization lives with whoever owns the
+  record. A "no" is a plain HTTP 403 and the socket never comes into
+  existence. An *ended* session also answers "no" — which is the entire
+  mechanism stopping finished sessions from being rejoined.
+  Then the note: if this is the first socket for this session on this pod,
+  the pod builds the room. It loads the saved snapshot from Postgres — or,
+  for a brand-new session, builds the starting text from the question's
+  parts, under one fixed Yjs client id so every pod builds byte-identical
+  starting text. It subscribes to the session's Redis channels. And it
+  publishes a "who has current state?" request that any *other* pod already
+  holding this room answers with the whole document.
+- **24** — The server opens the sync with **step 1: a state vector** [a
+  compact summary of "how much of each person's edits I already have"] —
+  not the document itself. It also sends everyone's current presence
+  (cursors).
+- **25** — A replies with step 2 — whatever the server was missing — and
+  sends its own step 1 back, asking the same question in the other
+  direction.
+- **26** — The server's step 2 in return: everything A is missing. For a
+  browser that just connected with an empty editor, that is effectively the
+  whole document.
+- **27** — A keystroke travels as a Yjs update: a small delta saying exactly
+  which positions changed, not the whole text.
+- **28** — Collab sends it to every *other* open socket in the room. Never
+  back to the sender — there is no echo. (That detail once mattered a lot:
+  the load test was originally written to measure an echo that doesn't
+  exist, and §6 story 2 is what that taught.)
+- **29** — And publishes it on the session's Redis channel, for sockets
+  attached to the other pod. One guard here: if the update itself *arrived*
+  from Redis, it is not re-published — that single check is what prevents an
+  infinite loop of two pods forwarding each other the same edit forever.
+  The final note: the document is saved to Postgres every 30 seconds, when
+  the last socket disconnects, and before the process shuts down.
 
 ---
 
@@ -337,78 +383,83 @@ diagram, in order, so each step lands where it happens:
 Each session has a verify step. Don't move on until it passes.
 
 ### Session 1 — the shape (2h)
-Read `docs/system/00-overview.md` end to end, slowly. It is the whole system.
-Then skim all ten ADR filenames and read only **ADR-01** (why six services)
-and **ADR-09** (one DB, schema per service).
+Read `docs/system/00-overview.md` end to end, slowly. It is the whole
+system. Then skim all ten ADR filenames and read only **ADR-01** (why six
+services) and **ADR-09** (one database, one schema per service).
 
-→ **Verify:** draw the diagram from blank, then narrate the spine. Both from
+→ **Verify:** draw the diagram from blank, then say the spine. Both from
 memory. Expect to fail the first attempt; do it again the same evening.
 
 ### Session 2 — the two hard bits (2h) — *this is the deep-dive session*
-The concurrency is concentrated in two Lua scripts and one CRDT. Read the code,
-not just the docs. These are the places a deep dive goes, they are where the
-project's actual difficulty lives, and they are small:
+The concurrency lives in two Lua scripts and one CRDT. Read the code, not
+just the docs. These are where a deep dive goes, they are where the
+project's real difficulty lives, and they are small:
 
-- `services/gateway/src/rate-limit.ts` (147 lines) — token bucket in Lua. Why
-  Lua: read-modify-write across multiple Redis commands isn't atomic, so two
-  requests can each read 1 token remaining and both spend it. Lua runs as one
-  operation on the server.
+- `services/gateway/src/rate-limit.ts` (147 lines) — the token bucket in
+  Lua. Why Lua: reading and then writing a counter as two separate Redis
+  commands leaves a gap where two requests both read "1 token left" and both
+  spend it. A Lua script runs on the Redis server as one uninterruptible
+  step, so the gap cannot exist.
 - `services/matching/src/queue.ts` (90 lines) — the atomic pair claim. Same
-  class of problem: two users joining at the same instant race for the same
+  shape of problem: two people joining at the same instant race for the same
   partner.
 - `services/collab/src/rooms.ts` (608 lines, the biggest file) — rooms, the
-  Redis fan-out between pods, the state reply, snapshots.
-- `packages/shared/src/service.ts` (168 lines) — the four shared HTTP concerns
-  in one place so no service can skip one.
+  Redis fan-out between pods, the whole-document state reply, snapshots.
+- `packages/shared/src/service.ts` (168 lines) — the four things every HTTP
+  service owes (structured logs, request ids, the two health endpoints,
+  graceful shutdown), in one place so no service can quietly skip one.
 
-→ **Verify:** two things. (a) Explain why each Lua script exists, naming the
-exact race it prevents and the symptom you'd see without it. (b) Open each of
-the four files and talk through it for 60 seconds with the file *closed*
-afterwards — what it does, why it's shaped that way, what breaks if it's shaped
-the obvious way instead. If you can't do (b), you are not ready for a deep
+→ **Verify:** two things. (a) For each Lua script, explain the exact race it
+prevents and what you would *see* happen without it. (b) Open each of the
+four files, talk through it for 60 seconds, then close it and do the same
+from memory — what it does, why it's shaped that way, what breaks if it's
+shaped the obvious way. If you can't do (b), you are not ready for a deep
 dive, however well §5 is going.
 
 ### Session 3 — the numbers and their conditions (2h)
-Read `docs/system/09-running-it.md` end to end. This is your differentiator and
-also your biggest risk — every number here has a condition attached and
-quoting one without its condition is the one way to look worse than someone who
-measured nothing.
+Read `docs/system/09-running-it.md` end to end. This is your differentiator
+and also your biggest risk: every number has a condition attached, and
+quoting a number without its condition is the one way to look worse than
+someone who measured nothing.
 
-Memorise exactly four figures and their conditions (§6 below). Not the table.
+Memorise exactly four figures and their conditions (§6 below). Not the
+table.
 
-→ **Verify:** for each of the four, state the number *and* whether it travels
-off your laptop, *and* why.
+→ **Verify:** for each of the four, say the number, *and* whether it stays
+true off your laptop, *and* why.
 
 ### Session 4 — drills (2–4h, spread over days)
-Work §5's question bank out loud. Not reading the answers — answering first,
-then checking. Anything you get wrong, note the page it lives in and re-drill
-it two days later. This is the session that actually creates recall; the first
-three only create familiarity.
+Work §5's question bank out loud. Answer first, then check — not the other
+way around. Anything you get wrong, note which page it lives in and re-drill
+it two days later. This is the session that actually creates recall; the
+first three only create familiarity.
 
 ---
 
 ## 4. The method (this is the part people skip)
 
-- **Answer before you look.** Reading an answer you'd have got right is wasted
-  time; the retrieval attempt is what builds the memory, not the reading.
+- **Answer before you look.** Reading an answer you would have gotten right
+  is wasted time. The act of *trying to retrieve* is what builds the memory,
+  not the reading.
 - **Out loud, standing up.** Interview answers are spoken. An answer that is
-  clear in your head and mush in your mouth is not prepared. You will discover
-  three sentences you can't actually say.
+  clear in your head and mush in your mouth is not prepared. You will
+  discover three sentences you cannot actually say.
 - **Spaced, not massed.** Four 2-hour sessions across four days beats one
-  8-hour day by a wide margin. You have the deadline pressure; this is where
-  the pressure gets paid back.
-- **Two days before, do a cold run.** Diagram from blank, spine narrated, ten
-  random drill questions. Whatever fails is your last-day list.
+  8-hour day by a wide margin.
+- **Two days before, do a cold run.** Diagram from blank, spine out loud,
+  ten random drill questions. Whatever fails is your last-day list.
 
 ---
 
 ## 5. The drill bank
 
-Answer out loud. The pointer is where to check, not where to read first.
+Answer out loud first. The pointer says where to check — not where to read
+first.
 
 ### Opening / scope
-1. What is deepcs, in 30 seconds? *(Roadmap of nine CS topics; read a lesson
-   alone or get matched and solve its questions live in a shared editor.)*
+1. What is deepcs, in 30 seconds? *(A roadmap of nine CS topics; read a
+   lesson alone, or get matched with a stranger and work through questions
+   together in a shared editor.)*
 2. Why is the roadmap the front door rather than the question bank?
    → overview §1
 3. What's deliberately *not* in it, and why? → overview §1 ("Not in scope")
@@ -416,273 +467,364 @@ Answer out loud. The pointer is where to check, not where to read first.
    ~4,100 lines of backend source.)*
 
 ### Architecture
-5. Why six services and not one? What's the actual forcing function?
-   *(Collab: one WebSocket holds a slot for a whole session; bundling it with
-   the question bank means idle sockets starve browse requests, and the two
-   scale on incompatible signals.)* → overview §2
-6. Two of the six aren't really "splits". Which, and why? *(Gateway is a
-   position; Stats is a job plus the read surface for what the job wrote.)*
+5. Why six services and not one? What's the actual forcing reason?
+   *(Collab. One WebSocket occupies a connection slot for a whole session.
+   Bundle that with the question bank, and enough idle editing sessions
+   starve people just trying to browse — the two workloads grow on signals
+   that have nothing to do with each other.)* → overview §2
+6. Two of the six aren't really "splits". Which, and why? *(The Gateway is a
+   position — the one front door — not a domain. Stats is a background job
+   plus a read API for what the job wrote.)*
 7. **Which services would you merge if you were being strict?** *(Users,
-   Questions, Matching — same request shape, failure domain and deploy
-   cadence.)* Have the honest answer ready: kept separate for independent
-   deployability and because operating a distributed system is what the project
-   exists to teach. → ADR-01
-8. Why one Postgres with a schema per service, not a database per service?
-   *(Cross-service atomicity; database-per-service forces a saga.)* → ADR-09
+   Questions, Matching — same request shape, same failure blast radius, same
+   release rhythm.)* Have the honest follow-up ready: they stayed separate
+   because operating a distributed system is what this project exists to
+   teach. → ADR-01
+8. Why one Postgres with a schema [a named group of tables with its own
+   permissions] per service, instead of a separate database per service?
+   *(One database can update rows for two services in a single transaction.
+   Separate databases can't — you'd need a saga [a chain of compensating
+   steps that undo earlier writes when a later one fails], which is a lot of
+   machinery this project doesn't need.)* → ADR-09
 9. Why is the boundary enforced by the database rather than by code review?
-   *(A role per service; a cross-schema query is refused. There's an
-   integration test asserting the refusal.)*
-10. What are the *costs* of the split? *(A match request chains four processes
-    — four hops, four chances to hit a rescheduled pod. Accepted, not
-    mitigated; which is why cross-service calls are validation-only and never
-    on the browse path.)* → overview §6
+   *(Each service logs into Postgres as its own role, and each role is
+   simply refused access to the other schemas. A cross-schema query isn't a
+   style violation — it's an error the database throws. A test asserts the
+   refusal.)*
+10. What are the *costs* of the split? *(A match request chains four
+    processes — Gateway, Matching, Users, Questions. Four network hops, four
+    chances to hit a pod that's mid-restart. Accepted, not mitigated — and
+    the reason cross-service calls are kept to quick validations, never on
+    the browsing path.)* → overview §6
 
 ### Auth (highest-yield area — security questions are common and this is tidy)
 11. Walk through what happens to a request's identity, end to end.
-12. Why is authentication at the gateway but authorization *not*?
-13. What exactly makes `X-User-Id` trustworthy? *(Two halves: the gateway
-    strips any inbound copy, **and** nothing else is publicly reachable. Both
-    required. If any service gained ingress it's an authentication bypass — so
-    the ingress setting is a security control, not a deployment detail.)*
-14. What's the danger with the *public* routes? *(`X-User-Id` is absent, and
-    absent must be read as anonymous, never as "skip the check" — the same
-    header-forgery mistake from the other direction.)*
-15. Why buy auth but build the gateway? *(Same test: build what has a
-    concurrency or distributed-systems problem inside it, buy what is risk
-    without insight.)* → ADR-04, ADR-08
-16. **What does buying auth cost you?** *(A revoked user's token stays valid up
-    to an hour; server-side revocation needs a round trip per request.)*
-17. Why does `aud` matter? *(Without it you accept a validly-signed token
-    issued for a different Firebase project.)*
+12. Why is authentication [proving who you are] at the gateway, but
+    authorization [deciding what you may do] *not*?
+13. What exactly makes `X-User-Id` trustworthy? *(Two halves, both
+    required: the gateway deletes any copy a client sends, **and** no other
+    service can be reached from outside at all. If any service gained a
+    door to the internet, a client could hand it a forged header directly —
+    so "only the Gateway is exposed" is a security control, not a
+    deployment detail.)*
+14. What's the danger with the *public* routes? *(There, `X-User-Id` is
+    absent — and absent must mean "anonymous person", never "skip the
+    check". Reading absence as permission is the same header-forgery
+    mistake from the other direction.)*
+15. Why buy auth but build the gateway? *(One test, applied twice: build
+    what has a concurrency or distributed-systems problem inside it — the
+    gateway has the rate limiter. Buy what is pure risk with no insight —
+    password storage teaches nothing and one mistake is a breach.)*
+    → ADR-04, ADR-08
+16. **What does buying auth cost you?** *(A revoked user's token stays
+    valid for up to an hour, because checking revocation on every request
+    would mean a round trip to Firebase every time.)*
+17. Why does the audience check matter? *(Google signs every Firebase
+    project's tokens with the same keys. Without checking which project a
+    token was issued *for*, a valid token from any other Firebase app in
+    the world would log its holder into yours.)*
 
 ### Concurrency (go deep here — it's what the project is *for*)
 18. Two users join the same queue in the same millisecond. What stops them
-    claiming each other's partner? Why can't this be done in application code?
-19. Why is the rate-limit bucket in Redis and not in memory?
-    *(More replicas than one, and a single Node process is one event loop —
-    in-memory state would give each replica its own bucket.)*
-20. Why a CRDT rather than operational transforms? → ADR-02
-21. Two Collab pods, one session. How does an edit on pod A reach a socket on
-    pod B? *(Redis channel per session.)*
-22. **The claim (Redis) and the session row (Postgres) are not one transaction.
-    What happens if it crashes between them?** *(`GET /match/status` answering
-    `none` is the documented recovery, and `Match.tsx` has a crash-recovery
-    timer for a lost pair claim.)* This is a great question to be asked — you
-    already know the gap and named the recovery.
-23. How does one Node process handle 250 sockets? *(Single thread, event loop;
-    an `await` saves locals and a resume point into a heap object; the waiting
-    is one `epoll_wait` syscall, not a thread per socket. Concurrency without
-    parallelism.)* → overview §6
-24. What would break that? *(A CPU-bound stretch with no `await` — the loop
-    can't interrupt it because there's no other thread to interrupt it with.
-    p95 rises instance-wide and `/health/ready` can't answer either. bcrypt at
-    ~250ms would have been exactly this; ADR-04 moved it to Firebase, so no
-    CPU-bound work sits on any request path.)*
+    both claiming the same partner? Why can't application code fix this?
+    *(Two Node processes on two machines can both read "B is waiting"
+    before either removes B. No lock inside one process helps — the two
+    processes share nothing. The fix has to live where the single copy of
+    the queue lives: Redis runs the check-and-claim Lua script one at a
+    time, so the overlap cannot happen.)*
+19. Why is the rate-limit bucket in Redis and not in the gateway's memory?
+    *(There are two gateway replicas. In-memory buckets would mean each
+    replica keeps its own count, and a client bouncing between them gets
+    double the allowance. The count has to live in the one place both
+    replicas share.)*
+20. Why a CRDT rather than operational transforms [the other collaborative-
+    editing approach, where a central server rewrites each edit against the
+    ones that beat it there]? → ADR-02
+21. Two Collab pods, one session. How does an edit on pod A reach a socket
+    on pod B? *(Each room subscribes to a Redis channel for its session;
+    pod A publishes the update, pod B receives and re-broadcasts to its own
+    sockets.)*
+22. **The claim (Redis) and the session row (Postgres) are not one
+    transaction. What happens if the process crashes between them?** *(B is
+    out of the queue but no session exists. `GET /match/status` answers
+    `none`, which means "call join again" — and joining again is safe by
+    design. The frontend's `Match.tsx` has a timer that does exactly this.)*
+    This is a great question to get — you already know the gap and named
+    the recovery.
+23. How does one Node process hold 250 sockets? *(One thread. When code
+    hits an `await`, its local variables and resume point are saved as a
+    small object on the heap, and the thread moves on. The actual waiting
+    is one `epoll_wait` call [the Linux syscall meaning "sleep until any of
+    these connections has data"] — not 250 threads. Many things in flight,
+    one thing executing.)* → overview §6
+24. What would break that? *(Any long CPU-bound stretch with no `await` in
+    it. The event loop can't interrupt running code — there is no second
+    thread to take over — so every socket and even the health endpoint
+    stalls behind it. Password hashing at ~250ms per check would have been
+    exactly this; ADR-04 moved it to Firebase, so no CPU-heavy work sits on
+    any request path.)*
 
 ### Real-time delivery
 25. How does a waiting user find out they were matched? Why not polling?
-    *(Polling kept every layer awake for people who were only waiting; slowing
-    it enough to afford made a partner's arrival up to 20s late. Now SSE.)*
-26. What's the failure mode of SSE and how is it caught? *(Silent: anything in
-    the path that buffers turns the stream into one long pause then everything
-    at once — request succeeds, headers right, events never arrive. Can't be
-    caught by reading code, so it's a wall-clock assertion through the gateway
-    in `frontend/src/matchEvents.test.ts`.)*
-27. Is an open SSE stream free? *(No — it holds a concurrency slot for its
-    life, so one is opened only by somebody actually waiting, and given up
-    after 15 minutes.)*
+    *(Polling kept the Gateway, Matching and the database busy answering
+    "no" thousands of times, and slowing it down enough to afford made the
+    news up to twenty seconds late. Now: one SSE stream, told the moment it
+    happens. The mechanism is [`sse.md`](./sse.md).)*
+26. What's the failure mode of SSE and how is it caught? *(Silent
+    buffering: anything in the path that collects the response before
+    forwarding turns the stream into one long pause, then everything at
+    once. Nothing errors — the code is correct, the path is broken — so no
+    unit test can catch it. The defence is a wall-clock test through the
+    real Gateway: publish, and assert the event arrives within
+    milliseconds. `frontend/src/matchEvents.test.ts`.)*
+27. Is an open SSE stream free? *(No. It occupies a connection slot on the
+    Gateway and on Matching for its whole life. So one is opened only by
+    somebody actually waiting, and the browser gives up after 15 minutes.)*
 
 ### Data & events
 28. Why are reference answers never in the shared document? → ADR-06
-29. Why Redis Streams for events, and why is every write idempotent?
-    *(At-least-once delivery; idempotency is what converts at-least-once into
-    effectively-exactly-once. No counter column anywhere.)* → ADR-07
-30. Cursor pagination rather than `OFFSET` — why? *(OFFSET makes the database
-    walk and discard the skipped rows, and a row inserted mid-scroll shifts
-    every later page.)*
+29. Why Redis Streams for events, and why is every Stats write safe to
+    repeat? *(Delivery is at-least-once — a crash mid-processing means the
+    same event arrives again. Writes keyed by a natural id (session id,
+    user id) just overwrite the same row on a repeat. A counter column is
+    the one shape that can't be saved: adding 1 twice is wrong, no matter
+    how careful the code is. Hence: no counter columns anywhere.)* → ADR-07
+30. Cursor pagination rather than `OFFSET` — why? *(`OFFSET 500` makes the
+    database walk and throw away 500 rows to reach yours, and a row
+    inserted while you scroll shifts every later page by one — you see
+    duplicates or miss rows. A cursor says "give me rows after this id",
+    which is a cheap indexed lookup and unaffected by inserts behind it.)*
 
 ### Ops
-31. What does Kubernetes give you that compose doesn't? *(Rolling updates and
-    self-healing — the two behaviours compose cannot show.)*
+31. What does Kubernetes give you that compose doesn't? *(Rolling updates
+    and self-healing — replacing pods one at a time with no gap, and
+    restarting what dies. The two behaviours compose cannot show.)*
 32. Why is there no deployment? → §6 below, and ADR-05
-33. What makes a rolling update lossless? *(Readiness probes: a pod failing
-    `/health/ready` is removed from the Service endpoints.)*
+33. What makes a rolling update lossless? *(Readiness probes. A pod that
+    fails `/health/ready` is removed from the list of pods receiving
+    traffic before it's touched, and a new pod isn't added until it passes.
+    Requests only ever land on pods that answered "ready".)*
 34. Why are `/health/live` and `/health/ready` separate endpoints?
-35. What's the highest-value line in the Dockerfile? *(The `manifests` stage
-    copying every `package.json` by name — the root plus the eight workspace
-    manifests — rather than `COPY . .`. Docker invalidates a cached layer when
-    any copied file changes, so `COPY . .` + `pnpm install` reinstalls
-    everything whenever you edit a `.ts` file.)*
-36. Why does CI run the built image and curl `/health/ready` when typecheck and
-    tests already passed? *(Because it once passed with a bundle that died at
-    import — `tsup` exits 0 on a broken bundle and `pnpm test` runs from source
-    and never touches `dist/`. A green build is not a working artifact.)*
+    *(They answer different questions. Live: "is this process stuck? if so
+    restart it." Ready: "may traffic come here yet?" A service still
+    connecting to Postgres is live but not ready — conflate the two and
+    the orchestrator kills healthy processes that are merely starting.)*
+35. What's the highest-value line in the Dockerfile? *(The `manifests`
+    stage copying every `package.json` by name — the root plus the eight
+    workspace manifests — rather than `COPY . .`. Docker re-runs a cached
+    step when any file it copied changes, so `COPY . .` before the
+    dependency install means every code edit re-installs everything.
+    Copying only the manifest files keys the install step to dependency
+    changes alone.)*
+36. Why does CI run the built image and curl `/health/ready` when typecheck
+    and tests already passed? *(Because green once shipped a bundle that
+    died at import: the bundler exits 0 even when its output is broken, and
+    the tests run from source and never touch the built output. A green
+    build is not a working artifact — the only proof is running the thing
+    you actually ship.)*
 
 ### Testing
-37. Why real Postgres and Redis rather than mocks? *(The properties under test
-    are a Lua script's atomicity, a role being refused a schema, cursor
-    pagination not skipping rows. A mock only proves it agrees with itself —
-    it would happily confirm a racy rate limiter works.)*
+37. Why real Postgres and Redis rather than mocks? *(The properties under
+    test are a Lua script running atomically, a database role being
+    refused, pagination not skipping rows. A mock only proves the code
+    agrees with itself — it would happily confirm a racy rate limiter
+    works.)*
 38. Why no coverage target? *(A percentage pushes effort toward whatever is
-    easiest to cover, which is rarely where this breaks.)*
-39. **What isn't tested?** *(No end-to-end test of sign-in → summary. The
-    pieces are covered, nothing joins them. A gap, not a decision.)* Say this
-    unprompted if asked "what would you do next" — it reads as ownership.
+    easiest to cover, which is rarely where this system breaks.)*
+39. **What isn't tested?** *(No end-to-end test of sign-in through to
+    summary. Every piece is covered; nothing joins them. A gap, not a
+    decision.)* Say this unprompted if asked "what would you do next" — it
+    reads as ownership.
 
 ### Change it (deep-dive specific, and the highest-signal group here)
-These cannot be answered by someone who read a design doc. They are the
-questions that separate "I built this" from "I was near this", so drill them
-hardest. Name **files**, not concepts.
+These cannot be answered by someone who read a design doc. They separate
+"I built this" from "I was near this", so drill them hardest. Name
+**files**, not concepts.
 
-40. **How would you add a seventh event type?** *(Three places, and missing any
-    one is the bug: `EventType` in `packages/shared/src/events.ts`, the `switch`
-    in `services/stats/src/consumer.ts`, and a table keyed so that reprocessing
-    the event changes nothing — because delivery is at-least-once.)*
+40. **How would you add a seventh event type?** *(Three places, and missing
+    any one is the bug: the `EventType` list in
+    `packages/shared/src/events.ts`; the `switch` in
+    `services/stats/src/consumer.ts`; and a table keyed so that processing
+    the same event twice changes nothing — because delivery is
+    at-least-once.)*
 41. **How would you add a seventh service?** *(A schema and a role in a
-    migration; a route prefix on the Gateway; a Deployment, Service and probes
-    in `k8s/`; the CI path filter. And the one people forget: the Dockerfile's
-    `manifests` stage lists every workspace `package.json` **by name**, so
-    missing it means "module not found" for that service alone. That cost is
-    accepted knowingly in exchange for the layer cache.)*
-42. **Walk me through adding one endpoint, end to end.** *(zod schema on the
-    input, a repository function with fully schema-qualified SQL, the route with
-    a short comment carrying one concrete example request, and a Gateway prefix
-    if it's a new one. Parameterized query, always.)*
+    migration; a route prefix on the Gateway; a Deployment, Service and
+    probes in `k8s/`; the CI path filter. And the one people forget: the
+    Dockerfile's `manifests` stage lists every workspace `package.json`
+    **by name**, so missing it means "module not found" for that service
+    alone. That cost is accepted knowingly in exchange for the build
+    cache.)*
+42. **Walk me through adding one endpoint, end to end.** *(A zod schema for
+    the input; a repository function with fully schema-qualified SQL; the
+    route with a short comment showing one example request; a Gateway
+    prefix if it's a new one. Parameterized query, always.)*
 43. **Add a spectator who can read a session but not write to it.** *(Good
-    question because authorization lives with the record owner: Matching's
-    participant check is what Collab asks, so the role has to be expressed
-    there, and then the Yjs document has to be attached read-only on the client
-    while the server still refuses writes — client-side alone is not a control.)*
-44. **Make the question bank full-text searchable.** *(Today tags are `text[]`
-    with a GIN index. Full text is a different index and a different query;
-    say so rather than implying the current one stretches to cover it.)*
-45. **A user reports their partner's edits aren't showing up. Debug it live.**
-    *(Structured Pino logs, every line carrying `service` and `request_id`.
-    Every service adopts an inbound `X-Request-Id` rather than minting its own,
-    and echoes it back — so the id the Gateway assigns follows the request into
-    the first service and out to the browser. Then Collab's `/metrics` for
-    socket and room counts. Then the honest part, and there are two: the
-    internal service-to-service calls do **not** forward the header, so a
-    Matching-to-Users hop starts a fresh id — the trace is grep-able per
-    service, not joined across them — and there are **no** request-rate,
-    error-rate or latency histograms and **no** tracing. Naming your own blind
-    spots here scores better than inventing a dashboard that doesn't exist.)*
+    question because authorization lives with the record owner: the role
+    has to be expressed in Matching's participant answer, since that is
+    what Collab asks. Then the client attaches the document read-only —
+    but the server must also refuse writes from that socket, because
+    anything enforced only in the browser is not a control.)*
+44. **Make the question bank full-text searchable.** *(Today tags are a
+    text array with a GIN index [an index type that can answer "which rows
+    contain this element"]. Full text search is a different index and a
+    different query — say so, rather than implying the current one
+    stretches to cover it.)*
+45. **A user reports their partner's edits aren't showing up. Debug it
+    live.** *(Structured logs first: every line carries `service` and
+    `request_id`. The id the Gateway assigns follows a request into the
+    first service and back to the browser — but the internal service-to-
+    service calls do **not** forward it, so each hop starts a fresh id, and
+    tracing across services means grepping each one. Then Collab's
+    `/metrics` for socket and room counts. Then the honest part: there are
+    no request-rate, error-rate or latency dashboards and no tracing, so
+    past that point you're reading logs. Naming your own blind spots here
+    scores better than inventing a dashboard that doesn't exist.)*
 46. **Something in here you'd rip out and redo?** Have one real answer. The
-    lack of an end-to-end test is the honest one.
+    missing end-to-end test is the honest one.
 
 ### The killer question
-47. **What went wrong / what would you do differently?** Have three ready, and
-    §6 gives you them. This question decides more interviews than any other.
+47. **What went wrong / what would you do differently?** Have three ready,
+    and §6 gives you them. This question decides more interviews than any
+    other.
 
 ### If they dig into the measurements
-Two that reward having actually read `docs/system/09-running-it.md` rather than
-its summary — both are real, and both end with a method point.
+Two that reward having actually read `docs/system/09-running-it.md` rather
+than its summary — both are real, and both end with a method point.
 
-48. **The load run's minimum edit latency was -522ms. What happened?** *(Both
-    VUs live in one k6 process reading one clock, so it cannot be two clocks
-    disagreeing — the one clock stepped backwards mid-run, which WSL2 does when
-    it resyncs against the Windows host. The tell that it was a step, not
-    noise: a handful of samples went negative by about half a second and
-    nothing went positive by that much. It moves neither p50 nor p95, and it
-    stays in the results — a script that silently discards impossible samples
-    cannot tell you when they stop being rare.)*
-49. **Why does `make k8s-check` probe with forty identities rather than one?**
-    *(An authenticated caller gets 120 tokens refilling at 2/s, so a single
-    prober running flat out would exhaust its own bucket and measure the rate
-    limiter instead of the rolling update. Forty identities at roughly 70
-    requests a second keeps every bucket comfortable — the harness has to be
-    designed around the system's own defences or it measures them.)*
+48. **The load run's minimum edit latency was -522ms. What happened?**
+    *(Both simulated users run in one process reading one clock, so it
+    can't be two clocks disagreeing. The one clock itself stepped backwards
+    mid-run — WSL2 does this when it resyncs against Windows. The tell that
+    it was a step, not noise: a few samples went negative by about half a
+    second, and nothing went *positive* by that much. It moves neither p50
+    nor p95, and it stays in the results — a script that silently discards
+    impossible samples can't tell you when they stop being rare.)*
+49. **Why does `make k8s-check` probe with forty identities rather than
+    one?** *(Each user gets 120 rate-limit tokens refilling at 2 per
+    second. One prober running flat out would empty its own bucket and end
+    up measuring the rate limiter instead of the rolling update. Forty
+    identities at ~70 requests a second keeps every bucket comfortable. The
+    lesson: a measurement harness has to be designed around the system's
+    own defences, or it measures them.)*
 
 ### When they reach the edge
 
-A deep dive is *designed* to reach the limit of what you know — a 45-minute
-drill on a three-week project will get there, and an interviewer who never
-reaches it learns nothing about your ceiling. So being stumped is the expected
-end state, not the failure. The score comes from what you do at the edge:
+A deep dive is *designed* to reach the limit of what you know. A 45-minute
+drill on a four-week project will get there, and an interviewer who never
+reaches your edge learns nothing about where it is. So being stumped is the
+expected ending, not a failure. The score comes from what you do at the
+edge:
 
-- **Say "I don't know" fast, then keep going.** "I don't know — my guess is X,
-  and the way I'd check is Y" is a strong answer. Bluffing is the only
-  genuinely fatal move, and it is obvious from the outside, because a
+- **Say "I don't know" fast, then keep going.** "I don't know — my guess is
+  X, and the way I'd check is Y" is a strong answer. Bluffing is the only
+  genuinely fatal move, and it's visible from the outside, because a
   confident wrong answer collapses under one follow-up.
-- **Separate what you measured from what you reasoned.** You already have the
-  perfect instance of this in the `preStop` finding (§6). Using that
-  distinction unprompted signals more seniority than any number you can quote.
-- **Don't defend a decision you'd now make differently.** "That's a fair hit —
-  I'd merge Users and Questions if I did it again, and ADR-01 already names the
-  condition under which they'd merge back" is a better answer than a defence.
+- **Separate what you measured from what you reasoned.** You have the
+  perfect example in the preStop finding (§6). Using that distinction
+  unprompted signals more seniority than any number you can quote.
+- **Don't defend a decision you'd now make differently.** "Fair hit — I'd
+  merge Users and Questions if I did it again, and ADR-01 already names the
+  condition for merging them" beats any defence.
 
 ---
 
 ## 6. Your four numbers, and the honesty that carries them
 
-Learn these four with their conditions welded on. Quoting a number without its
-condition is the single fastest way to lose credibility in this conversation —
-and it's avoidable, because your repo already does this correctly.
+Learn these four with their conditions welded on. A number quoted without
+its condition is the fastest way to lose credibility in this conversation —
+and it's avoidable, because the repo already does this correctly.
+
+(Reading the table: p50 means the median — half of all measurements were
+faster. p95 means 95% were faster, so it describes the slow tail.)
 
 | Number | The condition, always said in the same breath |
 |---|---|
-| **0 non-200 out of 1,230** during a rolling update | Travels. Property of readiness probes, not of the hardware. |
+| **0 non-200 out of 1,230** during a rolling update | Travels. A property of readiness probes, not of the hardware. |
 | **250 concurrent sockets, p50 4ms / p95 11ms** | Does **not** travel. One laptop, AMD Ryzen AI 7 350, WSL2 — and one Collab replica (the cluster figure; compose read p50 3ms / p95 4ms). Not a configured limit — nothing caps concurrency anywhere. |
-| **An edit written seconds before its pod was deleted survived** | Travels. By the SIGTERM snapshot path and no other — the 30s periodic and the on-disconnect snapshots were both ruled out. It is why Collab's grace period is 45s, not the default 30: preStop plus the snapshot write have to fit inside it. |
+| **An edit written seconds before its pod was deleted survived** | Travels. By the shutdown-snapshot path and no other — the 30-second periodic snapshot and the on-disconnect snapshot were both ruled out. It is why Collab's grace period is 45s, not the default 30: the pause plus the snapshot write have to fit inside it. |
 | **A service cannot read another's schema** | Travels. Asserted by a test that the *database* refuses the query. |
 
-**Three "what went wrong" stories, ready to tell.** Each is a real one from the
-repo, and each ends with you catching it:
+**Three "what went wrong" stories, ready to tell.** Each is real, and each
+ends with you catching it.
 
-1. **The load test's headline number was meaningless twice over.** Against two
-   Collab replicas, p95 read 18.72s next to a 5ms median. The tell was in the
-   row above: *more edits arrived than were ever sent* (69,048 vs 58,870). When
-   a second pod opens a room another pod holds, the holder replies with the
-   whole document; the script stamps timestamps into the text, so it counted
-   re-delivered minutes-old markers as fresh edits. A measurement artifact, not
-   a defect — but the run went green. Same mechanism bit inside one process
-   too: on connect the server sends the entire document, so the script counts
-   nothing until initial sync lands.
-2. **The load script was originally written against an echo that doesn't
-   exist.** `broadcast` sends to every socket *except* the sender. A script
-   written to the original description records nothing — and would have gone
-   green anyway, because a threshold over a metric with no samples passes.
-   Hence `edits_received: ['count>0']` sitting next to the latency threshold.
-3. **The zeros needed proving they could be non-zero.** Force-deleting both
-   Gateway pods produced 20×502 and 20×000, so the prober can detect an outage.
-   And ingress-nginx silently retries a second upstream on connection error,
-   which would turn a real drop into an invisible one — checked the access log,
-   zero of 3,579 requests used more than one upstream. *A measurement that
-   reports zero is worthless until you know it could have reported something
-   else.*
+**Story 1 — the headline number was meaningless, twice over.** Running the
+load test against *two* Collab replicas, the p95 read 18.72 **seconds**,
+sitting right next to a 5ms median. A system that got slower looks nothing
+like that — so what happened? The tell was one row up in the results: more
+edits *arrived* than were ever *sent* — 69,048 against 58,870. Impossible,
+unless something was re-delivering old edits. And something was: when a
+second pod opens a room the first pod already holds, the holder replies
+with the whole document. The receiving pod broadcasts that to its own
+sockets. The test script stamps timestamps into the text it types and
+measures age-on-arrival — so a re-delivered document handed it hundreds of
+markers that were minutes old, each recorded as a minutes-slow "edit". A
+measurement artifact, not a defect — the editor itself was fine. But the
+run went green. The same mechanism bites inside a single process too: on
+connect, the initial sync delivers the entire document, so the script
+counts nothing until that sync has landed.
 
-**And one thing you should volunteer as not proven:** every Deployment sets a
-5-second `preStop` pause, but the *forced* kill — no preStop, no SIGTERM —
-also dropped nothing. So the run doesn't demonstrate the pause is what causes
-the zeros; on a one-node cluster propagation appears to beat teardown. It stays
-on reasoning, not on measurement, and those are different things. Saying this
-unprompted is worth more than any number in the table.
+**Story 2 — the script originally measured an echo that doesn't exist.**
+The first design said: stamp a timestamp into each edit, record the delay
+when it echoes back. But Collab never echoes — `broadcast` sends to every
+socket *except* the sender. A script written to that design records zero
+samples — **and passes anyway**, because a threshold over a metric with no
+samples has nothing to fail on. That is why `edits_received: ['count>0']`
+sits next to the latency threshold: it exists to prove the measurement
+measured anything at all.
 
-**Why there's no deployment.** Don't be defensive about this — it's a priced
-decision, not a shortfall. It was designed and costed line by line
+**Story 3 — the zeros had to prove they could be non-zero.** The rolling
+update showed zero failed requests. Before believing a zero, break the
+system on purpose: force-deleting *both* Gateway pods produced 20 responses
+of 502 [the ingress saying "I have no working backend"] and 20 of 000 [the
+probe tool's code for "the connection failed entirely"] — so the prober can
+detect an outage when one exists. Second check: ingress-nginx will silently retry a failed request
+against the other pod, which would hide a real drop. The access log showed
+zero of 3,579 requests used more than one upstream. *A measurement that
+reports zero is worthless until you know it could have reported something
+else.*
+
+**And one thing to volunteer as not proven.** Every Deployment sets a
+5-second `preStop` pause [a deliberate wait between "this pod is being
+removed" and the shutdown signal, so traffic routing catches up before the
+process stops answering]. The reasoning is sound. But the *forced* kill —
+no pause, no shutdown signal, process just gone — also dropped nothing. So
+the measurements do **not** show the pause is what makes the zeros happen;
+on a one-node cluster, routing updates appear to win the race anyway. On a
+real multi-node cluster they wouldn't. The pause stays — but it stays on
+*reasoning*, not on *measurement*, and saying that distinction out loud,
+unprompted, is worth more than any number in the table.
+
+**Why there's no deployment.** Don't be defensive — it's a priced decision,
+not a shortfall. Deploying was designed and costed line by line
 (`docs/future/cost.md`) before being declined: keeping a demo online past a
 free trial means attaching a payment card, and the behaviours worth showing
-need an orchestrator rather than a hosted runtime. Knowing what it would cost,
-and why, is the deliverable. Rehearse this in two sentences so it lands as a
-decision rather than an excuse.
+need an orchestrator rather than a hosted runtime. Knowing what it would
+cost, and why, is the deliverable. Rehearse this in two sentences so it
+lands as a decision rather than an excuse.
 
 ---
 
 ## 7. If the interview turns into system design
 
-Three extensions you should be able to reason about live. Don't memorise
-answers — memorise the *constraint* each one hits.
+Three extensions to reason about live. Don't memorise answers — memorise
+the *constraint* each one hits first.
 
-- **10× the concurrent editors.** First thing that binds: every WebSocket burns
-  a slot on the Gateway *as well as* Collab, so enough live sockets and nobody
-  can browse the question bank. First change: let browsers connect straight to
-  Collab, at the price of Collab having to verify tokens itself.
-- **Multi-region / real cluster.** The preStop finding flips — endpoint
-  propagation no longer beats container teardown with a remote control plane.
-- **Collab rooms are in-memory per pod.** There's no sticky routing; correctness
-  comes from Redis fan-out plus the CRDT converging. The cost is bandwidth: a
-  whole document over Redis and every local socket each time a room opens on a
-  pod that didn't have it. Fine because rooms open rarely in real use.
+- **10× the concurrent editors.** The first thing that binds: every
+  WebSocket occupies a slot on the Gateway *as well as* Collab, because the
+  Gateway proxies every socket. Enough live editors and nobody can browse
+  the question bank. First change: let browsers connect straight to Collab
+  — at the price of Collab having to verify tokens itself, since it would
+  now be exposed and could no longer blindly trust a header.
+- **A real multi-node cluster.** The preStop finding flips. With the
+  control plane on another machine, routing updates no longer beat
+  container teardown, and the pause becomes load-bearing instead of
+  precautionary.
+- **Collab rooms are in-memory, per pod.** There's no rule sending both
+  people in a session to the same pod. Correctness comes from the Redis
+  fan-out plus the CRDT merging to the same result everywhere. The cost is
+  bandwidth: the whole document crosses Redis, and every local socket, each
+  time a room opens on a pod that didn't have it. Fine, because in real use
+  rooms open rarely.
 
 ---
 
@@ -691,10 +833,10 @@ answers — memorise the *constraint* each one hits.
 You're ready when all eight pass cold, no notes:
 
 1. Diagram from a blank page in under 90 seconds.
-2. Spine narrated in under two minutes.
-3. Both Lua scripts explained by the race they prevent.
-4. Any one of the four load-bearing files talked through for 60 seconds with
-   the file closed.
+2. Spine said out loud in under two minutes.
+3. Both Lua scripts explained by the race each prevents.
+4. Any one of the four load-bearing files talked through for 60 seconds
+   with the file closed.
 5. Any *Change it* question (40–46) answered by **naming files**.
 6. All four numbers quoted with their conditions.
 7. Three "what went wrong" stories told in under a minute each.
@@ -702,10 +844,10 @@ You're ready when all eight pass cold, no notes:
    sounding apologetic.
 
 Items 4 and 5 are the deep-dive ones. Everything else is also true of the
-behavioural format, which is why passing 1–3 and 6–8 feels like being ready
-and isn't.
+behavioural format — which is why passing 1–3 and 6–8 feels like being
+ready, and isn't.
 
-**If you only have one evening:** §2 spine, §6 numbers and stories, questions
-5, 13, 18, 22, 40, 47. That covers the behavioural format and the opening ten
-minutes of a deep dive — but it will not survive the back half of one, so treat
-it as triage rather than a plan.
+**If you only have one evening:** §2 spine, §6 numbers and stories,
+questions 5, 13, 18, 22, 40, 47. That covers the behavioural format and the
+opening ten minutes of a deep dive — but it will not survive the back half
+of one, so treat it as triage rather than a plan.
