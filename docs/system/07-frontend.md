@@ -156,7 +156,7 @@ A `<meta>` tag is also the weaker form: it cannot express `frame-ancestors` or a
 report endpoint, both of which need a response header from whatever serves the
 files.
 
-# Part 4 — What is in the four files
+# Part 4 — What is in the files
 
 | File | What it is |
 |---|---|
@@ -164,6 +164,7 @@ files.
 | `index-*.js` | React, the router, every screen, the API client, the Yjs collab client, and Monaco |
 | `index-*.css` | every style, including the `:root` colour variables that make light and dark two lists of values rather than two stylesheets |
 | `editor.worker-*.js` | Monaco's language work, run in a **web worker** — a second thread the browser gives you, so tokenising a large document cannot freeze typing |
+| `inter-*.woff2` (×7) | the Inter reading face, split by script subset; the CSS names each file's `unicode-range`, so a browser fetches only the subset the page actually renders (latin, in practice) and the rest are never requested |
 
 # Part 5 — The browser talks to two different backends
 
@@ -343,7 +344,7 @@ the alternative was pinning Monaco back to suit one dependency's import style.
 |---|---|
 | `/` | the roadmap |
 | `/topic/:topic` | the roadmap with a topic panel open |
-| `/step/:id` | a lesson and its questions |
+| `/step/:id`, `/step/:id?s=3`, `/step/:id?s=check` | a lesson, one section per screen; `s` names the section (or the closing check-yourself screen), so refresh keeps your place and Back is "previous section" |
 | `/match`, `/match?topic=os&difficulty=easy` | find a partner, optionally preset |
 | `/session/:id` | the shared editor |
 | `/signin` | the sign-in form |

@@ -36,29 +36,35 @@
   --shadow-lg: 0 8px 40px rgb(0 0 0 / 14%);
 
   /* One measure for running text everywhere, so a lesson and a summary
-     paragraph wrap at the same width and the page reads as one document. */
-  --measure: 40rem;
+     paragraph wrap at the same width and the page reads as one document.
+     Sized for 60-75 characters a line; longer and the eye loses the line
+     on the way back, which reads as "hard to read" without a nameable why. */
+  --measure: 36rem;
 
   color-scheme: light;
 }
 
 :root[data-theme='dark'] {
-  --bg: #16171a;
-  --surface: #1d1f23;
-  --surface-2: #26282e;
-  --line: #32353c;
-  --line-strong: #454951;
+  /* Lifted well off black with a cool cast, text a step off white. Near-black
+     grounds make bright text bloom, which reads as eye strain rather than as
+     a colour problem; every site measured (web.dev #202124, NeetCode #1d1c1e,
+     MDN #18191b) lifts the ground and softens the text the same way. */
+  --bg: #1f2126;
+  --surface: #26292f;
+  --surface-2: #2f3239;
+  --line: #3a3e46;
+  --line-strong: #4d525c;
 
-  --fg: #e8e8e6;
-  --fg-muted: #a3a49f;
-  --fg-faint: #7b7c78;
+  --fg: #e7e9ee;
+  --fg-muted: #a8aeb9;
+  --fg-faint: #828894;
 
   --accent: #8ba4ff;
   --accent-fg: #14161a;
-  --accent-soft: #23283c;
+  --accent-soft: #2b3150;
 
   --ok: #6cc48d;
-  --ok-soft: #1e2c24;
+  --ok-soft: #24332a;
   --warn: #d6a35c;
   --danger: #e8837c;
 
@@ -83,7 +89,8 @@ body {
   background: var(--bg);
   color: var(--fg);
   font:
-    15px/1.6 ui-sans-serif,
+    15px/1.6 'Inter Variable',
+    ui-sans-serif,
     -apple-system,
     BlinkMacSystemFont,
     'Segoe UI',
@@ -454,21 +461,40 @@ button:focus-visible {
   inset: 0;
   z-index: 40;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.25rem;
-  background: rgb(0 0 0 / 45%);
+  align-items: stretch;
+  justify-content: flex-end;
+  /* Light on purpose: the panel sits beside the map rather than over it, so
+     the map stays readable instead of going dark behind a centered modal. */
+  background: rgb(0 0 0 / 25%);
 }
 
+/* A sheet sliding in from the right edge, not a centered modal: the map stays
+   in view on the left, and closing (Escape, the button, or a click on the
+   map side) puts you straight back to it. */
 .dialog {
-  width: min(34rem, 100%);
-  max-height: 85vh;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(42rem, 94vw);
+  height: 100%;
   overflow-y: auto;
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-left: 1px solid var(--line);
   box-shadow: var(--shadow-lg);
   padding: 1.4rem 1.5rem;
+  animation: slide-in 0.22s ease-out;
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog {
+    animation: none;
+  }
 }
 
 /* One step inside the dialog: a numbered marker, a title, and a question
@@ -512,62 +538,114 @@ button:focus-visible {
 
 /* ── The step page ─────────────────────────────────────────────────────────── */
 
-.step-layout {
-  display: grid;
-  grid-template-columns: 15rem minmax(0, 1fr);
-  gap: 2.25rem;
-  align-items: start;
+/* One centred reading column, sized so prose wraps at the measure and a
+   78-character code line still fits. Everything else the page knows lives in
+   the step bar above it. */
+.step-content {
+  max-width: 46rem;
+  margin: 0 auto;
 }
 
-@media (max-width: 60rem) {
-  .step-layout {
-    grid-template-columns: 1fr;
-    gap: 1.25rem;
-  }
-}
-
-.sidebar {
+/* The slim bar carrying where you are: step title, section dots, and the
+   dropdown holding every jump. It hides while scrolling down and returns on
+   any scroll up, so reading gets the whole window. */
+.stepbar {
   position: sticky;
-  top: 4.25rem;
+  top: 3.7rem;
+  z-index: 10;
+  max-width: 46rem;
+  margin: 0 auto 1.75rem;
+  padding: 0.4rem 0.6rem 0.4rem 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  transition:
+    transform 0.18s ease,
+    opacity 0.18s ease;
+}
+
+.stepbar.hidden {
+  transform: translateY(-200%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.stepbar-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dots {
+  display: flex;
+  gap: 0.3rem;
+  flex: none;
+}
+
+.dots .dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--line-strong);
+}
+
+.dots .dot.on {
+  background: var(--accent);
+}
+
+.menu {
+  position: relative;
+  flex: none;
+}
+
+.menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.45rem);
+  z-index: 30;
+  min-width: 17rem;
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.15rem;
+  padding: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
 }
 
-@media (max-width: 60rem) {
-  .sidebar {
-    position: static;
-  }
-}
-
-.sidebar .heading {
-  font-size: 0.75rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--fg-faint);
-  padding: 0 0.6rem 0.3rem;
-}
-
-.sidebar button {
+.menu-list button {
   text-align: left;
   border-color: transparent;
   background: none;
-  padding: 0.45rem 0.6rem;
+  padding: 0.42rem 0.6rem;
   font-size: 0.92rem;
   line-height: 1.35;
   border-radius: var(--radius-sm);
 }
 
-.sidebar button:hover:not(:disabled) {
+.menu-list button:hover:not(:disabled) {
   background: var(--surface-2);
   border-color: transparent;
   color: var(--fg);
 }
 
-.sidebar button[aria-current='page'] {
+.menu-list button[aria-current] {
   background: var(--accent-soft);
   color: var(--accent);
   font-weight: 600;
+}
+
+.menu-list .divider {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 0.25rem 0;
 }
 
 /* The questions this lesson prepares you for, shown before the lesson. */
@@ -602,21 +680,57 @@ button:focus-visible {
   color: var(--fg-muted);
 }
 
+.pager {
+  justify-content: space-between;
+  margin-top: 2.5rem;
+}
+
+/* The buttons carry their destination's title, which can be long. */
+.pager button {
+  max-width: 48%;
+}
+
+/* One question, one answer, on the check screen. */
+.qa-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.7rem;
+}
+
+.qa-question {
+  font-weight: 550;
+}
+
+.qa .prose {
+  margin-top: 0.6rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.6rem;
+}
+
 /* ── Rendered markdown ─────────────────────────────────────────────────────── */
 
 .prose {
-  line-height: 1.7;
+  /* Reading size, not UI size: the 15px base is right for buttons and cards
+     and small for material read for minutes at a stretch. */
+  font-size: 1.05rem;
+  line-height: 1.75;
 }
 
-.prose > * {
-  max-width: var(--measure);
+/* Lesson text fills its column rather than capping at the measure: the
+   column (.step-content, 46rem) is the reading width here, and text, code
+   and the step bar sharing the same two edges is what makes the page read
+   as one piece instead of ragged blocks. */
+.prose p {
+  max-width: none;
+  margin-bottom: 1rem;
 }
 
 .prose h2 {
   margin: 2.4rem 0 0.6rem;
   padding-top: 1.2rem;
   border-top: 1px solid var(--line);
-  font-size: 1.3rem;
+  font-size: 1.35rem;
 }
 
 .prose > h2:first-child {
@@ -626,20 +740,23 @@ button:focus-visible {
 }
 
 .prose h3 {
-  margin: 1.6rem 0 0.4rem;
-  font-size: 1.05rem;
+  margin: 2rem 0 0.5rem;
+  font-size: 1.2rem;
+  /* Subheaders share one colour so a scroll through a section reads as a
+     list of landmarks; the section title above them stays neutral, which
+     keeps the two levels apart without a size jump doing all the work. */
+  color: var(--accent);
 }
 
 .prose h4 {
   margin: 1.1rem 0 0.3rem;
-  font-size: 0.95rem;
+  font-size: 1rem;
   color: var(--fg-muted);
 }
 
 .prose ul,
 .prose ol {
   padding-left: 1.3rem;
-  max-width: var(--measure);
 }
 
 .prose li {
@@ -665,6 +782,9 @@ button:focus-visible {
 .prose pre code {
   background: none;
   padding: 0;
+  /* Sized so a 78-character line fits the content column without horizontal
+     scroll on a laptop; lesson content keeps its code lines under that. */
+  font-size: 0.875rem;
 }
 
 .prose table {

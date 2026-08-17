@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "catalog:",
     "firebase": "catalog:",
     "marked": "catalog:",
     "lib0": "catalog:",

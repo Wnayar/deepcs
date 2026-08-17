@@ -98,3 +98,7 @@ catalog:
   react-router: ^8.3.0
   monaco-editor: ^0.56.0
   y-monaco: ^0.1.6
+  # The reading face for lessons, bundled from node_modules by Vite so the app
+  # stays self-contained: no font CDN, nothing fetched at runtime. The system
+  # UI stack it replaces is designed for menus and buttons, not paragraphs.
+  '@fontsource-variable/inter': ^5.2.0

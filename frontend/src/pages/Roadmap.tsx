@@ -184,11 +184,8 @@ export function RoadmapPage() {
               }}
             >
               <rect x={boxLeft(topic)} y={boxTop(topic)} width={BOX_W} height={BOX_H} rx={9} />
-              <text x={topic.gridX * CELL_X} y={topic.gridY * CELL_Y - 7}>
+              <text x={topic.gridX * CELL_X} y={topic.gridY * CELL_Y + 4}>
                 {topic.title}
-              </text>
-              <text className="sub" x={topic.gridX * CELL_X} y={topic.gridY * CELL_Y + 12}>
-                {topic.steps.length} steps
               </text>
             </g>
           ))}

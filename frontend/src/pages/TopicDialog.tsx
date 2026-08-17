@@ -47,34 +47,40 @@ export function TopicDialog({ topic, onOpenStep, onClose }: Props) {
         // which would close the dialog the moment anyone tried to use it.
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="row" style={{ justifyContent: 'space-between', marginBottom: '0.35rem' }}>
-          <h2 style={{ margin: 0 }}>{topic.title}</h2>
-          <button className="quiet" onClick={onClose} aria-label="Close">
-            ✕
-          </button>
-        </div>
+        <button
+          className="quiet"
+          onClick={onClose}
+          aria-label="Close"
+          style={{ position: 'absolute', top: '0.9rem', right: '0.9rem' }}
+        >
+          ✕
+        </button>
 
-        <p className="muted">{topic.summary}</p>
+        {/* Auto vertical margins center this block in the panel when it is
+            shorter than the screen, and collapse to zero when it is taller,
+            so long content still scrolls from the top instead of clipping. */}
+        <div style={{ margin: 'auto 0' }}>
+          <h2 style={{ margin: '0 0 0.35rem', textAlign: 'center' }}>{topic.title}</h2>
+          <p className="muted" style={{ textAlign: 'center' }}>
+            {topic.summary}
+          </p>
 
-        <div className="stack" style={{ gap: '0.35rem', marginTop: '1.1rem' }}>
-          <span className="faint" style={{ letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-            Three steps, in order
-          </span>
-
-          {topic.steps.map((step) => (
-            <button key={step.id} className="card step-item" onClick={() => onOpenStep(step.id)}>
-              <span className="step-number">{step.step}</span>
-              <span className="label">
-                <strong>{step.title}</strong>
-                <span className="faint">
-                  {step.questionCount} question{step.questionCount === 1 ? '' : 's'} to answer
+          <div className="stack" style={{ gap: '0.35rem', marginTop: '1.1rem' }}>
+            {topic.steps.map((step) => (
+              <button key={step.id} className="card step-item" onClick={() => onOpenStep(step.id)}>
+                <span className="step-number">{step.step}</span>
+                <span className="label">
+                  <strong>{step.title}</strong>
+                  <span className="faint">
+                    {step.questionCount} question{step.questionCount === 1 ? '' : 's'} to answer
+                  </span>
                 </span>
-              </span>
-              <span aria-hidden="true" className="faint">
-                →
-              </span>
-            </button>
-          ))}
+                <span aria-hidden="true" className="faint">
+                  →
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>
