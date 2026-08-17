@@ -100,7 +100,9 @@ used to be X", it belongs in a decision file or nowhere.
   why it runs on Kubernetes locally rather than being deployed.
 - [docs/learning/](./docs/learning/) — how the tooling works, for reference
   rather than for decisions: Docker, Kubernetes, CI, and the code-level idioms
-  this repo leans on.
+  this repo leans on. Also `explaining-it.md`, a guide to explaining the system
+  from memory rather than to how it works; it is study material, not system
+  documentation.
 - [docs/future/](./docs/future/) — things not built. `cost.md` is the exploration
   that decided against deploying, and it is the record of what it would cost.
 
