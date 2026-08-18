@@ -164,10 +164,7 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
           aria-label={checking ? 'Check yourself' : `Section ${section} of ${count}`}
         >
           {lesson.sections.map((entry, index) => (
-            <span
-              key={entry.title}
-              className={checking || index < section ? 'dot on' : 'dot'}
-            />
+            <span key={entry.title} className={checking || index < section ? 'dot on' : 'dot'} />
           ))}
         </span>
 

@@ -45,13 +45,14 @@ export function splitLesson(md: string): SplitLesson {
   // bottom of each one. The blank-line requirement keeps a setext heading's
   // underline ("Title\n---") intact.
   const text = (chunk: { lines: string[] }) =>
-    chunk.lines.join('\n').replace(/\n\s*\n-{3,}\s*$/, '').trim();
+    chunk.lines
+      .join('\n')
+      .replace(/\n\s*\n-{3,}\s*$/, '')
+      .trim();
 
   return {
     preamble: text(head),
-    sections: chunks
-      .slice(1)
-      .map((chunk) => ({ title: chunk.title as string, body: text(chunk) })),
+    sections: chunks.slice(1).map((chunk) => ({ title: chunk.title as string, body: text(chunk) })),
   };
 }
 
