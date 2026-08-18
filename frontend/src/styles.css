@@ -18,7 +18,8 @@
   --line-strong: #d0d0ca;
 
   /* Text, in descending prominence. */
-  --fg: #1f1f1d;
+  --fg: #26262a;
+  --fg-strong: #14141a;
   --fg-muted: #6a6a64;
   --fg-faint: #93938c;
 
@@ -61,7 +62,16 @@
   --line: #3a3e46;
   --line-strong: #4d525c;
 
-  --fg: #e7e9ee;
+  /* Not near-white. #e7e9ee reads at 13:1 on this background, and that much
+     contrast on a dark ground makes text appear to glow and bleed at its
+     edges, which is tiring over a page of prose. #ccd2de is 10.6:1, still well
+     past AAA, and noticeably easier to sit with. The blockquote style was
+     already doing this by accident, which is why that one block was the
+     comfortable part of a lesson. */
+  --fg: #ccd2de;
+  /* Headings and anything that has to win against body text, since softening
+     the body would otherwise flatten the hierarchy with it. */
+  --fg-strong: #e9ecf3;
   --fg-muted: #a8aeb9;
   --fg-faint: #828894;
 
@@ -114,6 +124,9 @@ h3,
 h4 {
   line-height: 1.3;
   font-weight: 650;
+  /* Brighter than body text, because the body was softened to stop it glowing
+     and a heading has to keep winning against it. */
+  color: var(--fg-strong);
 }
 
 h2 {
@@ -327,6 +340,39 @@ button.quiet:hover:not(:disabled) {
   margin-left: auto;
 }
 
+/* Two mutually exclusive choices sharing one control, so they read as one
+   thing with a selected half rather than as two buttons that both do
+   something. `aria-pressed` is what drives the fill, so the look and what a
+   screen reader is told come from the same attribute. */
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  margin-bottom: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.tabs button {
+  flex: 1;
+  border: 0;
+  background: none;
+  color: var(--fg-muted);
+  font-weight: 550;
+  padding: 0.45rem 0.6rem;
+}
+
+.tabs button:hover {
+  color: var(--fg);
+}
+
+.tabs button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+}
+
 /* The signed-in reader's own name. Quiet on purpose: it is there to answer
    "am I signed in, and as who", not to be clicked. */
 .who {
@@ -428,22 +474,6 @@ button:focus-visible {
   padding: 1rem 1.1rem;
 }
 
-.tag {
-  display: inline-block;
-  font-size: 0.72rem;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  padding: 0.12rem 0.5rem;
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--fg-muted);
-}
-
-.tag.accent {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
 /* ── The roadmap canvas ────────────────────────────────────────────────────── */
 
 .canvas {
@@ -515,12 +545,6 @@ button:focus-visible {
   text-anchor: middle;
   dominant-baseline: middle;
   pointer-events: none;
-}
-
-.node text.sub {
-  fill: var(--fg-faint);
-  font-size: 11px;
-  font-weight: 500;
 }
 
 /* The bar inside a topic box. Drawn even at zero, so an untouched topic reads
