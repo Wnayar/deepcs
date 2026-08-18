@@ -88,6 +88,13 @@ catalog:
   # from our own notes, never user input, and the page's CSP forbids inline
   # script regardless of what any renderer emits.
   marked: ^18.0.9
+  # Colours the code blocks inside those lessons. Core plus four grammars, not
+  # the "load every language" build, because the seeds only ever contain
+  # Python, SQL, CQL and C. No theme stylesheet is imported: Prism's themes are
+  # hard-coded hex, and colours here live in `:root` custom properties so light
+  # and dark stay two lists of variables rather than two stylesheets.
+  prismjs: ^1.30.0
+  '@types/prismjs': ^1.26.5
   # URLs for the screens. The app navigated with a `useState` switch until now,
   # which meant one history entry for the whole site: the browser Back button
   # left it entirely, refreshing lost your place, and no lesson could be linked

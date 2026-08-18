@@ -573,6 +573,33 @@ shows two fields, creating an account shows three, and `autoComplete` switches
 between `current-password` and `new-password` so a password manager offers the
 right thing.
 
+## Code in a lesson is coloured, and one case decides the design
+
+Lessons render through [`markdown.ts`](../../frontend/src/markdown.ts), which is
+one place because `marked` is configured globally: calling `marked.use` from two
+modules would leave the renderer depending on which imported first.
+
+`marked` dropped its `highlight` option in v5, so colouring is a replaced code
+renderer rather than configuration. Prism core plus three grammars (Python, SQL,
+C) costs **10 KB gzipped, measured**, against a bundle that was already 796 KB.
+CQL is mapped onto SQL's grammar, because two Cassandra blocks do not earn a
+second one.
+
+**The load-bearing case is the fence with no language.** Most fenced blocks in
+these lessons are ASCII diagrams: address-space layouts, state transitions,
+protocol traces. Running a tokenizer over a drawing produces confetti, so an
+unlabelled fence, or one Prism has no grammar for, falls through to plain
+escaped text. That path escapes by hand, because it builds its own `<pre>` and
+nothing downstream will do it for it, and there is a test that a lesson
+containing `<script>` does not become one.
+
+**No Prism theme is imported.** Those are hard-coded hex stylesheets, and a
+colour named outside `:root` is a colour light and dark have to define twice.
+The token classes map onto five `--code-*` variables instead: keyword, string,
+comment, number, function. Five rather than one per Prism class, because more
+colours in a snippet is decoration, and punctuation in five colours is what
+makes a highlighted block harder to read than a plain one.
+
 # Part 13 — Themes are two lists of variables
 
 Every colour is a custom property defined once on `:root` and redefined once

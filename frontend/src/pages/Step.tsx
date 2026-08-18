@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { marked } from 'marked';
+import { renderMarkdown } from '../markdown';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { getStep, questionReference, type Step } from '../api';
 import { splitLesson, splitReference, type SplitReference } from '../lesson-sections';
@@ -25,11 +25,8 @@ import { splitLesson, splitReference, type SplitReference } from '../lesson-sect
  * state, so refresh keeps your place and Back is "previous section" instead of
  * "leave the lesson".
  *
- * `marked` output goes in through `dangerouslySetInnerHTML`, which is safe
- * here for a reason worth stating rather than assuming: this markdown is
- * seeded by a migration from a fixed set of notes, no user writes it, and no
- * route updates it. The day lessons start accepting submissions is the day
- * that line needs a sanitizer in front of it.
+ * Lesson bodies are rendered by `markdown.ts`, which is also where the reason
+ * `dangerouslySetInnerHTML` is safe here is written down.
  */
 export function StepPage({ signedIn }: { signedIn: boolean }) {
   const navigate = useNavigate();
@@ -230,13 +227,13 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
                   {open.has(index) && answers && answers.answers[index] && (
                     <div
                       className="prose"
-                      dangerouslySetInnerHTML={{ __html: marked.parse(answers.answers[index]) }}
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(answers.answers[index]) }}
                     />
                   )}
                   {open.has(index) && blob && (
                     <div
                       className="reference prose"
-                      dangerouslySetInnerHTML={{ __html: marked.parse(blob) }}
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(blob) }}
                     />
                   )}
                 </div>
@@ -249,7 +246,7 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
             {answers?.extra && (
               <div
                 className="card prose"
-                dangerouslySetInnerHTML={{ __html: marked.parse(answers.extra) }}
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(answers.extra) }}
               />
             )}
 
@@ -274,14 +271,14 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
               <div
                 className="prose"
                 style={{ marginBottom: '1.5rem' }}
-                dangerouslySetInnerHTML={{ __html: marked.parse(lesson.preamble) }}
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(lesson.preamble) }}
               />
             )}
 
             <article
               className="prose"
               dangerouslySetInnerHTML={{
-                __html: marked.parse(`## ${current.title}\n\n${current.body}`),
+                __html: renderMarkdown(`## ${current.title}\n\n${current.body}`),
               }}
             />
 

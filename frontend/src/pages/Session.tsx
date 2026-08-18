@@ -15,7 +15,7 @@ import {
 import { idToken } from '../auth';
 import { connectCollab, type CollabStatus } from '../collab';
 import { monaco } from '../monaco';
-import { marked } from 'marked';
+import { renderMarkdown } from '../markdown';
 import type { SessionSummary } from '../App';
 
 /** How often to ask whether the other person has agreed to reveal. Only runs
@@ -331,7 +331,7 @@ export function SessionPage({ session, question, partner, onEnded }: Props) {
           </p>
           <div
             className="reference prose"
-            dangerouslySetInnerHTML={{ __html: marked.parse(reference) }}
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(reference) }}
           />
         </>
       )}

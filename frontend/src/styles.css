@@ -32,6 +32,16 @@
   /* The progress bars and the star. Separate from --ok because "done" is a
      state on the map, not a success message, and the two want different
      weights in dark mode. */
+  /* Code tokens. Five roles, not one per Prism class: more colours in a
+     snippet is decoration, and the point is to separate what a line *does*
+     from what it says. Deliberately close in weight to the body text so a
+     block does not glare beside prose. */
+  --code-keyword: #8250df;
+  --code-string: #0a6b52;
+  --code-comment: #6a6a64;
+  --code-number: #b3261e;
+  --code-func: #1f4bb8;
+
   --progress: #2f7d4f;
   --progress-track: #e4e4e0;
   --star: #c99a2e;
@@ -81,6 +91,12 @@
 
   --ok: #6cc48d;
   --ok-soft: #24332a;
+  --code-keyword: #c8a2f0;
+  --code-string: #86d2ae;
+  --code-comment: #828894;
+  --code-number: #e8a08c;
+  --code-func: #8fb8ff;
+
   --progress: #57c98a;
   --progress-track: #3a3e46;
   --star: #e0b455;
@@ -1104,6 +1120,50 @@ button:focus-visible {
 
 .prose th {
   background: var(--surface-2);
+}
+
+/* Prism's token classes, mapped onto the five roles above. No Prism theme is
+   imported: those are hard-coded hex stylesheets, and a colour named outside
+   `:root` is a colour light and dark have to define twice. */
+.prose .token.comment,
+.prose .token.prolog,
+.prose .token.doctype,
+.prose .token.cdata {
+  color: var(--code-comment);
+  font-style: italic;
+}
+
+.prose .token.keyword,
+.prose .token.boolean,
+.prose .token.operator,
+.prose .token.builtin,
+.prose .token.class-name {
+  color: var(--code-keyword);
+}
+
+.prose .token.string,
+.prose .token.char,
+.prose .token.attr-value,
+.prose .token.regex {
+  color: var(--code-string);
+}
+
+.prose .token.number {
+  color: var(--code-number);
+}
+
+.prose .token.function,
+.prose .token.decorator,
+.prose .token.annotation {
+  color: var(--code-func);
+}
+
+/* Everything Prism marks that is not one of the five reads as ordinary code,
+   which is the default and is deliberate: punctuation in five colours is the
+   thing that makes a highlighted block harder to read than a plain one. */
+.prose .token.punctuation {
+  color: inherit;
+  opacity: 0.75;
 }
 
 .prose blockquote {
