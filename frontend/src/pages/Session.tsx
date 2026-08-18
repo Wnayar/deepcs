@@ -57,13 +57,21 @@ export function SessionRoute({ onEnded }: { onEnded: () => void }) {
         const { displayName } = await partnerName(session.id);
         if (!cancelled) setPartner(displayName);
       } catch {
-        if (!cancelled) setGone(true);
+        if (cancelled) return;
+        // The session is not there: the partner ended it while this browser was
+        // somewhere else, or it never existed. Telling the shell matters as
+        // much as redirecting, because its `active` is what draws "Return to
+        // session" in the header. Without this it goes on offering a way back
+        // into a room that is gone, and the way back lands here and bounces
+        // again, which is a loop with no way out of it.
+        onEnded();
+        setGone(true);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, onEnded]);
 
   if (gone) return <Navigate to="/" replace />;
   if (!loaded) return <p className="muted">Rejoining…</p>;

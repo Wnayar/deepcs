@@ -192,8 +192,8 @@ export function MatchPage({ active, onJoined, onQueueChanged }: Props) {
       )}
       {gaveUp && (
         <p className="status">
-          Nobody joined {topic}/{difficulty} in the last minute. You have left the queue, so join
-          again whenever you want another go.
+          Nobody joined {topic}/{difficulty} in the last minute. You have been removed from the
+          queue, so try again later.
         </p>
       )}
       {error && <p className="error">{error}</p>}

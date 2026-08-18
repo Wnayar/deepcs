@@ -1,5 +1,14 @@
-import { useEffect, useState } from 'react';
-import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Link,
+  Navigate,
+  NavLink,
+  Outlet,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from 'react-router';
 import {
   currentSession,
   ensureProfile,
@@ -59,6 +68,14 @@ export interface SessionSummary {
  * state and a refresh goes to the roadmap.
  */
 export function App() {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  /** Read inside the poll below, which closes over its own render. A ref
+   * rather than a dependency, because re-running the poll on every navigation
+   * would restart its timer each time the reader moved. */
+  const where = useRef(pathname);
+  where.current = pathname;
+
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
   const [active, setActive] = useState<Session | null>(null);
@@ -73,6 +90,10 @@ export function App() {
    * call is in flight, and for accounts made before names existed. */
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [theme, toggleTheme] = useTheme();
+
+  /** Stable, because the session route depends on it inside an effect: an
+   * inline arrow would change identity every render and refetch the room. */
+  const forgetSession = useCallback(() => setActive(null), []);
 
   useEffect(
     () =>
@@ -127,6 +148,19 @@ export function App() {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
 
+    /**
+     * Somebody on the match screen is watching for exactly this, so take them
+     * into the room. Somebody who queued and wandered off to read a lesson is
+     * not, and pulling them out of it mid-paragraph is hostile: they get the
+     * header's "a partner arrived" instead, and go in when they choose.
+     */
+    const entered = (session: Session) => {
+      clearQueued();
+      setActive(session);
+      if (where.current === '/match') void navigate(`/session/${session.id}`);
+      else setArrived(true);
+    };
+
     const ask = async () => {
       const queued = readQueued();
       if (stopped || !queued) return;
@@ -136,9 +170,7 @@ export function App() {
         if (stopped) return;
 
         if (status.status === 'matched') {
-          clearQueued();
-          setActive(status.session);
-          setArrived(true);
+          entered(status.session);
           return;
         }
 
@@ -150,9 +182,7 @@ export function App() {
           const rejoined = await joinQueue(queued.topic, queued.difficulty);
           if (stopped) return;
           if (rejoined.status === 'matched') {
-            clearQueued();
-            setActive(rejoined.session);
-            setArrived(true);
+            entered(rejoined.session);
             return;
           }
         }
@@ -170,7 +200,9 @@ export function App() {
       stopped = true;
       clearTimeout(timer);
     };
-  }, [user, active, queuedAt]);
+    // `navigate` is stable in react-router, so listing it satisfies the lint
+    // rule without making this effect restart its timer.
+  }, [user, active, queuedAt, navigate]);
 
   if (!ready) return <main className="muted">Loading…</main>;
 
@@ -274,11 +306,7 @@ export function App() {
           <Route
             path="/session/:id"
             element={
-              user ? (
-                <SessionRoute onEnded={() => setActive(null)} />
-              ) : (
-                <Navigate to="/signin" replace />
-              )
+              user ? <SessionRoute onEnded={forgetSession} /> : <Navigate to="/signin" replace />
             }
           />
           <Route path="/summary" element={<SummaryPage />} />
