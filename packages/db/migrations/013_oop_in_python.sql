@@ -517,3 +517,21 @@ class Dog:
     def perform(self) -> None:
         self._tricks.perform()$body$)
 WHERE title = 'Composition over Inheritance';
+
+-- ── The tail of the composition example ─────────────────────────────────────
+-- The replacement above stopped at the closing brace of the class and left the
+-- Java that used it underneath, so the block was half Python and half Java. It
+-- did not error anywhere, because a fenced block is text: nothing compiles it.
+-- Found by extracting every ```python block in the seeds and compiling it,
+-- which is worth doing after any conversion like this.
+UPDATE questions.bank SET lesson_md = replace(lesson_md,
+  $body$Dog guide   = new Dog(new GuideWalk(), new AdvancedCommands());
+Dog swimmer = new Dog(new Swim(), new BasicTricks());
+// a swimming guide dog is a constructor call, not a new class:
+// new Dog(new Swim(), new GuideCommands())$body$,
+  $body$guide = Dog(GuideWalk(), AdvancedCommands())
+swimmer = Dog(Swim(), BasicTricks())
+
+# A swimming guide dog is a constructor call, not a new class:
+swimming_guide = Dog(Swim(), GuideCommands())$body$)
+WHERE title = 'Composition over Inheritance';
