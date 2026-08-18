@@ -101,13 +101,13 @@ flowchart TD
 
     GW["<b>Gateway</b><br/>verify token · rate limit · route · CORS<br/><i>the only thing reachable from outside</i>"]
 
-    GW --> USR["<b>Users</b><br/>profile rows"]
+    GW --> USR["<b>Users</b><br/>profiles · display names · progress"]
     GW --> QST["<b>Questions</b><br/>bank · lessons · reference answers"]
     GW --> MCH["<b>Matching</b><br/>queue · pair claim · sessions · consent"]
     GW --> COL["<b>Collab</b><br/>WebSocket · Yjs CRDT · presence"]
     GW --> STA["<b>Stats</b><br/>drain job + read API"]
 
-    MCH -.->|"validate uid"| USR
+    MCH -.->|"validate uid · partner's name"| USR
     MCH -.->|"find a question · reference_md"| QST
     COL -.->|"is this uid in the session?"| MCH
     COL -.->|"parts, to seed the doc"| QST
@@ -205,7 +205,7 @@ sequenceDiagram
     Note over M: already in an active session? then that session<br/>is returned as-is — a retried join is always safe
     M->>U: does this uid exist? (HTTP, never SQL)
     M->>Q: find a question for this topic and difficulty
-    M->>R: one Lua script, check-and-claim-or-enqueue — queue empty, so enqueue B
+    M->>R: one Lua script: prune the expired, then claim-or-enqueue — queue empty, so enqueue B
     M-->>B: 200, waiting
     loop every 3s while queued, up to 60s
         B->>GW: GET /match/status?topic=&difficulty=
@@ -286,11 +286,16 @@ so each step lands where it happens.
   So if Users or Questions is down, the join fails cleanly — nothing was
   half-created, nothing needs undoing.
 - **5** — One Lua script does the whole queue interaction as a single
-  uninterruptible step: check for a waiting partner, claim one, *or* add
-  yourself. Nobody is waiting, so B is added — timestamped by Redis' own
-  clock, not the caller's, so queue order stays correct even if two Matching
-  servers disagree about the time. Calling join again while already queued
-  does nothing.
+  uninterruptible step: drop anyone who has aged out, check for a waiting
+  partner, claim one, *or* add yourself. Nobody is waiting, so B is added,
+  timestamped by Redis' own clock rather than the caller's, so queue order
+  stays correct even if two Matching servers disagree about the time. Calling
+  join again while already queued does nothing.
+
+  The prune is why the score is a *time* and not a counter. Nothing tells the
+  server that a browser has closed, so an entry outliving its owner would be
+  claimed by the next person to join and pair them with somebody who is not
+  there. Sixty seconds, checked by every operation that reads the queue.
 - **6** — B's request is answered `"waiting"` and closed. (On the way out, a
   `queue.joined` event is dropped onto the Redis event stream for Stats —
   fire-and-forget, meaning a Redis hiccup there can never fail B's request.)
@@ -413,8 +418,17 @@ so each step lands where it happens.
 - **32** — The server's step 2 in return: everything A is missing. For a
   browser that just connected with an empty editor, that is effectively the
   whole document.
-- **33** — A keystroke travels as a Yjs update: a small delta saying exactly
-  which positions changed, not the whole text.
+- **33** — A keystroke travels as a Yjs update, and **what is inside it is the
+  thing worth knowing: not a position.** It carries the new character's own
+  identity, the pair `(clientID, clock)`, and the identities of the characters
+  it was inserted between. "Insert after `(7134, 5)`" means the same thing in
+  every copy forever; "insert at index 12" is true only in the copy that
+  measured it, and is already wrong by the time it arrives anywhere else.
+
+  That is the whole reason two people can type at once without a server
+  deciding an order, and it is worth being able to say in one breath, because
+  "it merges the deltas" is the answer that gets followed up.
+  [`the-shared-doc.md`](./the-shared-doc.md) has the trace.
 - **34** — Collab sends it to every *other* open socket in the room. Never
   back to the sender — there is no echo. (That detail once mattered a lot:
   the load test was originally written to measure an echo that doesn't
