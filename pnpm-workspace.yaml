@@ -94,6 +94,11 @@ catalog:
   # hard-coded hex, and colours here live in `:root` custom properties so light
   # and dark stay two lists of variables rather than two stylesheets.
   prismjs: ^1.30.0
+  # A DOM for the editor test. The shared editor is the one piece of UI with a
+  # contract that can break silently: it binds a CodeMirror view to a Yjs text,
+  # and a swap of either side compiles fine while syncing nothing. Dev only,
+  # never shipped.
+  jsdom: ^28.0.1
   '@types/prismjs': ^1.26.5
   # URLs for the screens. The app navigated with a `useState` switch until now,
   # which meant one history entry for the whole site: the browser Back button
@@ -103,8 +108,14 @@ catalog:
   # entries, state out of step with the URL, back landing on a screen whose data
   # was never fetched) are the tedious kind to find.
   react-router: ^8.3.0
-  monaco-editor: ^0.56.0
-  y-monaco: ^0.1.6
+  # CodeMirror, not Monaco. The shared document is prose: no highlighting, no
+  # language services, no IntelliSense. What is actually used is an editing
+  # surface, selections, and somewhere to draw the other person's caret, which
+  # is a small fraction of an editor built for code and priced accordingly.
+  '@codemirror/commands': ^6.8.1
+  '@codemirror/state': ^6.5.2
+  '@codemirror/view': ^6.38.1
+  'y-codemirror.next': ^0.3.5
   # The reading face for lessons, bundled from node_modules by Vite so the app
   # stays self-contained: no font CDN, nothing fetched at runtime. The system
   # UI stack it replaces is designed for menus and buttons, not paragraphs.

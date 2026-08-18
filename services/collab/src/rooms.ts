@@ -95,7 +95,7 @@ export const SESSION_ENDED_CODE = 4001;
 /**
  * Builds the scaffold as a Yjs update: a numbered line per question part with
  * room under each to answer in. It all lives in a single shared `Y.Text` named
- * "content", which is a contract with the frontend — y-monaco binds to that
+ * "content", which is a contract with the frontend — the editor binds to that
  * field, and binding to any other yields an editor that syncs with nobody.
  *
  * Returned as an update rather than written straight into the room's doc so

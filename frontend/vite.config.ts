@@ -32,22 +32,6 @@ const CSP = [
 ].join('; ');
 
 export default defineConfig({
-  resolve: {
-    alias: {
-      /**
-       * `y-monaco` imports `monaco-editor/esm/vs/editor/editor.api.js`, which
-       * every Monaco before 0.55 resolved as a plain file path. Monaco 0.56
-       * added an `exports` map that rewrites `./*` to `./esm/vs/*`, so that
-       * specifier now resolves to `esm/vs/esm/vs/...` and the build fails on a
-       * path that does not exist.
-       *
-       * Aliasing it to the specifier the map does accept is a two-line fix
-       * that keeps both packages current. The alternative was pinning Monaco
-       * back below 0.56 to suit one dependency's import style.
-       */
-      'monaco-editor/esm/vs/editor/editor.api.js': 'monaco-editor/editor/editor.api.js',
-    },
-  },
   plugins: [
     react(),
     {

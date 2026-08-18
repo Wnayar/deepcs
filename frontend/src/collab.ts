@@ -126,7 +126,8 @@ export function connectCollab({ sessionId, token, onStatus }: CollabOptions): Co
       // else in the room, so putting an email in it would hand your address to
       // whoever you were matched with — and a coloured caret already says
       // everything the other person needs to know, which is "that is not me".
-      // y-monaco publishes the selection itself; this only marks us present.
+      // The editor binding publishes the selection itself; this only marks us
+      // present.
       awareness.setLocalStateField('present', true);
     });
 

@@ -253,11 +253,13 @@ image that dies on its first import. `noExternal` inlines that code instead.
 image has two entrypoints: `index.ts` drains the event log and exits,
 `server.ts` answers reads.
 
-**`vite`** builds the frontend. Its config carries two things worth knowing: the
-Content-Security-Policy injected on build only (the dev server needs inline
-scripts for hot reload, and a policy loose enough to allow those is not worth
-shipping), and a two-line alias working around Monaco 0.56's `exports` map. Both
-are commented in [`frontend/vite.config.ts`](../../frontend/vite.config.ts).
+**`vite`** builds the frontend. Its config carries one thing worth knowing: the
+Content-Security-Policy injected on build only, because the dev server needs
+inline scripts for hot reload and a policy loose enough to allow those is not
+worth shipping. It is commented in
+[`frontend/vite.config.ts`](../../frontend/vite.config.ts). A resolve alias
+lived there too, working around Monaco's `exports` map, and went when Monaco
+did.
 
 **`vitest`** runs the tests, sharing Vite's transform pipeline so there is no
 second TypeScript setup to keep in step. There is no `vitest.config.ts` anywhere

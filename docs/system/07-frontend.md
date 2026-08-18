@@ -139,7 +139,7 @@ Three changes:
 
 - **The script now points at a bundle**, not at `/src/main.tsx`. Vite followed
   every import from `main.tsx` and packed the lot — React, the router, all the
-  screens, the Yjs client, Monaco — into one file.
+  screens, the Yjs client, the editor — into one file.
 - **The filename contains a hash of the contents** (`index-CuimWudV.js`). Change
   one character of source and the name changes. This is deliberate: the browser
   can cache a hashed file for ever, because a new version arrives under a new
@@ -161,9 +161,8 @@ files.
 | File | What it is |
 |---|---|
 | `index.html` | the empty shell above |
-| `index-*.js` | React, the router, every screen, the API client, the Yjs collab client, and Monaco |
+| `index-*.js` | React, the router, every screen, the API client, the Yjs collab client, CodeMirror and Prism |
 | `index-*.css` | every style, including the `:root` colour variables that make light and dark two lists of values rather than two stylesheets |
-| `editor.worker-*.js` | Monaco's language work, run in a **web worker** — a second thread the browser gives you, so tokenising a large document cannot freeze typing |
 | `inter-*.woff2` (×7) | the Inter reading face, split by script subset; the CSS names each file's `unicode-range`, so a browser fetches only the subset the page actually renders (latin, in practice) and the rest are never requested |
 
 # Part 5 — The browser talks to two different backends
@@ -300,7 +299,7 @@ edits ([`05-collab.md`](05-collab.md) §7).
 **Nothing identifying goes into awareness.** It is broadcast to everyone else in
 the room, so putting an email in it would hand your address to whoever you were
 matched with, and a coloured caret already says the only thing the other person
-needs to know. `y-monaco` publishes the selection itself; the client only marks
+needs to know. The editor binding publishes the selection itself; the client only marks
 itself present.
 
 **This client is tested against the real server**
@@ -308,35 +307,74 @@ itself present.
 those ship their own reference client — `collab.ts` is a second implementation of
 the same format, and until that suite existed nothing proved the two agreed.
 
-# Part 9 — Monaco, bound to a document it does not own
+# Part 9 — The editor, bound to a document it does not own
 
 ```ts
 const text: Y.Text = collab.doc.getText('content');
-new MonacoBinding(text, editor.getModel()!, new Set([editor]), collab.awareness);
+new EditorView({
+  parent: host,
+  state: EditorState.create({
+    doc: text.toString(),
+    extensions: [history(), keymap.of(defaultKeymap), EditorView.lineWrapping,
+                 yCollab(text, collab.awareness)],
+  }),
+});
 ```
 
 `"content"` is not a name chosen here — it is the field the Collab service seeds
 the scaffold into, so binding to anything else yields an empty editor that syncs
-with nobody. Passing `awareness` as the fourth argument is what makes remote
-cursors appear; presence needed no code of its own.
+with nobody. Passing `awareness` to `yCollab` is what makes the other person's
+caret appear; presence needed no code of its own.
 
 **One effect owns the socket, the document, the editor and the binding**, because
 they have exactly one lifetime between them. Splitting them is how you end up
 with an editor bound to a destroyed document after a re-render, which is also why
 the `react-hooks` lint rules are enabled.
 
-**Monaco is imported as `editor.api`, not the package root.** The root registers
-every language it ships with, and building against it emitted a 6.9 MB TypeScript
-worker, a 1 MB CSS worker and a 740 kB HTML worker for a document that is prose.
-The core is 792 kB gzipped, which is most of the bundle and inherent to the
-editor chosen.
+## Why not Monaco, which this used to be
 
-One dependency workaround lives next to it in `vite.config.ts`: `y-monaco`
-imports `monaco-editor/esm/vs/editor/editor.api.js`, and Monaco 0.56 added an
-`exports` map that rewrites `./*` to `./esm/vs/*`, so that specifier now resolves
-to `esm/vs/esm/vs/...` and the build fails on a path that does not exist. A
-two-line alias to the specifier the map does accept keeps both packages current;
-the alternative was pinning Monaco back to suit one dependency's import style.
+The shared document is **prose**. No highlighting, no language services, no
+autocomplete, no line numbers. What is actually used is an editing surface,
+selections, and somewhere to draw the other person's caret.
+
+Monaco was a code editor doing that job, and it was priced like one. It was
+already imported as `editor.api` rather than the package root, because the root
+registers every language it ships with and emitted a 6.9 MB TypeScript worker, a
+1 MB CSS worker and a 740 kB HTML worker for a document that is sentences. Even
+trimmed to the core it was **most of the bundle**, and it was downloaded by
+everybody: nothing was code-split, so a visitor reading a lesson fetched a code
+editor before the first paragraph rendered.
+
+Replacing it with CodeMirror took the bundle from **3.0 MB to 776 kB raw, and
+806 kB to 243 kB gzipped, measured before and after**. A Vite resolve alias
+working around Monaco's `exports` map went with it, and so did the second JS
+file, since there is no language worker any more.
+
+**Not a plain `<textarea>`**, which is the smaller thing this could have become:
+a textarea cannot show another person's caret, and that is the one feature the
+room needs.
+
+## The caret is the whole point, so it has a test
+
+The binding writes the caret's colour inline from the awareness state, and what
+it writes is `var(--accent)`: inline styles resolve custom properties, so the
+palette stays in `:root` and follows a theme switch without the editor knowing
+themes exist. Left unset it falls back to a hard-coded blue, which is the one
+way a colour could escape the stylesheet.
+
+Awareness carries **a colour and nothing else**. A name here would be a name a
+peer sets, and therefore one a peer can forge; the partner's real name comes
+from the server ([`04-matching.md`](04-matching.md) §9). The binding renders a
+label from that name, so with none set it is hidden rather than left reading
+"Anonymous" over the text.
+
+[`editor.test.ts`](../../frontend/src/editor.test.ts) drives two Yjs documents
+in a real DOM and asserts what cannot be checked by reading: the seeded text
+appears, typing reaches the Yjs text, a remote change reaches the editor, and
+the other person's caret is drawn in a colour that is a custom property. That
+test is why `jsdom` is a dev dependency, and it earns its place because this is
+the one piece of UI whose contract breaks silently: either side can be swapped
+for something that compiles perfectly and syncs nothing.
 
 # Part 10 — Every screen is a URL
 

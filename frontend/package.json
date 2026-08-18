@@ -12,16 +12,18 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@codemirror/commands": "catalog:",
+    "@codemirror/state": "catalog:",
+    "@codemirror/view": "catalog:",
     "@fontsource-variable/inter": "catalog:",
     "firebase": "catalog:",
     "lib0": "catalog:",
     "marked": "catalog:",
-    "monaco-editor": "catalog:",
     "prismjs": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-router": "catalog:",
-    "y-monaco": "catalog:",
+    "y-codemirror.next": "catalog:",
     "y-protocols": "catalog:",
     "yjs": "catalog:"
   },
@@ -30,6 +32,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "jsdom": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:"

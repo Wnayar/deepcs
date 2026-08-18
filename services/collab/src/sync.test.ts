@@ -87,7 +87,7 @@ async function startInstance(port: number, redis: ReturnType<typeof createRedis>
 }
 
 /**
- * A minimal stand-in for a real y-monaco client: it keeps its own `Y.Doc`,
+ * A minimal stand-in for a real editor client: it keeps its own `Y.Doc`,
  * opens with a sync step 1, applies whatever the server sends back, and
  * publishes its own edits as incremental updates.
  *

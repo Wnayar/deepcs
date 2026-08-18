@@ -135,7 +135,7 @@ To watch the test catch it, comment out `seed.clientID = SEED_CLIENT_ID` in
 
 **What the scaffold is:** a numbered list of the question's parts, with blank
 lines under each to answer in, all in a single `Y.Text` named `"content"`. That
-field name is a contract with the frontend, where `y-monaco` binds to it —
+field name is a contract with the frontend, where the editor binds to it —
 binding to anything else yields an empty editor that syncs with nobody. There are
 no separate "answer" and "scratch" sections: they meant deciding where a thought
 belonged before writing it down, and the numbering now matches how the questions

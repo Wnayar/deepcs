@@ -1243,26 +1243,62 @@ button:focus-visible {
   color: var(--danger);
 }
 
-/* The other person's cursor and selection.
- *
- * y-monaco emits `.yRemoteSelection` plus a per-client `.yRemoteSelection-<id>`
- * and no colours at all, so without these rules every remote caret inherits
- * currentColor and is invisible against the text.
- *
- * One colour, not one per client. A session has exactly two people in it: you
- * are Monaco's own caret and everyone else is this. Generating a palette keyed
- * by client id solved a crowd this room never has, and it needed a name in
- * awareness to key on, which meant broadcasting one. */
-.yRemoteSelection {
-  background-color: color-mix(in srgb, var(--accent) 25%, transparent);
+/* CodeMirror ships almost no chrome of its own, which is the point: this is a
+   shared prose document and should read like one. */
+.editor .cm-editor {
+  height: 100%;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.95rem;
 }
 
-.yRemoteSelectionHead {
-  position: absolute;
-  border-left: 2px solid var(--accent);
-  border-top: 2px solid var(--accent);
-  height: 100%;
+.editor .cm-scroller {
+  font-family: inherit;
+  line-height: 1.7;
+  padding: 0.6rem 0.2rem;
+}
+
+/* The ring belongs on the bordered container, not the inner editor, or it is
+   drawn inside the box it is meant to surround. */
+.editor .cm-editor.cm-focused {
+  outline: none;
+}
+
+.editor:focus-within {
+  border-color: var(--accent);
+}
+
+.editor .cm-content {
+  caret-color: var(--fg);
+}
+
+.editor .cm-placeholder {
+  color: var(--fg-faint);
+}
+
+/* The other person's cursor and selection.
+ *
+ * The binding writes these colours inline from the awareness state, and what
+ * it writes is `var(--accent)`: inline styles resolve custom properties, so the
+ * palette stays in `:root` and follows a theme switch without the editor
+ * knowing themes exist. Left unset it falls back to a hard-coded blue.
+ *
+ * One colour, not one per client. A session has exactly two people in it: you
+ * are the native caret and the other one is this. A palette keyed by client id
+ * solved a crowd this room never has. */
+.cm-ySelectionCaret {
+  position: relative;
+  border-left: 2px solid;
+  border-right: none;
+  margin-left: -1px;
   box-sizing: border-box;
+}
+
+/* The binding also draws a label carrying the peer's name. Awareness here
+   carries a colour and nothing else, on purpose, so there is no name to show
+   and the label would sit over the text reading "Anonymous". */
+.cm-ySelectionInfo {
+  display: none;
 }
 
 /* ── Sign in ───────────────────────────────────────────────────────────────── */

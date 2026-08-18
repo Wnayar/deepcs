@@ -214,7 +214,7 @@ export default function (data) {
     }
   });
 
-  // Local edits go out as incremental updates, the same shape y-monaco sends
+  // Local edits go out as incremental updates, the same shape the editor sends
   // from the browser. Anything applied from the server is skipped, or two
   // clients would bounce one edit between them for ever.
   doc.on('update', (update, origin) => {

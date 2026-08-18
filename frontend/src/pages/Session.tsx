@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { MonacoBinding } from 'y-monaco';
+import { Compartment, EditorState } from '@codemirror/state';
+import { EditorView, keymap, placeholder } from '@codemirror/view';
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { yCollab } from 'y-codemirror.next';
 import type * as Y from 'yjs';
 import { Navigate, useNavigate, useParams } from 'react-router';
 import {
@@ -14,7 +17,6 @@ import {
 } from '../api';
 import { idToken } from '../auth';
 import { connectCollab, type CollabStatus } from '../collab';
-import { monaco } from '../monaco';
 import { renderMarkdown } from '../markdown';
 import type { SessionSummary } from '../App';
 
@@ -104,7 +106,11 @@ interface Props {
 
 export function SessionPage({ session, question, partner, onEnded }: Props) {
   const editorHost = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<ReturnType<typeof monaco.editor.create> | null>(null);
+  const editorRef = useRef<EditorView | null>(null);
+  /** Holds the read-only setting so it can be swapped later. CodeMirror's
+   * configuration is immutable, so the way to change one setting is to put it
+   * in a compartment and reconfigure that compartment alone. */
+  const readOnlyRef = useRef<Compartment | null>(null);
   const [status, setStatus] = useState<CollabStatus>('connecting');
   const [peers, setPeers] = useState(0);
   const [consent, setConsent] = useState({ you: false, partner: false });
@@ -134,31 +140,54 @@ export function SessionPage({ session, question, partner, onEnded }: Props) {
         },
       });
 
-      const editor = monaco.editor.create(editorHost.current, {
-        value: '',
-        // Plain text: the core editor API ships no language contributions (see
-        // monaco.ts). The document is prose, so this costs highlighting only.
-        language: 'plaintext',
-        automaticLayout: true,
-        minimap: { enabled: false },
-        wordWrap: 'on',
-        scrollBeyondLastLine: false,
-      });
-      editorRef.current = editor;
-
       // `"content"` is not a name chosen here — it is the field the Collab
       // service seeds the scaffold into, so binding to anything else produces
       // an empty editor that syncs with nobody.
       const text: Y.Text = collab.doc.getText('content');
-      const binding = new MonacoBinding(
-        text,
-        editor.getModel()!,
-        new Set([editor]),
-        collab.awareness,
-      );
+
+      /**
+       * The remote caret's colour, and the only reason this field is set at
+       * all: left unset, the binding falls back to a hard-coded blue, and a
+       * colour that is not in `:root` is one light and dark have to define
+       * twice. Inline styles resolve custom properties, so naming the variable
+       * here keeps the palette in the stylesheet and follows a theme switch
+       * without this code hearing about it.
+       *
+       * A colour and nothing else. A name here would be a name a peer sets,
+       * and therefore one a peer can forge; the partner's real name comes from
+       * the server (`04-matching.md` §9).
+       */
+      collab.awareness.setLocalStateField('user', {
+        color: 'var(--accent)',
+        colorLight: 'color-mix(in srgb, var(--accent) 25%, transparent)',
+      });
+
+      const readOnly = new Compartment();
+      readOnlyRef.current = readOnly;
+
+      const editor = new EditorView({
+        parent: editorHost.current,
+        state: EditorState.create({
+          doc: text.toString(),
+          extensions: [
+            // Only what a shared prose document needs. No language, no
+            // highlighting, no autocomplete, no line numbers: the material is
+            // sentences, and every one of those is weight for a feature nobody
+            // in this room uses.
+            history(),
+            keymap.of([...defaultKeymap, ...historyKeymap]),
+            EditorView.lineWrapping,
+            placeholder('Answer together here.'),
+            readOnly.of(EditorState.readOnly.of(false)),
+            // Binds the text and draws the other person's caret and selection.
+            yCollab(text, collab.awareness),
+          ],
+        }),
+      });
+      editorRef.current = editor;
 
       // Everyone in the room except us. Yjs awareness carries this for free,
-      // and y-monaco draws the remote carets from the same data.
+      // and the binding draws the remote carets from the same data.
       const onAwareness = () => {
         if (!cancelled) setPeers(Math.max(0, collab.awareness.getStates().size - 1));
       };
@@ -166,9 +195,9 @@ export function SessionPage({ session, question, partner, onEnded }: Props) {
 
       cleanup = () => {
         editorRef.current = null;
+        readOnlyRef.current = null;
         collab.awareness.off('change', onAwareness);
-        binding.destroy();
-        editor.dispose();
+        editor.destroy();
         collab.destroy();
       };
     })();
@@ -185,7 +214,12 @@ export function SessionPage({ session, question, partner, onEnded }: Props) {
    * is what stops it looking like it still works.
    */
   useEffect(() => {
-    if (status === 'ended') editorRef.current?.updateOptions({ readOnly: true });
+    if (status !== 'ended') return;
+    const editor = editorRef.current;
+    const readOnly = readOnlyRef.current;
+    if (editor && readOnly) {
+      editor.dispatch({ effects: readOnly.reconfigure(EditorState.readOnly.of(true)) });
+    }
   }, [status]);
 
   /** Runs only while we have agreed and the answer has not arrived, which is
