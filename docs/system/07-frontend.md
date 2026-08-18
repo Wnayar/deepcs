@@ -698,14 +698,19 @@ which is what the rest of this page is for.
 
 ## Known gaps
 
-- **No component tests.** The suites that exist test the protocol client and the
-  queued-flag expiry, which are the parts with a contract to break. The pages are
-  thin enough that a render test would mostly assert that React renders. The
-  poll's *contract* is covered from the other side —
+- **No React component is rendered by a test.** The suites cover the parts with
+  a contract that can break: the protocol client, the queued-flag expiry, the
+  markdown renderer, and the editor, which is the one screen element with real
+  behaviour and is driven in a DOM (Part 9). The pages themselves are thin
+  enough that a render test would mostly assert that React renders.
+
+  The gap that leaves is the effects. The match poll's *contract* is covered
+  from the other side —
   [`reveal.test.ts`](../../services/matching/src/reveal.test.ts) drives a waiter
   from `waiting` to `matched` across a partner's join — but the React effect
   that runs it on a timer is not, so a broken interval or a missed cleanup would
-  not fail a test.
+  still not fail a test. `jsdom` is now here, so closing that is a decision
+  rather than a setup cost.
 - **"Done" is self-declared.** A tick is a claim, not a measurement: nothing
   checks that the lesson was read or the questions answered. Deriving it would
   mean reading the shared document, which was never written to be read that way.

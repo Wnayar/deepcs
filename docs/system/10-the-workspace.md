@@ -266,6 +266,11 @@ second TypeScript setup to keep in step. There is no `vitest.config.ts` anywhere
 — the defaults are enough, and the environment variables the suites need come
 from the `Makefile` instead.
 
+That survived one suite needing a browser. The editor test runs in `jsdom`, and
+it asks for it with a `// @vitest-environment jsdom` comment at the top of the
+file rather than a config entry, so exactly one file pays for a DOM and the
+other twenty-odd go on running in Node.
+
 ---
 
 ## 8. Lint and format
