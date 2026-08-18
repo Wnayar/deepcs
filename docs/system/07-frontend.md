@@ -40,7 +40,7 @@ Part 3 is what changes between the two.
 
 **The one obligation a static server still has**, and the one that gets missed:
 answer `index.html` for paths it has never heard of, or every link into the app
-except the root returns 404. Part 13 has why.
+except the root returns 404. Part 14 has why.
 
 The rest of this page is the detail underneath all of that, using the real files
 in this repo. Parts 1 to 6 are the mechanics: what a visitor receives and what is
@@ -458,7 +458,92 @@ running centre to centre, which would draw the line through the boxes
 themselves. Control points sit directly above and below those ends, so every
 arrow reads as travelling downward even when two topics are far apart sideways.
 
-# Part 12 — Themes are two lists of variables
+## Progress, drawn on top of it
+
+Each box carries a bar underneath its title, filled by how many of that topic's
+steps the reader has ticked, and a panel in the corner totals them. The marks
+come from `GET /users/me/progress` and the steps from `GET /roadmap`, **two
+requests merged in the browser** — they live in different Postgres schemas and no
+query may span them ([`02-users.md`](02-users.md) §4). This screen is where that
+boundary is most visible, and the whole of its cost is one extra request and a
+`Map` lookup per step.
+
+Three things about it are load-bearing:
+
+- **`useProgress` lives above both screens.** The map draws a bar per topic and
+  the panel draws a row per step, so the state sits in
+  [`progress.ts`](../../frontend/src/progress.ts) and the map hands the panel
+  what it needs. Opening a topic never refetches.
+- **The click redraws before the server hears about it.** Waiting for the round
+  trip puts a visible lag on every tick. That is only safe because the route
+  replaces state rather than toggling it, so a burst of clicks settles on
+  whatever the last one said regardless of the order the replies arrive in. A
+  failed write puts the box back, because a tick the server does not have is
+  worse than a click that visibly did not take.
+- **A step row is three buttons, not one button containing three things.** The
+  tick, the star and the step are separate actions, and nesting them would be
+  invalid markup that React builds through the DOM: nothing looks broken, and
+  then clicks land unpredictably (Part 14).
+
+Signed out, none of it is drawn. The map is public and the marks belong to
+somebody, so the request would 401 — and a "0 / 30" for a visitor reads as a
+score rather than as an invitation to sign in.
+
+### The gauge, and one CSS trick worth knowing
+
+The panel puts the count *inside* the ring, because the two are one fact and a
+number beside a circle is two things to look at. That centring uses no absolute
+positioning:
+
+```css
+.gauge      { display: grid; place-items: center; }
+.gauge > *  { grid-area: 1 / 1; }
+```
+
+Both children are placed in row 1, column 1 of the same one-cell grid, so they
+occupy the same space and `place-items: center` centres each of them in it. The
+advantage over `position: absolute` is that the cell is still as tall as the
+ring, so the panel goes on sizing itself.
+
+The other one: `stroke-width` is in **viewBox units, not pixels** — 7 of 100
+across. So the ring's CSS width is the single number to change and the band
+keeps its proportion.
+
+**Two class-name collisions caused visible bugs here**, both worth knowing
+because neither errored. `.canvas svg` sized the map's SVG with `position:
+absolute; inset: 0`, and as a *descendant* selector it also caught the gauge and
+stretched it across the whole map behind the text; it is `.canvas > svg` now.
+And `.node rect` sets `fill`, which at `(0,1,1)` outranks a bare `.node-fill` at
+`(0,1,0)`, so the per-topic bars were painted the same colour as the box and
+looked like they never filled.
+
+# Part 12 — The header is two groups, not one row
+
+Left is **where you can go**: the wordmark, then the primary links behind a
+divider. Right is **what is true about you**: your display name, the way out,
+and how the page looks. Before that split it was one undifferentiated row, and
+"Sign out" read as another destination.
+
+The header's links carry no border until pointed at. Six outlined boxes in a bar
+read as six controls competing with each other, and the wordmark stopped being
+the first thing seen. The current page is a filled pill rather than a recoloured
+border, so it is findable at a glance instead of by comparing outlines.
+
+Because those controls lost their borders, focus needed saying once, globally:
+
+```css
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+```
+
+`:focus-visible` rather than `:focus`, so a mouse click leaves no ring behind
+but tabbing always shows one, and the outline is drawn outside the element so it
+never changes layout.
+
+The name comes from the profile call the shell already makes on sign-in, so
+showing it costs no extra request. It is a `<span>`, not a control: putting it
+inside the sign-out button made the button read as a destination.
+
+# Part 13 — Themes are two lists of variables
 
 Every colour is a custom property defined once on `:root` and redefined once
 under `[data-theme='dark']`. **No component names a colour**, so a theme is a
@@ -471,7 +556,7 @@ sunset along with everything else on the machine. `localStorage` is wrapped in a
 try/catch because private browsing can refuse it outright, and losing the
 preference between visits is a smaller problem than the page failing to render.
 
-# Part 13 — Three rules only a browser enforces
+# Part 14 — Three rules only a browser enforces
 
 None of these shows up in a terminal test, which is exactly why they are written
 down. All three are properties of the code as it stands.
@@ -497,7 +582,7 @@ into the app except the root returns 404. Vite's dev server and `vite preview`
 both do this already, which is exactly why it is easy to miss: the failure shows
 up only for shared links and refreshes, never while clicking around.
 
-# Part 14 — How to say it in a minute
+# Part 15 — How to say it in a minute
 
 > The frontend is a React single-page application. The build produces four
 > static files and there is no server rendering anything. The browser downloads
@@ -526,12 +611,15 @@ which is what the rest of this page is for.
   from `waiting` to `matched` across a partner's join — but the React effect
   that runs it on a timer is not, so a broken interval or a missed cleanup would
   not fail a test.
-- **No progress tracking.** There is no completed state and nothing to store it
-  in. It needs a table, a route, and an opinion about what finishing means.
+- **"Done" is self-declared.** A tick is a claim, not a measurement: nothing
+  checks that the lesson was read or the questions answered. Deriving it would
+  mean reading the shared document, which was never written to be read that way.
+  Worth knowing before quoting the number as anything other than what the reader
+  said about themselves.
 - **No history of your own past sessions.** The data exists in
   `matching.sessions` and `collab.snapshots`, but nothing reads it back, and a
   page for it needs an endpoint on each of two services because neither role may
   read the other's schema.
-- **No search.** Nine topics fit on one screen.
+- **No search.** Ten topics fit on one screen.
 - **Nothing serves the built bundle.** `make web` is the dev server; there is no
   production server for it here, for the reason at the top of this page.

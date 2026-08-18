@@ -138,6 +138,7 @@ POST /match/join                          { topic, difficulty } -> matched | wai
 GET  /match/status?topic=&difficulty=      matched | waiting | none
 GET  /match/session                        the session I am in right now, if any
 GET  /match/sessions/:id/participant       am I in this one?
+GET  /match/sessions/:id/partner           the other person's display name
 POST /match/sessions/:id/reveal            agree to reveal
 GET  /match/sessions/:id/reveal            has my partner agreed?
 POST /match/sessions/:id/end               finish it
@@ -367,11 +368,42 @@ leak:
 - `reveal` returned `consented`, the list of uids that had agreed, so the moment
   your partner agreed you held their id.
 
-This matters more than it looks because everything else about a session is
-already anonymous: awareness carries no identity, and the remote caret is drawn
-in one colour precisely so no name is needed to key it. A single field in a JSON
-body undoes all of that silently, because nothing has to render it for the
-browser to have been handed it.
+This matters more than it looks because nothing else about a session carries an
+identity a client could act on: awareness carries no identity, and the remote
+caret is drawn in one colour precisely so no identity is needed to key it. A single
+field in a JSON body undoes all of that silently, because nothing has to render
+it for the browser to have been handed it.
+
+### A name is not a uid, and the room shows one
+
+`GET /match/sessions/:id/partner` answers with the other participant's display
+name. That is a deliberate reversal of how the room felt, and deliberately *not*
+a reversal of what §9 protects, because the two things were bundled under the
+word "anonymous" and only one of them was about security:
+
+- **The uid is what every other service keys on.** Handing it to a browser lets
+  a client address, look up or impersonate somebody. It still never leaves.
+- **The name identifies a person to their partner** and is useless for anything
+  else. Showing it changes how a session feels and nothing about what a client
+  can do.
+
+So the existing assertion is unchanged and still passes: the uid is absent from
+join, status, session and participant. The new route has its own test asserting
+that the body contains the name and **not** the uid behind it, checked against
+the serialised body for the same reason as above.
+
+Two supporting decisions:
+
+- **The name comes from the server, not from awareness.** Putting it in presence
+  would have been less code and would have let any client claim to be anybody in
+  the room. A name a peer asserts is a name a peer can forge, which is a worse
+  property than the anonymity it replaced.
+- **It is a separate route, not a field on the session.** `/match/status` is
+  polled every three seconds while somebody waits (§5), so a name there would
+  turn one call to Users into twenty a minute for a field nobody can see until
+  they are in the room. Matching reaches Users on `/internal`, which the Gateway
+  proxies nothing to, so a browser cannot ask that question directly
+  ([`02-users.md`](02-users.md) §4).
 
 ---
 

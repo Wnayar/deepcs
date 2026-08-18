@@ -157,26 +157,29 @@ rehearse:
    three seconds, answered from the Postgres session row. Bounded on three
    sides so that asking is affordable: only while queued, only for a minute,
    and inside the Gateway's per-user budget. Why asking rather than being
-   told is [ADR-11](../adr/11-polling-over-server-sent-events.md) and drill 25.
-6. Both browsers open a **WebSocket** ([`websockets.md`](./websockets.md))
+   told is [ADR-11](../adr/11-polling-over-server-sent-events.md) and drills 25 to 27.
+6. Opening the room asks Matching **who the partner is** and gets back a
+   display name, never a uid. Matching reads it from Users on a path the
+   Gateway proxies nothing to, so no browser can turn a uid into a person.
+7. Both browsers open a **WebSocket** ([`websockets.md`](./websockets.md))
    through the Gateway to **Collab**. Collab asks Matching: "is this uid a
    participant in this session?" — authorization lives with whoever owns the
    record, not at the gateway.
-7. Collab holds one **Yjs document** per session in memory. Yjs is a CRDT
+8. Collab holds one **Yjs document** per session in memory. Yjs is a CRDT
    [a data structure where two people's simultaneous edits merge to the same
    result on every machine, without a server deciding an order]. Edits fan
    out to the other sockets on that pod directly, and to sockets on the
    *other* pod over a Redis channel. The document is snapshotted to Postgres
    every 30 seconds, when the last person disconnects, and before shutdown.
-8. Revealing the reference answer needs **both** people to consent. Only
+9. Revealing the reference answer needs **both** people to consent. Only
    then does Matching fetch `reference_md` from Questions, over the internal
    network. The answer never enters the shared document (ADR-06).
-9. Ending the session appends an event to a Redis stream; the **Stats** job
+10. Ending the session appends an event to a Redis stream; the **Stats** job
    drains the stream into summary rows. Delivery is at-least-once [the same
    event can arrive twice], so every write is built to be safe to repeat —
    which is why there is no counter column anywhere.
 
-The same nine steps as a sequence, which is the shape a deep-dive
+The same ten steps as a sequence, which is the shape a deep-dive
 interviewer will keep interrupting. Every numbered arrow is a place they can
 stop you:
 
@@ -225,6 +228,12 @@ sequenceDiagram
     M->>M: read Postgres — the session row is there now
     M-->>B: 200, matched — B finds out by asking, up to 3s after it happened
 
+    Note over A,B: Both open the session page
+    A->>GW: GET /match/sessions/{id}/partner
+    GW->>M: forward, with X-User-Id
+    M->>U: GET /internal/users/{uid}/profile — a route the Gateway proxies nothing to
+    M-->>A: 200, {"displayName": "B"} — a name, never the uid behind it
+
     A->>GW: WebSocket upgrade, /collab/connect?sessionId=…&token=…
     B->>GW: the same upgrade
     Note over GW: a browser WebSocket cannot set an Authorization header,<br/>so an upgrade — and only an upgrade — may authenticate by ?token=
@@ -240,7 +249,7 @@ sequenceDiagram
     Note over C: snapshot to Postgres every 30s,<br/>on last disconnect, and before SIGTERM
 ```
 
-**Verify you have the spine:** say all nine steps to a wall, no notes, in
+**Verify you have the spine:** say all ten steps to a wall, no notes, in
 under two minutes, twice in a row. If you stall at a step, that step is your
 next reading target.
 
@@ -337,24 +346,51 @@ so each step lands where it happens.
   three seconds after it happened.** That lateness is the price, and it is
   the honest thing to say out loud: the alternative is holding a response
   open, which delivers in milliseconds and pins B to one specific process for
-  the whole wait (ADR-11). Note what B is *not* told: the session names the
-  question and never the partner. Sessions are anonymous, and nothing in this
-  flow ever reveals the other person's uid.
+  the whole wait (ADR-11). Note what the session itself carries: the question,
+  and no identity at all. The partner is a separate request, next.
 
-**Both connect to Collab (22–31)**
+**The room finds out who you are with (22–25)**
 
-- **22–23** — Both browsers upgrade to a WebSocket at
+- **22** — Opening the session page asks one question the session response
+  deliberately does not answer: who is on the other side. It is a separate route
+  rather than a field, because `/match/status` is polled every three seconds
+  while waiting, and a name there would be twenty calls a minute to Users for
+  something nobody can see until they are in the room.
+- **23** — The ordinary Gateway treatment again, which is what proves the caller
+  is who they say. The route then refuses anybody who is not a participant in
+  *this* session, with a 403 rather than a 404: the session is real, they are
+  simply not in it.
+- **24** — Matching asks Users, on a path beginning `/internal`. **The Gateway
+  proxies nothing under that prefix**, so the route is unreachable from a
+  browser. That is the access control: not a check that has to be kept correct,
+  but a door that is not connected to the outside.
+- **25** — A **name**, and never the uid it was looked up from. This is the
+  distinction the whole feature rests on, and it is worth being able to say
+  quickly: a uid is what every service keys on, so handing one to a browser lets
+  a client address or impersonate somebody; a display name identifies a person
+  to their partner and is good for nothing else. So the room stopped being
+  anonymous and the system did not.
+
+  Two things follow. The name is asserted by the **server**, not carried in Yjs
+  awareness, because a name a peer sets is a name a peer can forge, and
+  "anyone can claim to be your partner" is worse than no names at all. And the
+  original assertion still passes unchanged: the uid is absent from join,
+  status, session and participant.
+
+**Both connect to Collab (26–35)**
+
+- **26–27** — Both browsers upgrade to a WebSocket at
   `/collab/connect?sessionId=…&token=…`. The token rides the URL because a
   browser's WebSocket cannot attach the normal login header — and the
   Gateway accepts a token there *only* on upgrade requests, so normal routes
   can't be authenticated that way.
-- **24** — The upgrade means the Gateway opens a second connection of its
+- **28** — The upgrade means the Gateway opens a second connection of its
   own to Collab and copies messages between the two ([`websockets.md`](./websockets.md)
   has the full picture). That second connection carries a request the
   Gateway composes itself, and by default it would carry almost no headers —
   so the ws proxy has its own separate header-rewrite step. Without it,
   Collab would see no `X-User-Id` and reject every socket, logged-in or not.
-- **25** — Collab holds no session data of its own, so before agreeing to
+- **29** — Collab holds no session data of its own, so before agreeing to
   the upgrade it asks Matching: "is this uid a participant in this
   session?" The rule behind this: authorization lives with whoever owns the
   record. A "no" is a plain HTTP 403 and the socket never comes into
@@ -367,23 +403,23 @@ so each step lands where it happens.
   starting text. It subscribes to the session's Redis channels. And it
   publishes a "who has current state?" request that any *other* pod already
   holding this room answers with the whole document.
-- **26** — The server opens the sync with **step 1: a state vector** [a
+- **30** — The server opens the sync with **step 1: a state vector** [a
   compact summary of "how much of each person's edits I already have"] —
   not the document itself. It also sends everyone's current presence
   (cursors).
-- **27** — A replies with step 2 — whatever the server was missing — and
+- **31** — A replies with step 2 — whatever the server was missing — and
   sends its own step 1 back, asking the same question in the other
   direction.
-- **28** — The server's step 2 in return: everything A is missing. For a
+- **32** — The server's step 2 in return: everything A is missing. For a
   browser that just connected with an empty editor, that is effectively the
   whole document.
-- **29** — A keystroke travels as a Yjs update: a small delta saying exactly
+- **33** — A keystroke travels as a Yjs update: a small delta saying exactly
   which positions changed, not the whole text.
-- **30** — Collab sends it to every *other* open socket in the room. Never
+- **34** — Collab sends it to every *other* open socket in the room. Never
   back to the sender — there is no echo. (That detail once mattered a lot:
   the load test was originally written to measure an echo that doesn't
   exist, and §6 story 2 is what that taught.)
-- **31** — And publishes it on the session's Redis channel, for sockets
+- **35** — And publishes it on the session's Redis channel, for sockets
   attached to the other pod. One guard here: if the update itself *arrived*
   from Redis, it is not re-published — that single check is what prevents an
   infinite loop of two pods forwarding each other the same edit forever.
@@ -610,42 +646,55 @@ first.
     against Redis' own clock. It is the server-side half of the same bound
     the browser keeps.)*
 
+29. **The room shows your partner's name. Did that break the anonymity you
+    designed for?** *(No, and the distinction is the answer. "Anonymous" was
+    bundling two things: the uid is secret because it is what every service
+    keys on, so leaking it lets a client address or impersonate somebody; the
+    partner being unnamed was a product choice. The name is served, the uid
+    still never leaves, and the test asserting it is absent from join, status,
+    session and participant passes unchanged.)*
+30. **Why is the name not just put in Yjs awareness? It is already there.**
+    *(Because awareness is client-controlled, so a name a peer sets is a name a
+    peer can forge. "Anyone can claim to be your partner" is a worse property
+    than no names. It comes from the server instead, over `/internal`, which
+    the Gateway proxies nothing to.)*
+
 ### Data & events
-29. Why are reference answers never in the shared document? → ADR-06
-30. Why Redis Streams for events, and why is every Stats write safe to
+31. Why are reference answers never in the shared document? → ADR-06
+32. Why Redis Streams for events, and why is every Stats write safe to
     repeat? *(Delivery is at-least-once — a crash mid-processing means the
     same event arrives again. Writes keyed by a natural id (session id,
     user id) just overwrite the same row on a repeat. A counter column is
     the one shape that can't be saved: adding 1 twice is wrong, no matter
     how careful the code is. Hence: no counter columns anywhere.)* → ADR-07
-31. Cursor pagination rather than `OFFSET` — why? *(`OFFSET 500` makes the
+33. Cursor pagination rather than `OFFSET` — why? *(`OFFSET 500` makes the
     database walk and throw away 500 rows to reach yours, and a row
     inserted while you scroll shifts every later page by one — you see
     duplicates or miss rows. A cursor says "give me rows after this id",
     which is a cheap indexed lookup and unaffected by inserts behind it.)*
 
 ### Ops
-32. What does Kubernetes give you that compose doesn't? *(Rolling updates
+34. What does Kubernetes give you that compose doesn't? *(Rolling updates
     and self-healing — replacing pods one at a time with no gap, and
     restarting what dies. The two behaviours compose cannot show.)*
-33. Why is there no deployment? → §6 below, and ADR-05
-34. What makes a rolling update lossless? *(Readiness probes. A pod that
+35. Why is there no deployment? → §6 below, and ADR-05
+36. What makes a rolling update lossless? *(Readiness probes. A pod that
     fails `/health/ready` is removed from the list of pods receiving
     traffic before it's touched, and a new pod isn't added until it passes.
     Requests only ever land on pods that answered "ready".)*
-35. Why are `/health/live` and `/health/ready` separate endpoints?
+37. Why are `/health/live` and `/health/ready` separate endpoints?
     *(They answer different questions. Live: "is this process stuck? if so
     restart it." Ready: "may traffic come here yet?" A service still
     connecting to Postgres is live but not ready — conflate the two and
     the orchestrator kills healthy processes that are merely starting.)*
-36. What's the highest-value line in the Dockerfile? *(The `manifests`
+38. What's the highest-value line in the Dockerfile? *(The `manifests`
     stage copying every `package.json` by name — the root plus the eight
     workspace manifests — rather than `COPY . .`. Docker re-runs a cached
     step when any file it copied changes, so `COPY . .` before the
     dependency install means every code edit re-installs everything.
     Copying only the manifest files keys the install step to dependency
     changes alone.)*
-37. Why does CI run the built image and curl `/health/ready` when typecheck
+39. Why does CI run the built image and curl `/health/ready` when typecheck
     and tests already passed? *(Because green once shipped a bundle that
     died at import: the bundler exits 0 even when its output is broken, and
     the tests run from source and never touch the built output. A green
@@ -653,14 +702,14 @@ first.
     you actually ship.)*
 
 ### Testing
-38. Why real Postgres and Redis rather than mocks? *(The properties under
+40. Why real Postgres and Redis rather than mocks? *(The properties under
     test are a Lua script running atomically, a database role being
     refused, pagination not skipping rows. A mock only proves the code
     agrees with itself — it would happily confirm a racy rate limiter
     works.)*
-39. Why no coverage target? *(A percentage pushes effort toward whatever is
+41. Why no coverage target? *(A percentage pushes effort toward whatever is
     easiest to cover, which is rarely where this system breaks.)*
-40. **What isn't tested?** *(No end-to-end test of sign-in through to
+42. **What isn't tested?** *(No end-to-end test of sign-in through to
     summary. Every piece is covered; nothing joins them. A gap, not a
     decision.)* Say this unprompted if asked "what would you do next" — it
     reads as ownership.
@@ -670,35 +719,35 @@ These cannot be answered by someone who read a design doc. They separate
 "I built this" from "I was near this", so drill them hardest. Name
 **files**, not concepts.
 
-41. **How would you add a seventh event type?** *(Three places, and missing
+43. **How would you add a seventh event type?** *(Three places, and missing
     any one is the bug: the `EventType` list in
     `packages/shared/src/events.ts`; the `switch` in
     `services/stats/src/consumer.ts`; and a table keyed so that processing
     the same event twice changes nothing — because delivery is
     at-least-once.)*
-42. **How would you add a seventh service?** *(A schema and a role in a
+44. **How would you add a seventh service?** *(A schema and a role in a
     migration; a route prefix on the Gateway; a Deployment, Service and
     probes in `k8s/`; the CI path filter. And the one people forget: the
     Dockerfile's `manifests` stage lists every workspace `package.json`
     **by name**, so missing it means "module not found" for that service
     alone. That cost is accepted knowingly in exchange for the build
     cache.)*
-43. **Walk me through adding one endpoint, end to end.** *(A zod schema for
+45. **Walk me through adding one endpoint, end to end.** *(A zod schema for
     the input; a repository function with fully schema-qualified SQL; the
     route with a short comment showing one example request; a Gateway
     prefix if it's a new one. Parameterized query, always.)*
-44. **Add a spectator who can read a session but not write to it.** *(Good
+46. **Add a spectator who can read a session but not write to it.** *(Good
     question because authorization lives with the record owner: the role
     has to be expressed in Matching's participant answer, since that is
     what Collab asks. Then the client attaches the document read-only —
     but the server must also refuse writes from that socket, because
     anything enforced only in the browser is not a control.)*
-45. **Make the question bank full-text searchable.** *(Today tags are a
+47. **Make the question bank full-text searchable.** *(Today tags are a
     text array with a GIN index [an index type that can answer "which rows
     contain this element"]. Full text search is a different index and a
     different query — say so, rather than implying the current one
     stretches to cover it.)*
-46. **A user reports their partner's edits aren't showing up. Debug it
+48. **A user reports their partner's edits aren't showing up. Debug it
     live.** *(Structured logs first: every line carries `service` and
     `request_id`. The id the Gateway assigns follows a request into the
     first service and back to the browser — but the internal service-to-
@@ -708,11 +757,11 @@ These cannot be answered by someone who read a design doc. They separate
     no request-rate, error-rate or latency dashboards and no tracing, so
     past that point you're reading logs. Naming your own blind spots here
     scores better than inventing a dashboard that doesn't exist.)*
-47. **Something in here you'd rip out and redo?** Have one real answer. The
+49. **Something in here you'd rip out and redo?** Have one real answer. The
     missing end-to-end test is the honest one.
 
 ### The killer question
-48. **What went wrong / what would you do differently?** Have three ready,
+50. **What went wrong / what would you do differently?** Have three ready,
     and §6 gives you them. This question decides more interviews than any
     other.
 
@@ -720,7 +769,7 @@ These cannot be answered by someone who read a design doc. They separate
 Two that reward having actually read `docs/system/09-running-it.md` rather
 than its summary — both are real, and both end with a method point.
 
-49. **The load run's minimum edit latency was -522ms. What happened?**
+51. **The load run's minimum edit latency was -522ms. What happened?**
     *(Both simulated users run in one process reading one clock, so it
     can't be two clocks disagreeing. The one clock itself stepped backwards
     mid-run — WSL2 does this when it resyncs against Windows. The tell that
@@ -728,7 +777,7 @@ than its summary — both are real, and both end with a method point.
     second, and nothing went *positive* by that much. It moves neither p50
     nor p95, and it stays in the results — a script that silently discards
     impossible samples can't tell you when they stop being rare.)*
-50. **Why does `make k8s-check` probe with forty identities rather than
+52. **Why does `make k8s-check` probe with forty identities rather than
     one?** *(Each user gets 120 rate-limit tokens refilling at 2 per
     second. One prober running flat out would empty its own bucket and end
     up measuring the rate limiter instead of the rolling update. Forty
@@ -866,7 +915,7 @@ You're ready when all eight pass cold, no notes:
 3. Both Lua scripts explained by the race each prevents.
 4. Any one of the four load-bearing files talked through for 60 seconds
    with the file closed.
-5. Any *Change it* question (41–47) answered by **naming files**.
+5. Any *Change it* question (43–49) answered by **naming files**.
 6. All four numbers quoted with their conditions.
 7. Three "what went wrong" stories told in under a minute each.
 8. "Why no deployment" answered as a decision, in two sentences, without

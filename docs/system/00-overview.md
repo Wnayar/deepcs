@@ -33,7 +33,7 @@ hand-written — opposite answers from the same test.
 
 ## 1. The product
 
-1. Arrive at a roadmap of nine topics, laid out in a recommended reading order.
+1. Arrive at a roadmap of ten topics, laid out in a recommended reading order.
    No account needed.
 2. Open a topic, pick one of its three steps, and read the lesson with the
    questions it prepares you for.
@@ -70,7 +70,7 @@ flowchart TD
 
     subgraph RUN["Stateless services — one container each"]
         GW@{ shape: procs, label: "<b>1. Gateway</b> ×2<br/>verify token · rate limit<br/>route · CORS" }
-        USR@{ shape: procs, label: "<b>2. Users</b> ×2<br/>profiles" }
+        USR@{ shape: procs, label: "<b>2. Users</b> ×2<br/>profiles · progress" }
         QST@{ shape: procs, label: "<b>3. Questions</b> ×2<br/>bank · search<br/>reference answers" }
         MCH@{ shape: procs, label: "<b>4. Matching</b> ×2<br/>queue · pair claim<br/>sessions · consent" }
         COL@{ shape: procs, label: "<b>5. Collab</b> ×2<br/>WebSockets · Yjs CRDT<br/>presence" }
@@ -125,7 +125,7 @@ Redis.
 | # | Service | Owns | Why it is its own deployable |
 |---|---|---|---|
 | 1 | **Gateway** | nothing | **Position.** A cross-cutting enforcement point has to sit *in front of* what it protects. This would be true even if its scaling profile matched everything else exactly. |
-| 2 | **Users** | profile rows keyed by `firebase_uid` | One capability, one owner. Small and stable — it will change less than anything else here. |
+| 2 | **Users** | profile rows keyed by `firebase_uid`, the display name shown to a partner, and what each reader has ticked or starred | One capability, one owner. Both are state about a *person*, so they live here rather than beside the questions they point at. |
 | 3 | **Questions** | the bank, tags, lessons, `reference_md` | Read-heavy and cacheable in a way nothing else is, and the only service holding answer keys, so a narrower blast radius is worth something. |
 | 4 | **Matching** | queue state, the pair claim, session rows, consent | A concurrency problem of its own: two users joining at the same instant race for the same partner, so the claim has to be atomic. |
 | 5 | **Collab** | live Yjs documents, snapshots | **Different scaling trigger and different failure mode.** One WebSocket occupies a concurrency slot for the length of a session, so it needs the opposite settings from every other service, and those are per-service. |
@@ -187,6 +187,15 @@ sign-up, sign-in and token refresh happen client-side against Firebase. The row
 is created lazily by `GET /users/me` after sign-in, and the `RETURNING` on that
 `ON CONFLICT ... DO NOTHING` is what makes "first sight of this uid" detectable,
 which is the only place `user.signed_up` can be emitted from.
+
+It also owns what each reader has ticked off the roadmap and starred, and their
+display name, because those are state about a person rather than about a
+question. The name is set once at sign-up and has no write path: it goes in on
+the insert, and `ON CONFLICT DO NOTHING` means a later call carrying a different
+one does not write. The visible
+consequence is that the roadmap screen fetches the map from Questions and the
+marks from Users and joins them in the browser — a query spanning the two
+schemas is refused by the database, not merely discouraged.
 
 **[Questions](03-questions.md)** owns the bank, the lessons and the roadmap
 layout. Cursor pagination rather than `OFFSET`, list results cached in Redis for

@@ -1,7 +1,7 @@
 # Questions
 
-Owns the teaching material and the answer keys: nine topics with their positions
-on the roadmap, twenty-seven question sets, the lesson that prepares you for
+Owns the teaching material and the answer keys: ten topics with their positions
+on the roadmap, thirty question sets, the lesson that prepares you for
 each, and the `reference_md` behind each. It is the only read-heavy service here,
 the only one with a cache, and the only one holding anything worth withholding.
 
@@ -33,8 +33,8 @@ questions.topics                        questions.bank
 
 **No `topic` column on a question.** Filtering is entirely through `tags`, and a
 question's topic is just its first, most general tag — `os`, `networking`,
-`databases`, `oop`, `system-design`, `security`, `debugging`, `ai-tooling`,
-`behavioural`. One mechanism instead of two overlapping ones. `tags[1] = t.topic`
+`databases`, `oop`, `design-patterns`, `system-design`, `security`, `debugging`,
+`ai-tooling`, `behavioural`. One mechanism instead of two overlapping ones. `tags[1] = t.topic`
 is how the two tables join.
 
 **`parts` is `jsonb`, not `text[]`.** Each entry is a short prompt string, and
@@ -136,7 +136,7 @@ absurdly high.
 dataset does not have. Worth revisiting if the bank ever grows past a few
 hundred.
 
-**One query per screen.** `getRoadmap` returns nine topics each carrying its
+**One query per screen.** `getRoadmap` returns ten topics each carrying its
 three steps; `getStep` returns one step with its lesson, its questions and its
 siblings. Both use a lateral subquery rather than a join plus grouping in
 JavaScript. The roadmap is one call rather than nine for a reason beyond
@@ -228,10 +228,21 @@ three-day curricula, one source file per step. Four more (Security, Debugging, A
 Tooling, Behavioural) are single overview files, split three ways along seams the
 notes already have.
 
+**Design Patterns is the exception, and was written here rather than adapted**
+([`012_design_patterns.sql`](../../packages/db/migrations/012_design_patterns.sql)).
+It started inside OOP, where lesson 2 was SOLID *plus* the creational and
+structural patterns and lesson 3 was the behavioural ones *plus* composition over
+inheritance. Two subjects sharing a lesson meant neither had room, and the
+roadmap could not show that patterns were a thing you had finished. Splitting it
+out left OOP with three coherent lessons (the pillars, SOLID, composition) and
+gave the catalogue its own topic, in Python, with worked examples rather than
+shape-and-animal ones. Its snippets are Python where OOP's are Java, which is the
+one place the language mix is a choice rather than the subject's own language.
+
 Both shapes end the same way: a section pairing question headers with
 full-paragraph answers. That maps directly onto the row shape — **the questions
 become `parts[]`, the answers become `reference_md`**, and everything above the
-cut becomes `lesson_md`. Twenty-seven rows across nine topics.
+cut becomes `lesson_md`. Thirty rows across ten topics.
 
 **`difficulty` is a row's position within its own topic, not an absolute
 rating** — first easy, second medium, third hard. The notes are a curriculum
@@ -244,14 +255,14 @@ absolute sense, only later in the sequence.
 The reason it matters is downstream. Matching pairs on topic **and** difficulty
 and refuses the match when nothing fits, so a combination with no question behind
 it is a pair of users who can never be matched — a dead end they meet only after
-choosing. Nine topics × three lands exactly on the grid, one question per cell,
+choosing. Ten topics × three lands exactly on the grid, one question per cell,
 and
 [`clients.test.ts`](../../services/matching/src/clients.test.ts) walks all
-twenty-seven combinations, because the failure is invisible until a user picks
+thirty combinations, because the failure is invisible until a user picks
 the one that is not there. An earlier ad-hoc assignment of difficulties left five
 cells empty.
 
-**Behavioural is shaped differently, on purpose.** The other eight topics have a
+**Behavioural is shaped differently, on purpose.** The other nine topics have a
 reference answer because the source notes have one. Behavioural is a *story
 scaffold*: the answers are the author's own experiences and the slots are
 deliberately blank, so there is nothing to import and inventing one would be

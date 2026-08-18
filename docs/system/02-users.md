@@ -15,7 +15,7 @@ Code: [`services/users/src/`](../../services/users/src/) — `repository.ts`,
 
 ---
 
-## 1. The row
+## 1. The two rows
 
 [`003_users_profiles.sql`](../../packages/db/migrations/003_users_profiles.sql)
 
@@ -41,8 +41,45 @@ below, and therefore what makes "first sight of this UID" detectable at all.
 Without it the upsert has nothing to conflict against and every sign-in inserts a
 duplicate row.
 
-`display_name` and `preferred_topics` are nullable and empty by default, because
-the row is created from a token alone, before the user has told us anything.
+`preferred_topics` is empty by default and has no write path. `display_name` is
+nullable for the same original reason, that the row is created from a token
+alone, and now has exactly one writer: the sign-up form, on the insert that
+creates the row (§4). Null therefore means an account made before names existed,
+which the session room renders as no name rather than as a placeholder.
+
+### What the reader has marked
+
+[`011_question_progress.sql`](../../packages/db/migrations/011_question_progress.sql)
+
+```sql
+CREATE TABLE IF NOT EXISTS users.question_progress (
+  uid         text NOT NULL REFERENCES users.profiles (firebase_uid) ON DELETE CASCADE,
+  question_id uuid NOT NULL,
+  done        boolean NOT NULL DEFAULT false,
+  starred     boolean NOT NULL DEFAULT false,
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (uid, question_id)
+);
+```
+
+**It lives here rather than in Questions because it is state about a person.**
+Questions has no idea users exist, and giving it a table keyed by uid would make
+it a second owner of identity. The cost is that the roadmap screen fetches two
+things and joins them itself (§4).
+
+**The composite primary key is what makes the write an upsert**: one row per
+person per step, so ticking a box twice lands on the same row instead of stacking
+up a history nobody asked for. Every read is "everything for one person", which
+that key already serves as its leading column, so no second index exists.
+
+**This foreign key is allowed where the others are not**, because it stays inside
+the `users` schema. Progress cannot exist for somebody who never signed in, and
+deleting a profile takes their marks with it. `question_id` has no such key — it
+points at `questions.bank`, which is across a boundary, so it is a plain `uuid`
+exactly like `matching.sessions.question_id`.
+
+**Two flags rather than one status column**, because starring something you have
+*not* done yet is most of the point of starring it.
 
 ---
 
@@ -102,17 +139,41 @@ function, and it cannot drift out of sync with Firebase's user list.
 
 ---
 
-## 4. The two routes
+## 4. The routes
 
 ```
-GET /users/me                 -> 201 + profile on first sight, 200 + profile after
-GET /users/:uid/exists        -> { "exists": true }
+GET /users/me?displayName=Alex       -> 201 + profile on first sight, 200 + profile after
+GET /users/:uid/exists               -> { "exists": true }
+GET /internal/users/:uid/profile     -> { "displayName": "Alex" }   (not proxied)
+GET /users/me/progress               -> { "progress": [{ questionId, done, starred }] }
+PUT /users/me/progress/:questionId   -> the stored row  { done, starred }
 ```
 
 `GET /users/me` is **not** public. `X-User-Id` absent means anonymous, and
 anonymous here is a 401 — but note that the *decision* is made by this service,
 which owns the resource, rather than by the header reader. `getUserId` returns
 null and says nothing about what a route should do with it.
+
+### The display name is set once, by the statement rather than by a rule
+
+`displayName` on `GET /users/me` is used **only by the insert**. `ON CONFLICT DO
+NOTHING` means a later call carrying a different name does not write, so "set at
+sign-up, not editable" is a property of the upsert rather than something a
+future route has to remember to refuse. Giving names a write path later means
+adding one on purpose, which is the right amount of friction for a field another
+person sees.
+
+An unparseable name is ignored rather than refused. This route's job is making
+sure the row exists before anything else asks about it (§3), and failing a
+sign-in over a name would be a worse outcome than a row with no name in it.
+
+`GET /internal/users/:uid/profile` is how Matching puts a name in the session
+room. **The `/internal` prefix is the access control**: the Gateway proxies
+nothing under it, so the route is unreachable from a browser and cannot be used
+to turn a uid into a person. That is a door that is not connected, rather than a
+check that has to be kept correct. It answers with the name and nothing else,
+and Matching passes on the name and never the uid it looked up
+([`04-matching.md`](04-matching.md) §9).
 
 `GET /users/:uid/exists` is Matching's validation call, and it is deliberately
 thin: it answers one question and reveals nothing else, because Matching has no
@@ -121,6 +182,36 @@ as a sanity check rather than a format assertion — Firebase UIDs are 28 today,
 and pinning the exact length would break this service the day Google changes it,
 for no security benefit. The UID was already proven by a signature check before
 it reached the header.
+
+### The two progress routes are where the schema boundary shows
+
+`GET /users/me/progress` returns everything this reader has ticked or starred,
+in one query. The whole set rather than a page of it, for the same reason the
+roadmap itself is one call: the map draws ten topics and thirty steps at
+once and cannot render a partial graph, so paginating costs more requests than
+it saves bytes.
+
+**The roadmap and the progress are two requests, merged in the browser, and they
+have to be.** The steps live in `questions.bank` and the marks live in
+`users.question_progress`, and a query spanning the two schemas is refused by the
+database rather than merely discouraged ([ADR-09](../adr/09-one-database-one-schema-per-service.md)).
+This is the clearest place in the system where that boundary has a visible cost,
+and the cost is small: two requests that do not depend on each other, and a
+`Map` lookup per step.
+
+`PUT` **replaces state rather than toggling it**, and both flags are always
+sent. That is what lets the browser fire a write on every click without waiting
+for the answer: the same request arriving twice, or two arriving out of order
+after a retry, land on the same row. A toggle endpoint would flip twice on a
+retry and leave the box showing the opposite of the truth, with nothing able to
+detect it. Sending only the flag that moved has the same problem in a quieter
+form — the other one's absence would have to mean "leave it alone", and two
+clicks racing could then resurrect a stale value.
+
+The question id is **not** validated against the bank, because Users cannot see
+that table. A row for a question that does not exist is harmless: the roadmap
+decides which steps are drawn, and a mark for one it does not list is never read
+back.
 
 ---
 

@@ -254,7 +254,7 @@ routing table:
 | `/questions` | Questions | the bank, and the signed-in answer route |
 | `/roadmap` | Questions | the map |
 | `/steps` | Questions | a lesson with its questions |
-| `/match` | Matching | including the status poll and the participant check |
+| `/match` | Matching | including the status poll, the participant check and the partner name |
 | `/collab` | Collab | `websocket: true` |
 | `/stats` | Stats read server | public aggregates |
 | `/sessions` | Stats read server | one session's summary |
@@ -285,6 +285,21 @@ anyway, so `*` would be both less safe and non-functional. Response headers a
 browser is allowed to *read* have to be named explicitly: `retry-after` (a
 frontend backing off would otherwise read null), `x-ratelimit-*`, `x-cache` and
 `x-request-id`.
+
+**The allowed methods are listed, and that is not decoration.** `@fastify/cors`
+defaults to `GET,HEAD,POST`, and a method missing from
+`access-control-allow-methods` is refused by the **browser**, during the
+preflight, before the request is ever sent. Nothing reaches the Gateway, nothing
+reaches a log, and the server looks innocent.
+
+That failure shipped here. `PUT /users/me/progress/:questionId` was the first
+non-GET, non-POST route in the app: the tick lit up and rolled straight back,
+while curl got a `200` from the same route every time, because **curl sends no
+preflight**. The lesson is that an end-to-end check from a terminal does not
+exercise the browser's half of the contract, so
+[`frontend/src/cors.test.ts`](../../frontend/src/cors.test.ts) now asserts that
+every method `api.ts` sends survives a preflight. Adding a method to the client
+without adding it here fails a test instead of failing silently.
 
 **No CSP here.** The Gateway serves JSON, not HTML, so a content policy protects
 nothing. It belongs on whatever serves the frontend

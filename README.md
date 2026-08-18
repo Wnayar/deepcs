@@ -3,7 +3,7 @@
 **Learn CS fundamentals from a roadmap, then solve the questions live with a
 matched partner in a shared editor.**
 
-Nine topics laid out by what makes what easier to read. Each opens into three
+Ten topics laid out by what makes what easier to read. Each opens into three
 steps, and a step is a lesson plus the questions it prepares you for. Answer
 them alone, or get matched with someone and work through them together.
 

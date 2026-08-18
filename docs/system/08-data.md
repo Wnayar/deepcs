@@ -16,7 +16,7 @@ This page is what they look like in the schema.
 
 | Schema | Role | Tables |
 |---|---|---|
-| `users` | `users_svc` | `profiles` |
+| `users` | `users_svc` | `profiles`, `question_progress` |
 | `questions` | `questions_svc` | `bank`, `topics` |
 | `matching` | `matching_svc` | `sessions` |
 | `collab` | `collab_svc` | `snapshots` |
