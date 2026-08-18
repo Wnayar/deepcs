@@ -6,7 +6,7 @@ import { createRedis, pingRedis } from '@deepcs/shared/redis';
 import { getUserId } from '@deepcs/shared/headers';
 import { SERVICES } from '@deepcs/shared/services';
 import { createRedisEventLog, emitEvent } from '@deepcs/shared/events';
-import { checkUserExists, fetchReferenceMd, findQuestion } from './clients.js';
+import { checkUserExists, fetchDisplayName, fetchReferenceMd, findQuestion } from './clients.js';
 import { createQueue } from './queue.js';
 import {
   addRevealConsent,
@@ -341,6 +341,41 @@ async function loadForParticipant(
 
   return { session, uid };
 }
+
+/**
+ * Who you are working with, e.g.
+ *   GET /match/sessions/3f2e1c9a-.../partner        (X-User-Id: alice)
+ * returns `{ "displayName": "Bob" }`, or `null` for an account made before
+ * names existed.
+ *
+ * **A name, never a uid**, and that distinction is the whole design. The uid is
+ * what every other service keys on, so handing it to a browser would let a
+ * client address, look up or impersonate somebody. A display name identifies a
+ * person to their partner and is useless for anything else, which is why
+ * showing one does not reopen what §9 closed.
+ *
+ * A separate route rather than a field on the session, because `/match/status`
+ * is polled every few seconds while somebody waits, and putting a name there
+ * would turn one call to Users into twenty a minute for a field nobody can see
+ * until they are in the room.
+ */
+app.get('/match/sessions/:id/partner', async (req, reply) => {
+  const loaded = await loadForParticipant(req, reply);
+  if (!loaded) return;
+
+  const { session, uid } = loaded;
+  const partnerUid = session.userAUid === uid ? session.userBUid : session.userAUid;
+
+  try {
+    return reply.send({ displayName: await fetchDisplayName(usersUrl, partnerUid) });
+  } catch (err) {
+    // A room with an unnamed partner still works, so a Users outage degrades
+    // this rather than failing it. The alternative is an editor nobody can open
+    // because a label could not be fetched.
+    req.log.warn({ err, session_id: session.id }, 'partner name lookup failed');
+    return reply.send({ displayName: null });
+  }
+});
 
 /**
  * Shapes the reveal state for `callerUid`, fetching the answer from Questions

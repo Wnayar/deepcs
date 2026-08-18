@@ -26,6 +26,22 @@ import { SummaryPage } from './pages/Summary';
  */
 const MATCH_POLL_MS = 3_000;
 
+/**
+ * The wordmark's glyph: three bars going down and getting shorter, for a
+ * subject you read downward into. Drawn rather than an image file so it takes
+ * the text colour and stays sharp at any size, and so a theme switch needs no
+ * second asset.
+ */
+function Mark() {
+  return (
+    <svg className="mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <rect x="3" y="4.5" width="18" height="3.4" rx="1.7" />
+      <rect x="3" y="10.3" width="12.5" height="3.4" rx="1.7" opacity="0.72" />
+      <rect x="3" y="16.1" width="7" height="3.4" rx="1.7" opacity="0.45" />
+    </svg>
+  );
+}
+
 export interface SessionSummary {
   question: Question;
   startedAt: string;
@@ -53,6 +69,9 @@ export function App() {
   /** Bumped when the queue is joined or left, purely to restart the watcher
    * below: the flag it reads lives in storage, which React cannot observe. */
   const [queuedAt, setQueuedAt] = useState(0);
+  /** The signed-in reader's own name, for the header. Null while the profile
+   * call is in flight, and for accounts made before names existed. */
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [theme, toggleTheme] = useTheme();
 
   useEffect(
@@ -73,8 +92,16 @@ export function App() {
   // does not end anything, so without this the header would keep offering to
   // find a partner while you were still in a room.
   useEffect(() => {
-    if (!user) return setActive(null);
-    void ensureProfile().catch(() => {});
+    if (!user) {
+      setDisplayName(null);
+      return setActive(null);
+    }
+    // The profile call already returns the name, so keeping its answer costs
+    // nothing. Failing to get one is not worth showing an error over: the
+    // header simply says less.
+    void ensureProfile()
+      .then((profile) => setDisplayName(profile.displayName))
+      .catch(() => {});
     void currentSession()
       .then(setActive)
       .catch(() => setActive(null));
@@ -152,11 +179,16 @@ export function App() {
       <header>
         <h1>
           <Link className="wordmark" to="/">
+            <Mark />
             deepcs
           </Link>
         </h1>
 
-        <nav>
+        {/* Two groups, not one row of similar things. Left is where you can go;
+            right is what is true about you — the session you are in, who you
+            are signed in as, how the page looks. Mixing them made "Sign out"
+            read as another destination. */}
+        <nav className="nav-primary">
           {/* Links, not buttons that navigate. A `<button>` inside an `<a>` is
               invalid markup and behaves unpredictably, and a link is what these
               actually are: middle-click and open-in-new-tab work for free.
@@ -180,6 +212,13 @@ export function App() {
               Find a partner
             </NavLink>
           )}
+        </nav>
+
+        <div className="nav-utility">
+          {/* Who you are signed in as. Before the sign-out button rather than
+              inside it, because a name is not a control and putting it in one
+              made the button read as a destination. */}
+          {displayName && <span className="who">{displayName}</span>}
 
           {/* Always present, signed in or out. Signed out it is the way in;
               signed in it is where you go to leave, and hiding it would mean
@@ -203,7 +242,7 @@ export function App() {
           >
             {theme === 'dark' ? '☀' : '☾'}
           </button>
-        </nav>
+        </div>
       </header>
 
       <Routes>
@@ -211,8 +250,8 @@ export function App() {
             over the map, so giving it its own URL is what makes Back close it
             rather than leave the site. */}
         <Route path="/" element={<Wide />}>
-          <Route index element={<RoadmapPage />} />
-          <Route path="topic/:topic" element={<RoadmapPage />} />
+          <Route index element={<RoadmapPage signedIn={Boolean(user)} />} />
+          <Route path="topic/:topic" element={<RoadmapPage signedIn={Boolean(user)} />} />
         </Route>
 
         <Route element={<Narrow />}>

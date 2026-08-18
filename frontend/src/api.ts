@@ -81,8 +81,70 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
  * never seen with "user not found". Signing in with Firebase alone is not
  * enough to exist inside this system.
  */
+/**
+ * Set by the sign-up form before it calls Firebase, and read by whichever
+ * `ensureProfile` call happens to run first.
+ *
+ * It has to be module state rather than an argument, because signing up flips
+ * Firebase's auth state *during* `createUserWithEmailAndPassword`, so the app
+ * shell's own `ensureProfile` can win the race and create the row first. The
+ * name is only used by the insert, so the row would then exist without one, for
+ * good: profile names are set once and have no write path.
+ */
+let pendingDisplayName: string | null = null;
+
+export function setPendingDisplayName(name: string): void {
+  pendingDisplayName = name.trim() || null;
+}
+
 export function ensureProfile() {
-  return request<{ id: string; firebaseUid: string }>('/users/me');
+  const name = pendingDisplayName;
+  // Cleared before the request, not after: a retry must not re-send a name for
+  // a row that already exists, and a signed-in user is not signing up again.
+  pendingDisplayName = null;
+
+  const query = name ? `?displayName=${encodeURIComponent(name)}` : '';
+  return request<{ id: string; firebaseUid: string; displayName: string | null }>(
+    `/users/me${query}`,
+  );
+}
+
+/** Who you are in a session with. A name, never a uid: sessions still never
+ * name anybody in a way another service could key on. */
+export function partnerName(sessionId: string) {
+  return request<{ displayName: string | null }>(`/match/sessions/${sessionId}/partner`);
+}
+
+/** One reader's mark on one roadmap step. The id is the step's own id, which
+ * is a question id — the roadmap draws one bank row per step. */
+export interface Progress {
+  questionId: string;
+  done: boolean;
+  starred: boolean;
+}
+
+/**
+ * Everything this reader has ticked or starred.
+ *
+ * Fetched separately from the roadmap and merged in the browser, because the
+ * two live in different Postgres schemas and no query may span them. Signed
+ * out this 401s, which the roadmap treats as "no marks" rather than an error:
+ * the map itself is public.
+ */
+export function getProgress() {
+  return request<{ progress: Progress[] }>('/users/me/progress');
+}
+
+/**
+ * Set both flags for one step. Sent on every click without waiting for the
+ * answer, which is safe because the route replaces state rather than toggling
+ * it — the same call twice lands on the same row.
+ */
+export function setProgress(questionId: string, done: boolean, starred: boolean) {
+  return request<Progress>(`/users/me/progress/${questionId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ done, starred }),
+  });
 }
 
 export function getQuestion(id: string) {
@@ -161,7 +223,7 @@ export interface Step {
   siblings: { id: string; step: number; title: string }[];
 }
 
-/** The nine topics with their prerequisites and steps. Public: the roadmap
+/** The ten topics with their prerequisites and steps. Public: the roadmap
  * works signed out. */
 export function getRoadmap() {
   return request<{ topics: RoadmapTopic[] }>('/roadmap');

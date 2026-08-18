@@ -1,6 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPool } from '@deepcs/shared/db';
-import { profileExists, upsertProfile } from './repository.js';
+import {
+  profileExists,
+  readDisplayName,
+  readProgress,
+  setProgress,
+  upsertProfile,
+} from './repository.js';
 
 /**
  * Real Postgres, not a mock. The two properties under test —
@@ -134,3 +140,145 @@ describe.skipIf(!process.env.CI && process.env.DATABASE_URL === undefined)(
     });
   },
 );
+
+describe.skipIf(!process.env.CI && process.env.DATABASE_URL === undefined)(
+  'roadmap progress',
+  () => {
+    /** Progress hangs off a profile, so the row has to exist first. */
+    const reader = async () => {
+      const u = uid();
+      await upsertProfile(pool, u);
+      return u;
+    };
+
+    // A question id is a plain uuid here: Users cannot see the bank, so nothing
+    // validates it and the tests do not need a real one.
+    const step = () => crypto.randomUUID();
+
+    it('starts with nothing marked', async () => {
+      if (!reachable) return;
+      expect(await readProgress(pool, await reader())).toEqual([]);
+    });
+
+    it('records a tick and reads it back', async () => {
+      if (!reachable) return;
+      const u = await reader();
+      const s = step();
+
+      expect(await setProgress(pool, u, s, true, false)).toEqual({
+        questionId: s,
+        done: true,
+        starred: false,
+      });
+      expect(await readProgress(pool, u)).toEqual([{ questionId: s, done: true, starred: false }]);
+    });
+
+    /**
+     * The property the route leans on. The browser fires a write on every click
+     * without waiting for the answer, so the same call can arrive twice — and a
+     * toggle would flip twice and leave the box showing the opposite of the
+     * truth. Replacing state means the second arrival is a no-op.
+     */
+    it('is idempotent: the same write twice leaves one row saying the same thing', async () => {
+      if (!reachable) return;
+      const u = await reader();
+      const s = step();
+
+      await setProgress(pool, u, s, true, true);
+      await setProgress(pool, u, s, true, true);
+
+      expect(await readProgress(pool, u)).toEqual([{ questionId: s, done: true, starred: true }]);
+    });
+
+    it('unticks without deleting the star', async () => {
+      if (!reachable) return;
+      const u = await reader();
+      const s = step();
+
+      await setProgress(pool, u, s, true, true);
+      await setProgress(pool, u, s, false, true);
+
+      // Starring something you have not done is the reason the two flags are
+      // separate columns rather than one status.
+      expect(await readProgress(pool, u)).toEqual([{ questionId: s, done: false, starred: true }]);
+    });
+
+    it('keeps two readers' + "'" + ' marks apart', async () => {
+      if (!reachable) return;
+      const [alice, bob] = [await reader(), await reader()];
+      const s = step();
+
+      await setProgress(pool, alice, s, true, false);
+
+      expect(await readProgress(pool, bob)).toEqual([]);
+      expect(await readProgress(pool, alice)).toHaveLength(1);
+    });
+
+    it('keeps a reader' + "'" + 's marks for different steps apart', async () => {
+      if (!reachable) return;
+      const u = await reader();
+      const [one, two] = [step(), step()];
+
+      await setProgress(pool, u, one, true, false);
+      await setProgress(pool, u, two, false, true);
+
+      const marks = await readProgress(pool, u);
+      expect(marks).toHaveLength(2);
+      expect(marks.find((m) => m.questionId === one)).toEqual({
+        questionId: one,
+        done: true,
+        starred: false,
+      });
+      expect(marks.find((m) => m.questionId === two)).toEqual({
+        questionId: two,
+        done: false,
+        starred: true,
+      });
+    });
+  },
+);
+
+describe.skipIf(!process.env.CI && process.env.DATABASE_URL === undefined)('display names', () => {
+  it('stores the name given when the row is created', async () => {
+    if (!reachable) return;
+    const u = uid();
+
+    const { profile, created } = await upsertProfile(pool, u, 'Alex');
+    expect(created).toBe(true);
+    expect(profile.displayName).toBe('Alex');
+    expect(await readDisplayName(pool, u)).toBe('Alex');
+  });
+
+  /**
+   * The property the whole feature rests on. Names are set at sign-up and
+   * have no write path, and that is not enforced by a rule anybody has to
+   * remember: `ON CONFLICT DO NOTHING` means a later call carrying a
+   * different name simply does not write. Giving names a write path later
+   * means adding one on purpose.
+   */
+  it('ignores a name on any later call, so it cannot be changed', async () => {
+    if (!reachable) return;
+    const u = uid();
+    await upsertProfile(pool, u, 'Alex');
+
+    const { created } = await upsertProfile(pool, u, 'Someone Else');
+
+    expect(created).toBe(false);
+    expect(await readDisplayName(pool, u)).toBe('Alex');
+  });
+
+  it('leaves the name null when none is given', async () => {
+    if (!reachable) return;
+    const u = uid();
+    await upsertProfile(pool, u);
+
+    // Accounts made before names existed read this way, and the room shows
+    // no name rather than a placeholder.
+    expect(await readDisplayName(pool, u)).toBeNull();
+  });
+
+  it('is null for a uid with no profile at all', async () => {
+    if (!reachable) return;
+    expect(await readDisplayName(pool, uid())).toBeNull();
+  });
+});

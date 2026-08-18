@@ -28,6 +28,12 @@
 
   --ok: #2f7d4f;
   --ok-soft: #e8f4ec;
+  /* The progress bars and the star. Separate from --ok because "done" is a
+     state on the map, not a success message, and the two want different
+     weights in dark mode. */
+  --progress: #2f7d4f;
+  --progress-track: #e4e4e0;
+  --star: #c99a2e;
   --warn: #9a6212;
   --danger: #b3261e;
 
@@ -65,6 +71,9 @@
 
   --ok: #6cc48d;
   --ok-soft: #24332a;
+  --progress: #57c98a;
+  --progress-track: #3a3e46;
+  --star: #e0b455;
   --warn: #d6a35c;
   --danger: #e8837c;
 
@@ -205,6 +214,15 @@ main.wide {
   gap: 0.75rem;
 }
 
+/* One visible focus ring for everything, drawn outside the element so it never
+   changes layout. `:focus-visible` rather than `:focus`, so a mouse click does
+   not leave a ring behind but tabbing always shows one. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 /* ── Text helpers ──────────────────────────────────────────────────────────── */
 
 .muted {
@@ -269,11 +287,56 @@ button.quiet:hover:not(:disabled) {
 }
 
 .wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   font: inherit;
   font-weight: 700;
+  letter-spacing: -0.01em;
   text-decoration: none;
   color: inherit;
   cursor: pointer;
+}
+
+/* `currentColor` throughout, so the glyph is the accent beside the wordmark's
+   ink without either theme needing a second copy of it. */
+.mark {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: none;
+  fill: var(--accent);
+}
+
+/* Where you can go, and what is true about you. `margin-left: auto` on the
+   second group is what separates them; without it the header is one
+   undifferentiated row and "Sign out" reads as a destination. */
+.nav-primary,
+.nav-utility {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.nav-primary {
+  margin-left: 0.75rem;
+  padding-left: 0.85rem;
+  border-left: 1px solid var(--line);
+}
+
+.nav-utility {
+  margin-left: auto;
+}
+
+/* The signed-in reader's own name. Quiet on purpose: it is there to answer
+   "am I signed in, and as who", not to be clicked. */
+.who {
+  padding: 0 0.15rem 0 0.4rem;
+  font-weight: 600;
+  color: var(--fg-muted);
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* A navigation link wearing the same clothes as the buttons beside it.
@@ -312,9 +375,31 @@ button.quiet:hover:not(:disabled) {
 
 .navlink[aria-current='page'],
 nav button[aria-current='page'] {
-  border-color: var(--accent);
+  background: var(--accent-soft);
+  border-color: transparent;
   color: var(--accent);
   font-weight: 600;
+}
+
+/* The header's links sit on a bar, not on a page, so they carry no border
+   until pointed at: a row of six outlined boxes reads as six controls
+   competing, and the wordmark stops being the first thing seen. */
+header .navlink,
+header .quiet {
+  border-color: transparent;
+  background: none;
+}
+
+header .navlink:hover,
+header .quiet:hover {
+  background: var(--surface-2);
+  border-color: transparent;
+  color: var(--fg);
+}
+
+header .navlink.primary {
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 input,
@@ -381,7 +466,10 @@ button:focus-visible {
   cursor: grabbing;
 }
 
-.canvas svg {
+/* The direct child, not any descendant: the progress panel sits inside the
+   canvas too, and a descendant selector stretched its ring across the whole
+   map behind the text. */
+.canvas > svg {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -408,6 +496,18 @@ button:focus-visible {
   fill: var(--accent-soft);
 }
 
+/* Finished. A tinted fill and a coloured edge rather than a tick in the
+   corner: at map zoom a small glyph is unreadable, but a whole box changing
+   weight is legible at any scale. */
+.node.done rect {
+  stroke: var(--progress);
+  fill: var(--ok-soft);
+}
+
+.node.done:hover rect {
+  stroke: var(--accent);
+}
+
 .node text {
   fill: var(--fg);
   font-size: 13.5px;
@@ -421,6 +521,147 @@ button:focus-visible {
   fill: var(--fg-faint);
   font-size: 11px;
   font-weight: 500;
+}
+
+/* The bar inside a topic box. Drawn even at zero, so an untouched topic reads
+   as "none of three" rather than as a topic with nothing in it. */
+/* Qualified with `.node rect`, because that rule sets `fill` too and a bare
+   class loses to it: the bars were being painted the same colour as the box
+   and looked like they never filled. */
+.node rect.node-track {
+  fill: var(--progress-track);
+}
+
+.node rect.node-fill {
+  fill: var(--progress);
+}
+
+/* Totals, opposite the zoom controls so neither covers the tree. */
+.progress-panel {
+  position: absolute;
+  right: 1rem;
+  top: 1rem;
+  z-index: 2;
+  width: 13.5rem;
+  padding: 1.1rem 1rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+/* The gauge: a ring with its own numbers stacked in the middle of it.
+
+   Both children are put in row 1, column 1 of the same one-cell grid, so they
+   occupy the same space and `place-items: center` centres each of them in it.
+   That is the whole trick, and it is why nothing here is positioned absolutely:
+   the grid cell is as tall as the ring, so the panel still sizes itself. */
+.gauge {
+  display: grid;
+  place-items: center;
+  padding: 0.35rem 0 0.15rem;
+}
+
+.gauge > * {
+  grid-area: 1 / 1;
+}
+
+.gauge-ring {
+  /* The one size to change. Everything inside the ring is drawn from the
+     viewBox, so it scales with this and nothing else needs touching. */
+  width: 9.5rem;
+  height: 9.5rem;
+}
+
+.gauge-track,
+.gauge-fill {
+  fill: none;
+  /* In viewBox units, not pixels: 7 of 100 across, so the band keeps its
+     proportion whatever width the ring is given above. */
+  stroke-width: 7;
+}
+
+.gauge-track {
+  stroke: var(--progress-track);
+}
+
+.gauge-fill {
+  stroke: var(--progress);
+  /* Rounded, so a single finished step reads as a deliberate mark rather than
+     as a hairline that could be a rendering artefact. */
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.gauge-count {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+
+.gauge-count strong {
+  font-size: 2.6rem;
+  font-weight: 680;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The total, under a rule, so the pair reads as "2 out of 27" without the word
+   "of" taking up a line of its own. */
+.gauge-total {
+  margin-top: 0.28rem;
+  padding-top: 0.28rem;
+  border-top: 1px solid var(--line-strong);
+  min-width: 2.4rem;
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.gauge-unit {
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+/* The line worth wanting more of. Sits on its own under the ring rather than in
+   a list, because it is the only other number here. */
+.gauge-topics {
+  margin: 0.75rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--fg-muted);
+}
+
+.gauge-topics strong {
+  color: var(--fg);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Shared by the panel and anything else that needs a filled track. The span is
+   the fill, so the width can be set inline from a percentage. */
+.bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--progress-track);
+  overflow: hidden;
+}
+
+.bar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--progress);
+  transition: width 0.18s;
 }
 
 .canvas-controls {
@@ -497,14 +738,15 @@ button:focus-visible {
   }
 }
 
-/* One step inside the dialog: a numbered marker, a title, and a question
-   count. A button, because it navigates. */
+/* One step inside the dialog: a tick, a star, and the step itself. Three
+   separate buttons in a row rather than one button containing them, because
+   nesting interactive elements is invalid markup and makes clicks land
+   unpredictably. */
 .step-item {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: 0.5rem;
   width: 100%;
-  text-align: left;
   padding: 0.7rem 0.8rem;
   background: var(--surface);
 }
@@ -513,17 +755,69 @@ button:focus-visible {
   background: var(--surface-2);
 }
 
-.step-number {
+/* The step itself: everything that navigates, and all of the row's spare
+   width, so the click target is the whole line rather than the title. */
+.step-open {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* The tick and the star. Square targets rather than the glyph's own box, so
+   they are big enough to hit on a touch screen. */
+.mark-toggle {
   flex: none;
-  width: 1.9rem;
-  height: 1.9rem;
-  border-radius: 999px;
   display: grid;
   place-items: center;
-  font-size: 0.85rem;
-  font-weight: 650;
-  background: var(--accent-soft);
-  color: var(--accent);
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--fg-faint);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mark-toggle:hover {
+  background: var(--surface-2);
+  color: var(--fg-muted);
+}
+
+.mark-toggle.star[aria-pressed='true'] {
+  color: var(--star);
+}
+
+/* An outline that fills in, rather than a checkbox: the empty state has to
+   read as "not yet" rather than as a control nobody has noticed. */
+.ring {
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 999px;
+  border: 2px solid var(--line-strong);
+  transition:
+    border-color 0.12s,
+    background 0.12s;
+}
+
+.mark-toggle:hover .ring {
+  border-color: var(--progress);
+}
+
+.ring.done {
+  border-color: var(--progress);
+  background: radial-gradient(circle at center, var(--progress) 0 45%, transparent 46%);
 }
 
 .step-item .label {
@@ -642,42 +936,24 @@ button:focus-visible {
   font-weight: 600;
 }
 
-.menu-list .divider {
+.menu-list /* The Key summary in the section list. It is the destination the lesson is
+   written towards, so it carries a mark and a little more weight than the
+   sections above it — enough to find without scanning. */
+.menu-key {
+  font-weight: 600;
+}
+
+.menu-key-mark {
+  color: var(--accent);
+  margin-right: 0.45rem;
+  font-size: 0.7em;
+  vertical-align: 0.15em;
+}
+
+.divider {
   border: 0;
   border-top: 1px solid var(--line);
   margin: 0.25rem 0;
-}
-
-/* The questions this lesson prepares you for, shown before the lesson. */
-.checklist {
-  counter-reset: q;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.checklist li {
-  counter-increment: q;
-  display: flex;
-  gap: 0.7rem;
-  align-items: baseline;
-}
-
-.checklist li::before {
-  content: counter(q);
-  flex: none;
-  width: 1.4rem;
-  height: 1.4rem;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  font-size: 0.72rem;
-  font-weight: 650;
-  background: var(--surface-2);
-  color: var(--fg-muted);
 }
 
 .pager {

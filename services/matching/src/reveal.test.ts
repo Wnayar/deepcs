@@ -501,3 +501,94 @@ describe.skipIf(!process.env.CI && process.env.MATCHING_URL === undefined)(
     });
   },
 );
+
+describe.skipIf(!process.env.CI && process.env.MATCHING_URL === undefined)(
+  'the partner name in a session',
+  () => {
+    /** Two named users, matched. Names are set at sign-up, which is the only
+     * moment `/users/me` records one. */
+    async function namedPair() {
+      const alice = `name-a-${Math.random().toString(36).slice(2)}`;
+      const bob = `name-b-${Math.random().toString(36).slice(2)}`;
+      await fetch(`${USERS_URL}/users/me?displayName=Alice%20A`, {
+        headers: { 'x-user-id': alice },
+      });
+      await fetch(`${USERS_URL}/users/me?displayName=Bob%20B`, { headers: { 'x-user-id': bob } });
+
+      const body = JSON.stringify({ topic: 'locks', difficulty: 'medium' });
+      await fetch(`${MATCHING_URL}/match/join`, {
+        method: 'POST',
+        headers: { ...JSON_HEADERS, 'x-user-id': alice },
+        body,
+      });
+      const res = await fetch(`${MATCHING_URL}/match/join`, {
+        method: 'POST',
+        headers: { ...JSON_HEADERS, 'x-user-id': bob },
+        body,
+      });
+      const matched = (await res.json()) as { session: { id: string } };
+      return { alice, bob, sessionId: matched.session.id };
+    }
+
+    it("tells each participant the other one's name", async (ctx) => {
+      if (!(await allReachable())) return ctx.skip();
+      const { alice, bob, sessionId } = await namedPair();
+
+      const forAlice = await fetch(`${MATCHING_URL}/match/sessions/${sessionId}/partner`, {
+        headers: { 'x-user-id': alice },
+      });
+      const forBob = await fetch(`${MATCHING_URL}/match/sessions/${sessionId}/partner`, {
+        headers: { 'x-user-id': bob },
+      });
+
+      expect(await forAlice.json()).toEqual({ displayName: 'Bob B' });
+      expect(await forBob.json()).toEqual({ displayName: 'Alice A' });
+    });
+
+    /**
+     * The line this feature had to walk. Showing a name changes how a session
+     * feels; leaking a uid would change what a client can *do*, because a uid is
+     * what every other service keys on. The name is answered, the uid is not,
+     * and asserting on the whole serialised body is what keeps a future field
+     * from quietly reintroducing it.
+     */
+    it('answers with a name and never with the uid behind it', async (ctx) => {
+      if (!(await allReachable())) return ctx.skip();
+      const { alice, bob, sessionId } = await namedPair();
+
+      const body = await (
+        await fetch(`${MATCHING_URL}/match/sessions/${sessionId}/partner`, {
+          headers: { 'x-user-id': alice },
+        })
+      ).text();
+
+      expect(body).toContain('Bob B');
+      expect(body).not.toContain(bob);
+    });
+
+    it('refuses somebody who is not in the session', async (ctx) => {
+      if (!(await allReachable())) return ctx.skip();
+      const { sessionId } = await namedPair();
+
+      const res = await fetch(`${MATCHING_URL}/match/sessions/${sessionId}/partner`, {
+        headers: { 'x-user-id': `stranger-${Math.random().toString(36).slice(2)}` },
+      });
+
+      // 403 rather than 404: the session is real, they are simply not in it.
+      expect(res.status).toBe(403);
+    });
+
+    it('answers null rather than failing for an account with no name', async (ctx) => {
+      if (!(await allReachable())) return ctx.skip();
+      const { alice, sessionId } = await matchedPair();
+
+      const res = await fetch(`${MATCHING_URL}/match/sessions/${sessionId}/partner`, {
+        headers: { 'x-user-id': alice },
+      });
+
+      // `matchedPair` signs its users up without a name, which is what every
+      // account made before this feature looks like.
+      expect(await res.json()).toEqual({ displayName: null });
+    });
+  },
+);

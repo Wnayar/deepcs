@@ -26,6 +26,31 @@ export async function checkUserExists(usersUrl: string, uid: string): Promise<bo
   return existsResponse.parse(await res.json()).exists;
 }
 
+const profileResponse = z.object({ displayName: z.string().nullable() });
+
+/**
+ * Asks Users for one person's display name, e.g.
+ * `fetchDisplayName('http://users:8081', 'abc123')` resolves to `"Alex"` or
+ * `null` for an account made before names existed.
+ *
+ * The `/internal` prefix is load-bearing: the Gateway proxies nothing under it,
+ * so this route cannot be reached from a browser. That is what makes it safe
+ * for it to answer about any uid without checking who is asking.
+ *
+ * Unlike the other two calls here, a failure is not fatal to the caller. A room
+ * with an unnamed partner still works, so the route above catches this rather
+ * than failing the request.
+ */
+export async function fetchDisplayName(usersUrl: string, uid: string): Promise<string | null> {
+  const res = await fetch(`${usersUrl}/internal/users/${encodeURIComponent(uid)}/profile`, {
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    throw new Error(`users service returned ${res.status}`);
+  }
+  return profileResponse.parse(await res.json()).displayName;
+}
+
 const questionSummary = z.object({
   id: z.string(),
   title: z.string(),

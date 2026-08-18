@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { getRoadmap, type RoadmapTopic } from '../api';
+import { doneCount, useProgress } from '../progress';
+import { ProgressPanel } from './ProgressPanel';
 import { TopicDialog } from './TopicDialog';
 import {
   BOX_H,
@@ -18,6 +20,10 @@ import {
 /** How far the pointer may move before a press counts as a drag rather than a
  * click. Below this, a press that wobbles by a pixel still opens the topic. */
 const DRAG_THRESHOLD_PX = 4;
+
+/** The progress bar inside a node, inset from the box so it reads as part of
+ * the card rather than as its edge. */
+const BAR_W = BOX_W - 44;
 
 /**
  * The roadmap: a tree read downward, one box per topic.
@@ -39,7 +45,13 @@ const DRAG_THRESHOLD_PX = 4;
  *   3. Text selection is off in the stylesheet, or dragging across a label
  *      turns into a highlight halfway through.
  */
-export function RoadmapPage() {
+interface Props {
+  /** Ticks and stars need a caller identity, so signed out the map is drawn
+   * without them rather than offering controls that would 401. */
+  signedIn: boolean;
+}
+
+export function RoadmapPage({ signedIn }: Props) {
   const navigate = useNavigate();
   // Present when the URL is /topic/:topic, absent at /. The panel is part of
   // this screen rather than a separate one, so opening it does not unmount the
@@ -47,6 +59,7 @@ export function RoadmapPage() {
   const { topic: openSlug } = useParams();
   const onOpenTopic = (topic: RoadmapTopic) => void navigate(`/topic/${topic.topic}`);
 
+  const { marks, markOf, mark } = useProgress(signedIn);
   const [topics, setTopics] = useState<RoadmapTopic[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 });
@@ -148,6 +161,13 @@ export function RoadmapPage() {
   const byName = new Map(topics.map((t) => [t.topic, t]));
   const open = openSlug ? byName.get(openSlug) : undefined;
 
+  /** How many of a topic's steps this reader has ticked. */
+  const done = (topic: RoadmapTopic) =>
+    doneCount(
+      marks,
+      topic.steps.map((step) => step.id),
+    );
+
   return (
     <div
       ref={canvas}
@@ -172,10 +192,14 @@ export function RoadmapPage() {
           {topics.map((topic) => (
             <g
               key={topic.topic}
-              className="node"
+              /* A finished topic is marked on the map itself, so the shape of
+                 what is left is readable without opening anything. */
+              className={
+                topic.steps.length > 0 && done(topic) === topic.steps.length ? 'node done' : 'node'
+              }
               role="button"
               tabIndex={0}
-              aria-label={`${topic.title}, ${topic.steps.length} steps`}
+              aria-label={`${topic.title}, ${done(topic)} of ${topic.steps.length} lessons done`}
               onClick={() => {
                 if (!moved.current) onOpenTopic(topic);
               }}
@@ -184,9 +208,32 @@ export function RoadmapPage() {
               }}
             >
               <rect x={boxLeft(topic)} y={boxTop(topic)} width={BOX_W} height={BOX_H} rx={9} />
-              <text x={topic.gridX * CELL_X} y={topic.gridY * CELL_Y + 4}>
+              <text x={topic.gridX * CELL_X} y={topic.gridY * CELL_Y - 4}>
                 {topic.title}
               </text>
+
+              {/* The bar is drawn even at zero, so a topic with nothing done
+                  still reads as "0 of 3" rather than as a topic with no steps.
+                  Both rects, not one with a border: a zero-width fill would
+                  otherwise leave a visible rounded stub. */}
+              <rect
+                className="node-track"
+                x={topic.gridX * CELL_X - BAR_W / 2}
+                y={topic.gridY * CELL_Y + 12}
+                width={BAR_W}
+                height={4}
+                rx={2}
+              />
+              {done(topic) > 0 && (
+                <rect
+                  className="node-fill"
+                  x={topic.gridX * CELL_X - BAR_W / 2}
+                  y={topic.gridY * CELL_Y + 12}
+                  width={(BAR_W * done(topic)) / Math.max(1, topic.steps.length)}
+                  height={4}
+                  rx={2}
+                />
+              )}
             </g>
           ))}
         </g>
@@ -204,9 +251,16 @@ export function RoadmapPage() {
         </button>
       </div>
 
+      {/* Signed out there is nothing to total, and a "0 of 27" would read as a
+          score rather than as an invitation to sign in. */}
+      {signedIn && <ProgressPanel topics={topics} marks={marks} />}
+
       {open && (
         <TopicDialog
           topic={open}
+          signedIn={signedIn}
+          markOf={markOf}
+          onMark={mark}
           onOpenStep={(stepId) => void navigate(`/step/${stepId}`)}
           onClose={() => void navigate('/')}
         />

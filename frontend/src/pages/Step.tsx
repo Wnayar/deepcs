@@ -15,9 +15,11 @@ import { splitLesson, splitReference, type SplitReference } from '../lesson-sect
  * the roadmap. The bar hides while you scroll down and returns when you
  * scroll up, the way mobile browser chrome does.
  *
- * The questions come first on purpose. Reading without knowing what it is for
- * is where people give up, and three lines at the top saying "this is what you
- * will be able to answer" turns the same material into something with an end.
+ * The questions do not open the lesson. They were there to give the reading an
+ * end to aim at, and instead they were the same list a reader met again in the
+ * Key summary, which made the top of every lesson feel like something to scroll
+ * past. One home for them, at the end, where they are the thing to do rather
+ * than a preview of it.
  *
  * The section lives in the URL (`?s=2`, `?s=check`) rather than component
  * state, so refresh keeps your place and Back is "previous section" instead of
@@ -155,13 +157,11 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
   return (
     <>
       <div className={barHidden ? 'stepbar hidden' : 'stepbar'}>
-        <span className="stepbar-title">
-          Step {step.step} · {step.title}
-        </span>
+        <span className="stepbar-title">{step.title}</span>
 
         <span
           className="dots"
-          aria-label={checking ? 'Check yourself' : `Section ${section} of ${count}`}
+          aria-label={checking ? 'Key summary' : `Section ${section} of ${count}`}
         >
           {lesson.sections.map((entry, index) => (
             <span key={entry.title} className={checking || index < section ? 'dot on' : 'dot'} />
@@ -183,8 +183,18 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
                   {index + 1}. {entry.title}
                 </button>
               ))}
-              <button aria-current={checking ? 'true' : undefined} onClick={() => goTo('check')}>
-                Check yourself
+              {/* The one entry that is not just another section: the questions
+                  are the point of the lesson, so it is marked rather than left
+                  to look like a seventh heading. */}
+              <button
+                className="menu-key"
+                aria-current={checking ? 'true' : undefined}
+                onClick={() => goTo('check')}
+              >
+                <span aria-hidden="true" className="menu-key-mark">
+                  ◆
+                </span>
+                Key summary
               </button>
               <hr className="divider" />
               <button onClick={() => void navigate(`/topic/${step.topic}`)}>← Roadmap</button>
@@ -196,12 +206,7 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
       <div className="step-content">
         {checking ? (
           <>
-            <h3 style={{ marginTop: '1.5rem' }}>Ready to check yourself?</h3>
-            <p className="muted">
-              Try answering each question out loud before revealing anything. Working through them
-              with someone else is the version that actually sticks, because you have to say it
-              rather than recognise it.
-            </p>
+            <h3 style={{ marginTop: '1.5rem' }}>Key summary</h3>
 
             <div className="stack" style={{ gap: '0.6rem', margin: '1.25rem 0' }}>
               {step.parts.map((part, index) => (
@@ -257,29 +262,20 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
               >
                 Work through it with a partner
               </button>
-              <button onClick={() => goTo(count)}>← Back to the lesson</button>
+              {/* Out, not back. This is the end of the lesson, so the useful
+                  move is choosing the next one; re-reading the last section is
+                  a click away in the section list either way. */}
+              <button onClick={() => void navigate(`/topic/${step.topic}`)}>← Roadmap</button>
             </div>
           </>
         ) : (
           <>
-            {section === 1 && (
-              <>
-                <div className="card" style={{ margin: '0 0 2rem' }}>
-                  <h3 style={{ marginBottom: '0.75rem' }}>What you should be able to answer</h3>
-                  <ol className="checklist">
-                    {step.parts.map((part) => (
-                      <li key={part}>{part}</li>
-                    ))}
-                  </ol>
-                </div>
-                {lesson.preamble && (
-                  <div
-                    className="prose"
-                    style={{ marginBottom: '1.5rem' }}
-                    dangerouslySetInnerHTML={{ __html: marked.parse(lesson.preamble) }}
-                  />
-                )}
-              </>
+            {section === 1 && lesson.preamble && (
+              <div
+                className="prose"
+                style={{ marginBottom: '1.5rem' }}
+                dangerouslySetInnerHTML={{ __html: marked.parse(lesson.preamble) }}
+              />
             )}
 
             <article
@@ -297,7 +293,7 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
                 </button>
               ) : (
                 <button className="primary" onClick={() => goTo('check')}>
-                  Check yourself →
+                  Key summary →
                 </button>
               )}
             </div>

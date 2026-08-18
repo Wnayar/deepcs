@@ -7,6 +7,7 @@ import {
   currentSession,
   endSession,
   getQuestion,
+  partnerName,
   revealState,
   type Question,
   type Session,
@@ -36,6 +37,10 @@ export function SessionRoute({ onEnded }: { onEnded: () => void }) {
   const navigate = useNavigate();
   const [loaded, setLoaded] = useState<{ session: Session; question: Question } | null>(null);
   const [gone, setGone] = useState(false);
+  /** The partner's name, once Matching has answered. Null covers both "not
+   * fetched yet" and "they signed up before names existed", and both render the
+   * same way, because neither is worth a different sentence. */
+  const [partner, setPartner] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,6 +50,12 @@ export function SessionRoute({ onEnded }: { onEnded: () => void }) {
         if (!session || session.id !== id) throw new Error('not in this session');
         const question = await getQuestion(session.questionId);
         if (!cancelled) setLoaded({ session, question });
+
+        // After the room is usable, not before. A name is a label on a session
+        // that already works, so a slow or failed lookup must not hold the
+        // editor closed.
+        const { displayName } = await partnerName(session.id);
+        if (!cancelled) setPartner(displayName);
       } catch {
         if (!cancelled) setGone(true);
       }
@@ -61,6 +72,7 @@ export function SessionRoute({ onEnded }: { onEnded: () => void }) {
     <SessionPage
       session={loaded.session}
       question={loaded.question}
+      partner={partner}
       onEnded={(summary) => {
         onEnded();
         // The summary is built from what this page already knows and there is
@@ -76,10 +88,13 @@ export function SessionRoute({ onEnded }: { onEnded: () => void }) {
 interface Props {
   session: Session;
   question: Question;
+  /** The partner's display name, or null while it is still being fetched and
+   * for accounts made before names existed. Both render as nothing. */
+  partner: string | null;
   onEnded: (summary: SessionSummary) => void;
 }
 
-export function SessionPage({ session, question, onEnded }: Props) {
+export function SessionPage({ session, question, partner, onEnded }: Props) {
   const editorHost = useRef<HTMLDivElement>(null);
   const editorRef = useRef<ReturnType<typeof monaco.editor.create> | null>(null);
   const [status, setStatus] = useState<CollabStatus>('connecting');
@@ -219,6 +234,11 @@ export function SessionPage({ session, question, onEnded }: Props) {
   return (
     <>
       <h2>{question.title}</h2>
+      {partner && (
+        <p className="muted" style={{ marginTop: '-0.35rem' }}>
+          Working with <strong>{partner}</strong>
+        </p>
+      )}
       <p className="status row">
         {(() => {
           const conn = connectionLabel(status);

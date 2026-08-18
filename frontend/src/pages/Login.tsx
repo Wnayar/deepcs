@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { signIn, signUp } from '../auth';
+import { setPendingDisplayName } from '../api';
 
 /**
  * Email and password only. Firebase owns credentials entirely (ADR-04) — this
@@ -7,6 +8,7 @@ import { signIn, signUp } from '../auth';
  * attach it to requests.
  */
 export function LoginPage() {
+  const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -16,6 +18,9 @@ export function LoginPage() {
     setBusy(true);
     setError(null);
     try {
+      // Handed over before Firebase is touched, because signing up flips auth
+      // state mid-call and the shell's own profile call can get there first.
+      if (mode === 'up') setPendingDisplayName(displayName);
       await (mode === 'in' ? signIn(email, password) : signUp(email, password));
     } catch (err) {
       // Firebase error codes read like `auth/invalid-credential`; the tail is
@@ -41,6 +46,16 @@ export function LoginPage() {
         cannot be anonymous. Reading the lessons and browsing the question bank need no account.
       </p>
 
+      {/* Only used when creating an account. Set once at sign-up and not
+          editable afterwards, so it is asked for here or not at all. */}
+      <input
+        type="text"
+        placeholder="display name"
+        value={displayName}
+        autoComplete="nickname"
+        maxLength={40}
+        onChange={(event) => setDisplayName(event.target.value)}
+      />
       <input
         type="email"
         placeholder="you@example.com"
