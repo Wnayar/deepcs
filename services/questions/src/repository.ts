@@ -138,9 +138,9 @@ export interface RoadmapTopic {
 /**
  * Everything the roadmap screen draws, in one query.
  *
- * The nine topics with their prerequisites and grid positions, each carrying
+ * The ten topics with their prerequisites and grid positions, each carrying
  * its three steps. It is one call rather than one per topic because the whole
- * thing is nine rows and twenty-seven children: paginating it would cost more
+ * thing is ten rows and thirty children: paginating it would cost more
  * requests than it saves bytes, and the roadmap cannot render a partial graph
  * anyway, since a missing topic is a missing arrow.
  *

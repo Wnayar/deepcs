@@ -64,17 +64,17 @@ ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.sum
   depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
 INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
-  ('security', 'Security', 'How accounts, passwords and connections are kept safe, and the handful of attacks worth being able to explain. Most of it is networking seen from the other side.', ARRAY['networking']::text[], 4, 2)
+  ('security', 'Security', 'How accounts, passwords and connections are kept safe, and the handful of attacks worth being able to explain. Most of it is networking seen from the other side.', ARRAY['networking']::text[], 3, 2)
 ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
   depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
 INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
-  ('system-design', 'System Design', 'Putting the pieces together into something that serves a lot of people at once. It sits here because it is mostly everything above it applied at scale.', ARRAY['databases', 'security', 'debugging']::text[], 4, 3)
+  ('system-design', 'System Design', 'Putting the pieces together into something that serves a lot of people at once. It sits here because it is mostly everything above it applied at scale.', ARRAY['databases', 'security', 'debugging', 'design-patterns']::text[], 4, 3)
 ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
   depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 
 INSERT INTO questions.topics (topic, title, summary, depends_on, grid_x, grid_y) VALUES
-  ('debugging', 'Debugging', 'A method for working out why something is broken instead of guessing. Short, practical, and the topic that pays off the same day you read it.', ARRAY['oop']::text[], 7, 2)
+  ('debugging', 'Debugging', 'A method for working out why something is broken instead of guessing. Short, practical, and the topic that pays off the same day you read it.', ARRAY['oop']::text[], 5, 2)
 ON CONFLICT (topic) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary,
   depends_on = EXCLUDED.depends_on, grid_x = EXCLUDED.grid_x, grid_y = EXCLUDED.grid_y;
 

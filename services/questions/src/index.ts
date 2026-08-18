@@ -86,7 +86,7 @@ app.get('/questions', async (req, reply) => {
  * The whole roadmap, e.g.
  *   GET /roadmap
  * returns `{ topics: [{ topic, title, summary, dependsOn, gridX, gridY,
- * steps: [...] }, ...] }` for all nine topics.
+ * steps: [...] }, ...] }` for all ten topics.
  *
  * Public, like the bank. It is teaching material and there is nothing here to
  * gate. It is also one request rather than nine: the screen draws arrows

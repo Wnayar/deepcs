@@ -171,7 +171,7 @@ describe('the roadmap and its lessons', () => {
 
     const topics = await getRoadmap(pool);
 
-    expect(topics).toHaveLength(9);
+    expect(topics).toHaveLength(10);
     for (const topic of topics) {
       // Matching pairs on topic and difficulty and refuses when no question
       // fits, so a topic with a missing step is a pair of users who can never
