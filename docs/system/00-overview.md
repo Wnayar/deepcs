@@ -162,6 +162,7 @@ incompatible signals with no way to configure both.
 | Database | PostgreSQL, one instance, a schema per service | Relational data, plus `text[]` with a GIN index for tag filtering. *Not database-per-service:* [ADR-09](../adr/09-one-database-one-schema-per-service.md) — it would cost cross-service atomicity and force a saga. |
 | Cache / queue / pub-sub | Redis | One dependency covering five jobs: match queue, rate-limit state, cross-instance pub/sub, event stream, question cache. Split from Postgres by **access pattern**, not by service. |
 | Real-time | WebSockets + Yjs (CRDT) | Concurrent edits merge without a central server ordering them ([ADR-02](../adr/02-crdt-over-operational-transforms.md)). *Not SSE or polling:* one-directional, or too slow for keystroke echo. *Not Liveblocks:* it would host the hard part, and the hard part is the project. |
+| Match notification | Polling `/match/status` | Bounded to somebody actually waiting, and to one minute ([ADR-11](../adr/11-polling-over-server-sent-events.md)). *Not SSE:* a held-open response pins a waiting user to one process, which a queue that empties every minute does not need. |
 | Event log | Redis Streams | A replayable domain-event log behind one `EventLog` interface, so a second adapter is a swap rather than a rewrite ([ADR-07](../adr/07-a-replayable-event-log.md)). |
 | Editor | Monaco wired to Yjs | Mature `y-monaco` binding, and the cursor decorations presence needs. *Not a plain textarea:* no decorations, so presence would be invisible. |
 | Containers | Docker + docker compose | The unit everything ships as, and the reason the same image runs under compose and on the cluster without a rebuild. |
@@ -312,25 +313,29 @@ conditions attached to each are in [`09-running-it.md`](09-running-it.md).
 ### How a waiting user finds out they were matched
 
 Being matched is caused by somebody else's request, and HTTP gives a server no
-way to speak first, so a client either asks repeatedly or is told. It asked, at
-first, and that kept every layer awake: a request arrived every few seconds
-whether or not anything had happened. Slowing it down to fix that made a
-partner's arrival up to twenty seconds late, with the partner sitting alone in
-the editor.
+way to speak first, so a client has to ask. The shell calls
+`GET /match/status?topic=&difficulty=` every three seconds and reads the answer
+out of the Postgres session row, so it is correct whichever instance serves the
+call and whichever one made the match.
 
-It is now server-sent events. `GET /match/events` holds one ordinary HTTP
-response open and Matching writes into it when the Redis message for that user
-arrives. Nothing is spent while nothing happens. Two things about it are worth
-knowing rather than discovering:
+Asking is the expensive shape, so the asking is bounded on three sides rather
+than left running:
 
-- **A connection is not free either.** An open stream occupies a concurrency
-  slot for its whole life, so one is opened only by somebody actually waiting,
-  never by everyone signed in, and it is given up after fifteen minutes.
-- **Its failure mode is silent.** Anything in the path that buffers turns the
-  stream into one long pause and then everything at once: the request succeeds,
-  the headers are right, and events simply never arrive. That cannot be caught
-  by reading code, so it is caught by a wall-clock assertion through the Gateway
-  in [`frontend/src/matchEvents.test.ts`](../../frontend/src/matchEvents.test.ts).
+- **Only somebody actually waiting asks.** The queued flag is in `localStorage`,
+  so it survives navigation and refresh, and the shell checks it first. An
+  earlier version asked whenever anyone was signed in without a session, which
+  kept a database and two services awake for readers who were not waiting for
+  anything.
+- **It stops after a minute**, on both sides: the browser gives up, and Matching
+  drops a queue entry that old so nobody is paired with somebody who has gone.
+- **Three seconds costs a sixth of one user's rate-limit budget**, and none of
+  anybody else's.
+
+**What it costs, plainly:** the news is up to three seconds late, and a waiting
+user spends 20 requests a minute that mostly answer "no". Holding a response
+open instead would fix both — and pin every waiting user to one specific
+process, which is what makes scaling down and rolling updates visible to them.
+That trade is [ADR-11](../adr/11-polling-over-server-sent-events.md).
 
 ### How much one replica can hold, and why
 

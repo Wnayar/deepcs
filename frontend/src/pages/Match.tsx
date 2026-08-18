@@ -1,22 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { clearQueued, markQueued } from '../queue';
-import { getRoadmap, joinQueue, matchStatus, type Difficulty, type Session } from '../api';
-
-/**
- * How often to check that the claim still exists. A minute apart, because it is
- * a crash window rather than a race, and one request a minute while somebody
- * watches a waiting screen is not worth optimising.
- */
-const CLAIM_CHECK_MS = 60_000;
+import { clearQueued, markQueued, MAX_WAIT_MS } from '../queue';
+import { getRoadmap, joinQueue, type Difficulty, type Session } from '../api';
 
 interface Props {
   /** A session already in progress, if there is one. */
   active: Session | null;
   /** Told to the shell so the header can offer the way back into the room. */
   onJoined: (session: Session) => void;
-  /** Told to the shell so its own watcher starts or stops. The flag it reads
-   * lives in storage, which React has no way to observe. */
+  /** Told to the shell so it starts or stops asking. The flag it reads lives in
+   * storage, which React has no way to observe. */
   onQueueChanged: () => void;
 }
 
@@ -55,11 +48,11 @@ function useTopics(): { topic: string; title: string }[] {
 /**
  * Join the queue and wait.
  *
- * A match arrives on the stream the app shell holds open, not from anything on
- * this screen. What this screen adds is the crash-recovery check: the pair
- * claim lives in Redis and the session row in Postgres with no transaction
- * spanning them, so a crash between the two leaves somebody claimed with no
- * session and no event ever published. Nothing else detects that.
+ * A match is noticed by the shell, which asks `/match/status` every few seconds
+ * for as long as this browser is queued; nothing on this screen does the
+ * asking. What this screen adds is the end of the wait: after MAX_WAIT_MS
+ * nobody has come, so it stops and says so rather than leaving a spinner
+ * running against a queue entry the server has already dropped.
  */
 export function MatchPage({ active, onJoined, onQueueChanged }: Props) {
   const topics = useTopics();
@@ -68,6 +61,10 @@ export function MatchPage({ active, onJoined, onQueueChanged }: Props) {
   const [topic, setTopic] = useState(preset.topic ?? 'os');
   const [difficulty, setDifficulty] = useState<Difficulty>(preset.difficulty ?? 'medium');
   const [waiting, setWaiting] = useState(false);
+  /** The wait ran out with nobody on the other side, which is an outcome rather
+   * than an error: the queue entry is gone on both sides and joining again is
+   * the only thing left to do. */
+  const [gaveUp, setGaveUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -75,6 +72,7 @@ export function MatchPage({ active, onJoined, onQueueChanged }: Props) {
 
   const enter = async (session: Session) => {
     setWaiting(false);
+    setGaveUp(false);
     clearTimeout(timer.current);
     clearQueued();
     onQueueChanged();
@@ -86,40 +84,29 @@ export function MatchPage({ active, onJoined, onQueueChanged }: Props) {
     }
   };
 
-  /** Not a poll for a partner. See CLAIM_CHECK_MS: this only catches a claim
-   * that was lost to a crash, which no message can announce. */
-  const checkClaim = async () => {
-    if (document.hidden) {
-      timer.current = setTimeout(() => void checkClaim(), CLAIM_CHECK_MS);
-      return;
-    }
-    try {
-      const status = await matchStatus(topic, difficulty);
-      if (status.status === 'matched') return void enter(status.session);
-      if (status.status === 'none') {
-        // Neither matched nor queued: the claim was lost between Redis and
-        // Postgres. Re-joining is the documented recovery, not an error.
-        const rejoined = await joinQueue(topic, difficulty);
-        if (rejoined.status === 'matched') return void enter(rejoined.session);
-      }
-      timer.current = setTimeout(() => void checkClaim(), CLAIM_CHECK_MS);
-    } catch (err) {
-      setWaiting(false);
-      setError(err instanceof Error ? err.message : 'lost contact with matching');
-    }
+  /** The wait window closing. The shell stops asking at the same point, because
+   * `readQueued` expires on the same MAX_WAIT_MS, and Matching drops the entry
+   * itself once it is that old. Clearing the flag here only makes it immediate.
+   */
+  const giveUp = () => {
+    setWaiting(false);
+    setGaveUp(true);
+    clearQueued();
+    onQueueChanged();
   };
 
   const start = async () => {
     setError(null);
+    setGaveUp(false);
     setWaiting(true);
     try {
       const result = await joinQueue(topic, difficulty);
       if (result.status === 'matched') return void enter(result.session);
-      // Remembered, so the shell opens its stream and keeps watching after this
-      // screen is navigated away from.
+      // Remembered, so the shell keeps asking after this screen is navigated
+      // away from.
       markQueued(topic, difficulty);
       onQueueChanged();
-      timer.current = setTimeout(() => void checkClaim(), CLAIM_CHECK_MS);
+      timer.current = setTimeout(giveUp, MAX_WAIT_MS);
     } catch (err) {
       setWaiting(false);
       setError(err instanceof Error ? err.message : 'could not join the queue');
@@ -128,14 +115,14 @@ export function MatchPage({ active, onJoined, onQueueChanged }: Props) {
 
   const cancel = () => {
     // Leaves the queue entry behind: there is no leave endpoint, so the entry
-    // is claimed by whoever joins next. Worth knowing rather than pretending
-    // the button does more than it does.
+    // is claimed by whoever joins next until it ages out a minute later. Worth
+    // knowing rather than pretending the button does more than it does.
     //
     // Which is exactly why the queued flag is *not* cleared here. Pressing this
-    // stops this screen asking; it does not take you out of the queue, so a
-    // partner can still arrive. Clearing the flag would stop the shell watching
-    // too, and put back the bug where somebody is matched into a session nobody
-    // tells them about. The flag expires on its own.
+    // stops this screen showing a wait; it does not take you out of the queue,
+    // so a partner can still arrive. Clearing the flag would stop the shell
+    // asking too, and put back the bug where somebody is matched into a session
+    // nobody tells them about. The flag expires on its own.
     clearTimeout(timer.current);
     setWaiting(false);
   };
@@ -201,6 +188,12 @@ export function MatchPage({ active, onJoined, onQueueChanged }: Props) {
       {waiting && (
         <p className="status">
           Waiting for someone to join {topic}/{difficulty}…
+        </p>
+      )}
+      {gaveUp && (
+        <p className="status">
+          Nobody joined {topic}/{difficulty} in the last minute. You have left the queue, so join
+          again whenever you want another go.
         </p>
       )}
       {error && <p className="error">{error}</p>}

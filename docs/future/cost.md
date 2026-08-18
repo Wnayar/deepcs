@@ -275,12 +275,14 @@ states this directly: an instance with an open WebSocket has CPU allocated for
 as long as the connection is open. Thirty minutes in the editor is **thirty
 minutes** of billing.
 
-**`/match/events` is the same shape.** When you sit on the "find a partner"
-page, the browser opens one HTTP response that the server holds open, and writes
-into it when something happens (this is called **SSE**, server-sent events).
-Phase 6 replaced polling with it precisely because polling was waking everything
-up constantly. It is cheaper than polling, but it is still an open request, so
-it bills for as long as the page is open.
+**Waiting on the queue page is not the same shape, and that matters here.** The
+browser asks `GET /match/status` every three seconds rather than holding a
+response open, so what bills is 20 short requests a minute, not a minute of
+connection. And it stops: a waiting browser gives up after 60 seconds, and
+Matching drops the queue entry at the same age. The reasoning behind that choice
+was operational rather than financial ([ADR-11](../adr/11-polling-over-server-sent-events.md)),
+but it removes the worst row of the table below as a side effect — there is no
+longer any way for a queue page to bill for hours.
 
 **And every socket keeps two services busy.** The browser does not talk to
 Collab directly — it goes through the Gateway, which holds its own copy of the
@@ -302,17 +304,21 @@ start a second instance:
 | What is happening | What has a request open | Cost against the 36 hours |
 |---|---|---|
 | someone reads the roadmap for 10 minutes | Gateway + Questions, 50 ms at a time | ~3 seconds |
-| one or more people wait on the queue page for 5 minutes | Gateway + Matching, held open | 10 minutes |
+| one or more people wait on the queue page for 5 minutes | Gateway + Matching, 20 requests a minute at ~10 ms | ~20 seconds, and it stops after the first minute |
 | one or more editor sessions run for 30 minutes | Gateway + Collab, held open | 60 minutes |
-| one tab left open on the queue page overnight | Gateway + Matching, held open | **16 hours** |
+| one tab left open on the queue page overnight | nothing — the poll gave up after a minute | ~4 seconds |
 
 The third row is worth pausing on: a demo where six people collaborate for half
 an hour costs the same 60 minutes as a demo with two. What you pay for is the
 *duration something was connected*, and the number of people barely enters into
 it.
 
-The last row is the one to care about. One forgotten browser tab spends a third
-of the monthly budget while nobody is looking at it.
+The last row used to be the one to care about, and is the clearest illustration
+of the difference between the two shapes. When waiting held a response open, one
+forgotten browser tab spent a third of the monthly budget while nobody was
+looking at it. Asking instead, with a bound on how long it asks for, turns the
+same tab into a rounding error — because a poll that stops is the only kind of
+waiting that costs nothing while nothing happens.
 
 **What happens when the 36 hours run out?** Nothing breaks. You start paying,
 at **$0.127 per instance-hour** (1 vCPU + 512 MiB at our region's Tier 2 rates:
@@ -544,12 +550,14 @@ of DESIGN §7 changes.
 site down around day 17 of each month. *Cost of choosing it:* `/stats` numbers
 can be up to an hour behind.
 
-**3. Close the `/match/events` connection when the tab is hidden or idle?**
-*Recommended: yes.* This is the forgotten-tab row in Part 4 — the largest
-avoidable cost in the system. *Cost of choosing it:* a small frontend change,
-and someone who leaves the queue page open in a background tab stops being
-matched until they come back to it. That needs a visible "still looking?" state
-rather than silence.
+**3. Stop the match poll when the tab is hidden as well as when it expires?**
+*Recommended: no longer necessary, and kept here because it was.* The
+forgotten-tab row in Part 4 was the largest avoidable cost in the system while
+waiting held a connection open. The 60-second give-up already bounds it, and it
+does so without the failure this option carried: somebody who leaves the queue
+page in a background tab would have stopped being matched with no visible sign
+of it, which needs a "still looking?" state rather than silence. The expiry
+tells them plainly instead.
 
 **4. Add the Cloud Run spend cap alongside the kill switch?**
 *Recommended: yes.* It is a newer Google feature that blocks new Cloud Run usage

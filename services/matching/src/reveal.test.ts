@@ -443,5 +443,61 @@ describe.skipIf(!process.env.CI && process.env.MATCHING_URL === undefined)(
       ).json()) as { session: { id: string } | null };
       expect(found.session!.id).toBe(bobs.session!.id);
     });
+
+    /**
+     * The shell's actual loop, which nothing else here drives: the waiter asks
+     * `/match/status` on a timer and the answer flips under them when their
+     * partner arrives. Being matched is caused by somebody else's request, so
+     * this transition is the only way the waiting side ever finds out.
+     *
+     * Asserted through the same route and in the same order the browser uses,
+     * because "the row exists" and "the person waiting is told about it" are
+     * different claims, and only the second one is the feature.
+     */
+    it('flips a waiter from waiting to matched on the next status ask', async (ctx) => {
+      if (!(await allReachable())) return ctx.skip();
+
+      const alice = `poll-a-${Math.random().toString(36).slice(2)}`;
+      const bob = `poll-b-${Math.random().toString(36).slice(2)}`;
+      for (const uid of [alice, bob]) {
+        await fetch(`${USERS_URL}/users/me`, { headers: { 'x-user-id': uid } });
+      }
+
+      // A topic and difficulty no other suite joins: these all share one Redis,
+      // and two suites on one queue steal each other's partners.
+      const topic = 'deadlock';
+      const difficulty = 'medium';
+      const body = JSON.stringify({ topic, difficulty });
+      const status = async (uid: string) =>
+        (await (
+          await fetch(`${MATCHING_URL}/match/status?topic=${topic}&difficulty=${difficulty}`, {
+            headers: { 'x-user-id': uid },
+          })
+        ).json()) as { status: string; session?: { id: string } };
+
+      await fetch(`${MATCHING_URL}/match/join`, {
+        method: 'POST',
+        headers: { ...JSON_HEADERS, 'x-user-id': alice },
+        body,
+      });
+
+      // The first tick of the loop, before anything has happened.
+      expect((await status(alice)).status).toBe('waiting');
+
+      const claim = (await (
+        await fetch(`${MATCHING_URL}/match/join`, {
+          method: 'POST',
+          headers: { ...JSON_HEADERS, 'x-user-id': bob },
+          body,
+        })
+      ).json()) as { status: string; session: { id: string } };
+      expect(claim.status).toBe('matched');
+
+      // The next tick, and the whole point: Alice sent no request between the
+      // two asks, and nobody sent her anything.
+      const told = await status(alice);
+      expect(told.status).toBe('matched');
+      expect(told.session?.id).toBe(claim.session.id);
+    });
   },
 );

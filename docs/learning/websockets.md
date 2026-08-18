@@ -168,14 +168,20 @@ of these connections has data" and sleeping the rest of the time.
 
 ## When to use what
 
-- **Polling** (ask over and over): simplest, but everything stays busy
-  serving people who have no news, and news arrives late. This repo removed
-  it.
-- **SSE** (one answer that never finishes — see [`sse.md`](./sse.md)):
-  server can push to you, but you cannot send anything back on it. Right for
-  the match announcement.
-- **WebSocket**: both directions, fast, constant. Right for the editor, and
-  more machinery than the announcement needs.
+- **Polling** (ask over and over): simplest, and the only one of the three
+  that needs nothing held open, but everything stays busy serving people who
+  have no news, and news arrives as late as the gap between asks. Right for
+  the match announcement, which happens once and can afford to be seconds
+  late, and only because the asking is bounded: while queued, and for a
+  minute.
+- **SSE** (one answer the server never finishes): the server can push to you,
+  but you cannot send anything back on it. Cheaper while nothing is happening
+  and instant when something is, at the price of a connection pinned to one
+  process, which is what makes scaling down and rolling updates visible to
+  users.
+- **WebSocket**: both directions, binary, constant. Right for the editor,
+  where the browser is sending as much as it receives, and more machinery
+  than an announcement needs.
 
 ## Left out on purpose
 

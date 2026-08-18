@@ -2,18 +2,21 @@ import type { Difficulty } from './api';
 
 /**
  * Whether this browser is waiting for a partner, which is what decides whether
- * to hold a `matchEvents.ts` stream open at all.
+ * the shell asks `/match/status` at all.
  *
- * Opening one for everybody signed in would be its own problem: a connection
- * occupies a concurrency slot for its whole life, so every person quietly
- * reading a lesson would pin a service for as long as they read.
+ * Asking on behalf of everybody signed in would be its own problem: every
+ * person quietly reading a lesson would send a request every few seconds for as
+ * long as they read, and none of those requests could ever have an answer.
  */
 
 const KEY = 'deepcs.queued';
 
-/** After this, stop watching and forget. A tab abandoned mid-queue should not
- * hold a connection open for the rest of the day. */
-export const MAX_WAIT_MS = 15 * 60_000;
+/** After this, stop asking and forget. A tab abandoned mid-queue should not go
+ * on sending requests for the rest of the day, and past this point the entry is
+ * being dropped on the server anyway: it matches WAIT_TTL_SECONDS in
+ * services/matching/src/queue.ts, so a person stops asking at roughly the
+ * moment they stop being claimable. */
+export const MAX_WAIT_MS = 60_000;
 
 export interface Queued {
   topic: string;
@@ -57,7 +60,7 @@ export function readQueued(now = Date.now()): Queued | null {
     return value as Queued;
   } catch {
     // Unreadable or unparseable is the same as not queued. A corrupt entry
-    // must not be a reason to open a stream, which is what costs money.
+    // must not be a reason to start asking, which is what costs money.
     return null;
   }
 }

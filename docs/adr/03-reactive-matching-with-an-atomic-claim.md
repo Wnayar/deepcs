@@ -14,4 +14,11 @@ from. It is the same race, and the same fix, as the Gateway's rate limiter
 ([ADR-08](08-a-custom-gateway.md)) — except that nobody sells you a matchmaker,
 so this one was never a build-vs-buy decision.
 
+**What the same script picked up later:** a queue entry is only claimable for
+sixty seconds, pruned at the top of the script rather than by a sweeper, because
+nothing tells the server a browser has gone
+([ADR-11](11-polling-over-server-sent-events.md)). Reactive pairing has no
+always-on process to hang a cleanup off, so the cleanup rides on the operations
+that already touch the queue.
+
 See [`../system/04-matching.md`](../system/04-matching.md) §2.

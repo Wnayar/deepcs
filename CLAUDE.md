@@ -124,8 +124,8 @@ used to be X", it belongs in a decision file or nowhere.
 - **One fact, one home.** A comment carries the mechanism and the consequence,
   then points at the page for the rest. If the same reasoning is in a comment
   *and* in `docs/`, the copy nobody updates is the one in the comment. The
-  rate-limiter trace and the polling-to-SSE story were each in three or four
-  places before this rule.
+  rate-limiter trace and the match-notification story were each in three or
+  four places before this rule.
 
 ### Working conventions
 
@@ -182,13 +182,18 @@ used to be X", it belongs in a decision file or nowhere.
   this is safe. Questions caches its list in Redis for 60s, so also
   `redis-cli DEL questions:roadmap` or wait a minute before believing the API.
 
-- **The browser is told, not asked.** A client that needs to know about an event
-  another user caused subscribes to `GET /match/events` rather than polling.
-  Polling kept the database awake and every service warm for people who were
-  only waiting, and slowing it down enough to afford made the news late. Two
-  timers remain and neither is watching for a match: the crash-recovery check in
-  `Match.tsx`, which detects a lost pair claim, and the reveal check in
-  `Session.tsx`, which runs only in the gap between one consent and the other.
+- **The browser asks, and every poll is bounded on three sides.** A client that
+  needs to know about an event another user caused polls for it, because HTTP
+  gives a server no way to speak first and a held-open response pins that client
+  to one process (ADR-11). The bounds are the whole reason polling is affordable
+  here, so a new one is not allowed without all three: it runs only for somebody
+  who is actually waiting, it stops on its own, and its interval fits inside the
+  Gateway's per-user rate-limit budget. The match poll asks `/match/status`
+  every 3s while queued and gives up after 60s; Matching drops a queue entry
+  that old, so both halves end at once. The reveal check in `Session.tsx` runs
+  only in the gap between one consent and the other. An unbounded poll kept the
+  database awake and every service warm for people who were only reading, which
+  is the failure this rule exists to prevent.
 - **Events go through `@deepcs/shared/events`, never a log line.** Six types,
   one Redis stream, appended fire-and-forget so a statistics pipeline can never
   fail a user's request. Adding a seventh means adding it to `EventType`, to the

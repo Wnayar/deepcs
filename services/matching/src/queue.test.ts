@@ -14,7 +14,11 @@ let queue: Queue;
 let reachable = false;
 
 beforeAll(async () => {
-  redis = createRedis(REDIS_URL);
+  // The offline queue back on, because the first command here races its own
+  // connect: `createRedis` defaults it off, so a ping issued before the socket
+  // is ready throws instead of waiting, and every test below quietly turns into
+  // a no-op that still reports as passing.
+  redis = createRedis(REDIS_URL, { enableOfflineQueue: true });
   try {
     await redis.ping();
     reachable = true;
@@ -49,14 +53,19 @@ describe.skipIf(!process.env.CI && process.env.REDIS_URL === undefined)('queue',
 
   it('keeps different topics and difficulties in separate queues', async () => {
     if (!reachable) return;
+    // A random topic like every other test here, and not the seeded "os": the
+    // suites run concurrently against one Redis, and Collab's contract test
+    // pairs two users on os/hard. Sharing that queue lets the two steal each
+    // other's partners, which fails whichever one loses the race.
+    const t = topic();
     const alice = uid('alice');
     const bob = uid('bob');
 
-    expect(await queue.join(alice, 'os', 'easy')).toBeNull();
+    expect(await queue.join(alice, t, 'easy')).toBeNull();
     // Same uid namespace, different queue — bob shouldn't match alice here.
-    expect(await queue.join(bob, 'os', 'hard')).toBeNull();
-    expect(await queue.isWaiting(alice, 'os', 'easy')).toBe(true);
-    expect(await queue.isWaiting(bob, 'os', 'hard')).toBe(true);
+    expect(await queue.join(bob, t, 'hard')).toBeNull();
+    expect(await queue.isWaiting(alice, t, 'easy')).toBe(true);
+    expect(await queue.isWaiting(bob, t, 'hard')).toBe(true);
   });
 
   it('is idempotent — joining twice while already queued does not error or duplicate', async () => {
@@ -71,6 +80,32 @@ describe.skipIf(!process.env.CI && process.env.REDIS_URL === undefined)('queue',
     // A third join still matches alice exactly once, proving the retry
     // never added a second queue entry for her.
     expect((await queue.join(bob, t, 'medium'))?.partnerUid).toBe(alice);
+  });
+
+  /**
+   * A tab closed mid-queue leaves its entry behind, because there is no leave
+   * endpoint and nothing tells the server. Claiming one of those pairs the next
+   * caller with somebody who is not there, and the session that gets created is
+   * one nobody ever joins. A one-second ttl is the same expiry the service runs
+   * with, only short enough to watch happen.
+   */
+  it('drops an entry that has aged out, so nobody is matched with a ghost', async () => {
+    if (!reachable) return;
+    const t = topic();
+    const ghost = uid('ghost');
+    const bob = uid('bob');
+    const brief = createQueue(redis, 1);
+
+    expect(await brief.join(ghost, t, 'easy')).toBeNull();
+    expect(await brief.isWaiting(ghost, t, 'easy')).toBe(true);
+
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+
+    // Both paths prune, so both have to agree the entry is gone: the reader
+    // stops saying "still waiting", and the next joiner waits rather than
+    // claiming a partner who stopped asking.
+    expect(await brief.isWaiting(ghost, t, 'easy')).toBe(false);
+    expect(await brief.join(bob, t, 'easy')).toBeNull();
   });
 
   /**

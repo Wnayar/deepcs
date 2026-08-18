@@ -254,7 +254,7 @@ routing table:
 | `/questions` | Questions | the bank, and the signed-in answer route |
 | `/roadmap` | Questions | the map |
 | `/steps` | Questions | a lesson with its questions |
-| `/match` | Matching | including the SSE stream and the participant check |
+| `/match` | Matching | including the status poll and the participant check |
 | `/collab` | Collab | `websocket: true` |
 | `/stats` | Stats read server | public aggregates |
 | `/sessions` | Stats read server | one session's summary |

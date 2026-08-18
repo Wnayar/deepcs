@@ -78,18 +78,6 @@ function sessionChannel(sessionId: string): string {
   return `match:session:${sessionId}`;
 }
 
-/** Where a single user is told things that happened to them. Keyed by uid
- * rather than by session, because the whole point is to reach somebody who does
- * not know a session exists yet. */
-function userChannel(uid: string): string {
-  return `match:user:${uid}`;
-}
-
-/** How often to write a comment line into an idle stream. Nothing reads it: an
- * HTTP response with no bytes flowing looks abandoned to anything sitting in
- * the middle, and proxies close idle connections on their own schedule. */
-const SSE_HEARTBEAT_MS = 20_000;
-
 /**
  * Announces something that happened to a session. Fire-and-forget on purpose: a
  * Redis hiccup must not fail the request that caused it, because the durable
@@ -201,95 +189,7 @@ app.post('/match/join', async (req, reply) => {
     users: [uid, partnerUid],
   });
 
-  // And to each participant by name. The person who queued first is matched by
-  // *this* request, so without a message aimed at them they have no way to find
-  // out except by asking again and again. Both sides get one, because the
-  // joiner's own response can still be lost.
-  const announcement = JSON.stringify({ type: 'matched', ...toResponse(session).session });
-  await Promise.all(
-    [uid, partnerUid].map((who) =>
-      redis
-        .publish(userChannel(who), announcement)
-        .catch((err: unknown) => req.log.warn({ err, user_id: who }, 'user event publish failed')),
-    ),
-  );
-
   return reply.code(201).send(toResponse(session));
-});
-
-/**
- * A stream of things that happen to the caller, e.g.
- *   GET /match/events        (X-User-Id: alice)
- * holds the response open and writes `data: {"type":"matched",...}` when a
- * partner arrives.
- *
- * Server-sent events, which is an ordinary HTTP response the server declines to
- * finish. That is the whole mechanism: no upgrade handshake and no second
- * protocol, so the Gateway proxies it, `X-User-Id` reaches here, and logging
- * works exactly as for every other route.
- *
- * It replaced polling. Being matched is caused by somebody else's request, and
- * HTTP gives a server no way to speak first, so a client that wants to know had
- * to keep asking. See docs/system/04-matching.md §5 for what that cost.
- */
-app.get('/match/events', async (req, reply) => {
-  const uid = getUserId(req);
-  if (!uid) {
-    return reply.code(401).send({ error: 'unauthorized' });
-  }
-
-  // Fastify must not try to send a reply of its own: this handler owns the
-  // socket from here and writes to it directly until the client goes away.
-  reply.hijack();
-  reply.raw.writeHead(200, {
-    'content-type': 'text/event-stream',
-    // `no-transform` is the load-bearing half. Anything that buffers or
-    // compresses this response turns a stream into one silent pause followed by
-    // everything at once, which is the failure mode of every SSE endpoint that
-    // has ever quietly not worked.
-    'cache-control': 'no-cache, no-transform',
-    connection: 'keep-alive',
-    'x-accel-buffering': 'no',
-  });
-  reply.raw.write(': open\n\n');
-
-  // Its own connection, because a subscribed ioredis client cannot run ordinary
-  // commands and this one is shared with the queue and every other route. The
-  // offline queue goes back on for it: subscribing before the freshly
-  // duplicated socket has connected should wait rather than throw. Without it
-  // this route opened, streamed its heartbeats, and delivered nothing.
-  const subscriber = redis.duplicate({ enableOfflineQueue: true });
-  const send = (payload: string) => reply.raw.write(`data: ${payload}\n\n`);
-
-  try {
-    await subscriber.subscribe(userChannel(uid));
-  } catch (err) {
-    req.log.error({ err, user_id: uid }, 'could not subscribe to user events');
-    // duplicate() has already opened a socket, so it has to be closed or it
-    // reconnects for the life of the process, once per failed stream.
-    subscriber.disconnect();
-    reply.raw.end();
-    return;
-  }
-  subscriber.on('message', (_channel, payload) => send(payload));
-
-  // The race this closes: a partner can arrive between the join response and
-  // this stream being opened, and that message is published to nobody. Sending
-  // the current state on connect means the answer is never missed, only ever
-  // repeated, and a repeat is harmless because the client acts on a session id.
-  try {
-    const existing = await findActiveSessionForUser(pool, uid);
-    if (existing) send(JSON.stringify({ type: 'matched', ...toResponse(existing).session }));
-  } catch (err) {
-    req.log.warn({ err, user_id: uid }, 'could not send current session on connect');
-  }
-
-  const heartbeat = setInterval(() => reply.raw.write(': ping\n\n'), SSE_HEARTBEAT_MS);
-
-  req.raw.on('close', () => {
-    clearInterval(heartbeat);
-    subscriber.disconnect();
-  });
 });
 
 const statusQuery = z.object({
@@ -303,10 +203,18 @@ const statusQuery = z.object({
  * returns `{ status: "matched", session }`, `{ status: "waiting" }`, or
  * `{ status: "none" }`.
  *
- * This is the crash-recovery path, not how a match is noticed. The claim
- * (Redis) and the session row (Postgres) are not one transaction, so a crash
- * between them can leave a claimed partner with no session and no event
- * published. `"none"` means "call /match/join again", not "you are stuck".
+ * This is how a match is noticed. Being matched is caused by somebody else's
+ * request and HTTP gives a server no way to speak first, so a waiting client
+ * asks this every few seconds until it is matched or gives up. Postgres is
+ * where the answer comes from, so it is correct no matter which instance
+ * handles the call or which one made the match.
+ *
+ * `"none"` is the crash-recovery case as well as the expiry one, and both mean
+ * the same thing to a caller: the claim (Redis) and the session row (Postgres)
+ * are not one transaction, so a crash between them leaves a claimed partner
+ * with no session, and a queue entry older than WAIT_TTL_SECONDS is dropped on
+ * the next call that touches the queue. Either way it means "call /match/join
+ * again", not "you are stuck".
  */
 app.get('/match/status', async (req, reply) => {
   const uid = getUserId(req);

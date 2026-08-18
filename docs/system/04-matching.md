@@ -45,8 +45,15 @@ across both services instead of inventing a second
 
 ```lua
 local uid = ARGV[1]
+local ttl = tonumber(ARGV[2])
+local t   = redis.call('TIME')
+local now = tonumber(t[1]) + tonumber(t[2]) / 1000000
 
--- A retried join while already queued does nothing.
+-- Everyone who stopped asking, dropped first. See §5 below for why.
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', string.format('%.6f', now - ttl))
+
+-- A retried join while already queued does nothing. After the prune, so
+-- somebody who has just aged out rejoins instead of being told to keep waiting.
 if redis.call('ZSCORE', KEYS[1], uid) then return false end
 
 -- Someone waiting: claim the oldest, and take their join time with them.
@@ -54,15 +61,16 @@ local waiting = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
 if #waiting > 0 then
   local partner, joined = waiting[1], tonumber(waiting[2])
   redis.call('ZREM', KEYS[1], partner)
-  local t = redis.call('TIME')
-  return { partner, tostring(tonumber(t[1]) + tonumber(t[2]) / 1000000 - joined) }
+  return { partner, tostring(now - joined) }
 end
 
 -- Nobody waiting: the caller joins, scored by Redis' own clock.
-local t = redis.call('TIME')
-redis.call('ZADD', KEYS[1], tonumber(t[1]) + tonumber(t[2]) / 1000000, uid)
+redis.call('ZADD', KEYS[1], now, uid)
 return false
 ```
+
+The same prune is the first thing `isWaiting`'s script does too, so the two can
+never disagree about who is still in the line.
 
 **The failure it prevents:** two users join the same empty queue at the same
 instant. Both check "is anyone waiting", both see nobody, both add themselves,
@@ -127,7 +135,6 @@ sibling hold this request — and its concurrency slot — open indefinitely.
 
 ```
 POST /match/join                          { topic, difficulty } -> matched | waiting
-GET  /match/events                        SSE: things that happen to me
 GET  /match/status?topic=&difficulty=      matched | waiting | none
 GET  /match/session                        the session I am in right now, if any
 GET  /match/sessions/:id/participant       am I in this one?
@@ -163,73 +170,80 @@ for that socket ([`05-collab.md`](05-collab.md) §2).
 
 ---
 
-## 5. The browser is told, not asked
-
-`GET /match/events` is server-sent events: one ordinary HTTP response that this
-service declines to finish, with `data:` lines written into it when the Redis
-message for that user arrives. No upgrade handshake and no second protocol, so
-the Gateway proxies it, `X-User-Id` reaches here, and logging works exactly as
-for every other route.
+## 5. The browser asks
 
 **Being matched is caused by somebody else's request**, and HTTP gives a server
-no way to speak first, so a waiting client either asks repeatedly or is told. It
-asked, at first, and two attempts were wrong in instructive ways:
+no way to speak first. A waiting client therefore has to ask, and
+`GET /match/status?topic=&difficulty=` is the question. The shell asks it every
+three seconds, and the answer comes from the Postgres session row rather than
+from Redis, so it is the same answer whichever instance happens to serve the
+call and whichever instance made the match.
 
-- **Polling from the app shell.** It ran whenever anyone was signed in without a
-  session. At four seconds that is 21,600 requests for a tab left open overnight,
-  and the request count is the small half: an idle database suspends and an idle
-  service has nothing to do, and a request every four seconds stops both. One
-  idle reader kept a database and two services awake indefinitely, for nobody.
-- **Polling, but bounded.** Ask only while queued, only while the tab is in
-  front of a reader, on a widening gap that gives up after fifteen minutes. That
-  fixed the cost and bought it with lateness: six minutes into a wait, a
-  partner's arrival surfaced up to twenty seconds after it happened, with the
-  partner sitting alone in the editor. Both halves of the trade were bad, which
-  is usually the sign the mechanism is wrong rather than the constants.
+Asking is the expensive shape, so all three of its costs are bounded rather than
+accepted:
 
-Being told costs nothing while nothing happens and delivers in **23 ms end to end
-through the Gateway, measured**. Three details in it are load-bearing:
+- **Only somebody actually waiting asks.** The queued flag lives in
+  `localStorage` ([`frontend/src/queue.ts`](../../frontend/src/queue.ts)), not in
+  React state, so it survives navigation and a refresh, and the shell reads it
+  before starting. An earlier version ran whenever anyone was signed in without
+  a session: at four seconds that is 21,600 requests for a tab left open
+  overnight, and the request count is the small half. An idle database suspends
+  and an idle service has nothing to do; a request every four seconds stops
+  both, so one idle reader kept a database and two services awake for nobody.
+- **It gives up after a minute.** `MAX_WAIT_MS` is 60 seconds, after which
+  `readQueued` returns null, the shell stops, and the match screen says nobody
+  came. An abandoned tab therefore costs 20 requests in total, not 20 a minute
+  forever.
+- **Three seconds fits the budget it spends from.** The Gateway allows 120
+  requests a minute per user ([`01-gateway.md`](01-gateway.md)), so one waiting
+  user spends a sixth of their own allowance and nothing of anybody else's.
 
-- **The offline queue goes back on for the subscriber.** `@deepcs/shared/redis`
-  sets `enableOfflineQueue: false` so a user-facing request fails fast instead of
-  hanging, which is right for a request and wrong for a long-lived listener:
-  subscribing before the freshly duplicated socket has connected threw, the route
-  opened anyway, heartbeats streamed, and events silently never arrived.
-- **The current session is sent on connect.** A partner can arrive between the
-  join response and the stream being opened, and that message is published to
-  nobody. Sending current state on connect means the answer can be repeated but
-  never missed, and a repeat is harmless because the client acts on a session id.
-- **`no-transform`, and a heartbeat.** Anything in the path that buffers or
-  compresses turns the stream into one long pause and then everything at once:
-  the request succeeds, the headers are right, and events simply never arrive.
-  That cannot be caught by reading code, so it is caught by a wall-clock
-  assertion through the Gateway in
-  [`matchEvents.test.ts`](../../frontend/src/matchEvents.test.ts). The comment
-  line every 20 seconds exists because a response with no bytes flowing looks
-  abandoned to anything sitting in the middle.
+**What this costs, stated plainly:** news of a match is up to three seconds late,
+and each of those 20 requests per waiting minute is a Gateway hop and a Postgres
+read that usually answers "no". That is the trade — it is bounded, but it is not
+free, and holding the answer open instead would make it neither.
 
-Both participants get the announcement, not just the one who was waiting, because
-the joiner's own response can still be lost.
+### The queue entry expires, because nothing tells the server you left
 
-There are two channels and they are keyed differently. `match:session:{id}`
-carries a session's lifecycle and is what Collab subscribes to per room;
-`match:user:{uid}` is how a single person is told something happened to them, and
-it has to be keyed by uid precisely because the point is to reach somebody who
-does not know a session exists yet.
+There is no leave endpoint, and a closed tab has no way to announce itself. An
+entry left behind is still claimable, so the next person to join is paired with
+somebody who is not there and gets a session nobody ever opens.
+
+So an entry is only claimable for `WAIT_TTL_SECONDS`, 60 seconds, matching the
+window the browser gives up on. Both Lua scripts in
+[`queue.ts`](../../services/matching/src/queue.ts) begin with the same
+`ZREMRANGEBYSCORE` against Redis' own clock, so claiming and asking cannot
+disagree about who is still in the line. This is what the score being a join
+*time* rather than a counter buys, and it is checked by a test that ages an
+entry out with a one-second ttl and then fails to claim it.
+
+The prune runs before the "am I already queued" guard, so somebody whose entry
+has just expired rejoins with a fresh score instead of being told they are still
+in a queue they have fallen out of.
+
+### The session channel is still a channel
+
+Removing the per-user announcement did not remove Redis pub/sub from this
+service. `match:session:{id}` carries a session's lifecycle and is what Collab
+subscribes to per room ([`05-collab.md`](05-collab.md)), which is how pressing
+"end" on one instance tears the room down on every instance holding it. That is
+server-to-server, where publishing works: both ends are processes that are
+already connected to Redis. Reaching a browser was the part that needed
+something else.
 
 ---
 
-## 6. Crash recovery, which is the one surviving timer
+## 6. Crash recovery, which the same poll covers
 
 The claim lives in Redis and the session row in Postgres, and **no transaction
 spans them**. If Matching crashes between the two, a claimed pair is out of the
-queue with no session and no event ever published, and would wait forever.
+queue with no session, and would wait forever.
 
-Recovery is client-driven and deliberately cheap: `GET /match/status` answering
-`none` means "call `/match/join` again", not "you are stuck". The match screen
-checks once a minute while it is open. A crash window is not a race, and one
-request a minute is not worth optimising — and note this timer detects a lost
-claim, not a match, which is what the event stream is for.
+`none` from `/match/status` is what catches it, and it means the same thing for
+both ways it can happen — a crash lost the claim, or the entry aged out. Either
+way the recovery is to call `/match/join` again, which the shell does inline on
+the next tick rather than on a timer of its own. It cannot run past the wait
+window, because `readQueued` has already returned null by then.
 
 `GET /match/session` exists because `/match/status` cannot answer it: status
 requires a topic and difficulty, and an app that has just loaded has neither.
@@ -370,8 +384,9 @@ browser to have been handed it.
   because nothing in the product lets you join a second queue without leaving the
   first.
 - **There is no leave-the-queue endpoint.** Stopping waiting leaves the entry,
-  which the next joiner claims. `queue.ts` has `join` and `isWaiting` and nothing
-  to undo them.
+  which the next joiner can still claim until it ages out a minute later.
+  `queue.ts` has `join` and `isWaiting` and nothing to undo them, so the ttl is
+  the only thing that ends a wait early.
 - **CI does not orchestrate siblings for the contract tests.**
   `clients.test.ts` calls a real Users and Questions and passes locally; the
   per-service CI matrix brings up only Postgres and Redis, so those cases skip

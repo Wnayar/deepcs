@@ -222,7 +222,7 @@ durable relational data — rather than by service.
 |---|---|---|
 | Rate-limit buckets | `rl:ip:<ip>`, `rl:user:<uid>` | Gateway |
 | Match queue | `match:queue:<topic>:<difficulty>` | Matching |
-| Pub/sub | `match:session:<id>`, `match:user:<uid>`, `collab:doc\|awareness\|sync:<id>` | Matching, Collab |
+| Pub/sub | `match:session:<id>`, `collab:doc\|awareness\|sync:<id>` | Matching, Collab |
 | Event stream | `events` (one stream, group `stats`) | everyone appends, Stats reads |
 | Question cache | `questions:list:<filters>`, `questions:roadmap` | Questions |
 
@@ -230,21 +230,35 @@ Only the last is a pure optimisation. The first two are correctness requirements
 that depend on Redis running a Lua script start to finish with nothing
 interleaved, which is why both live in Lua and not in application code.
 
+**Every pub/sub channel here is server-to-server**, and that is not an accident
+of naming. Publishing reaches whoever is subscribed at that instant and nobody
+else, which works between processes that are already connected to Redis and
+cannot work towards a browser, since a browser is not subscribed to anything. A
+browser that needs to know something asks for it over HTTP
+([ADR-11](../adr/11-polling-over-server-sent-events.md)).
+
+**The match queue is the one key that expires its own members.** Entries are
+scored by join time and dropped once they are 60 seconds old, inside the same
+scripts that read the queue rather than by a sweeper, because nothing tells the
+server that a browser has gone ([`04-matching.md`](04-matching.md) §5).
+
 **ioredis rather than node-redis** for one reason: `defineCommand` registers a
 script once and calls it by SHA thereafter, with an automatic fallback to `EVAL`
 if Redis has forgotten it. The rate limiter's atomicity depends on that script,
 so the client's script handling is not an incidental detail.
 
 **The client fails fast by default**, and that default is overridden in exactly
-three places. `maxRetriesPerRequest: 2` and `enableOfflineQueue: false` mean a
+two places. `maxRetriesPerRequest: 2` and `enableOfflineQueue: false` mean a
 Redis outage produces requests that 503 rather than requests that hang — and a
 hanging request holds a concurrency slot, so the outage spreads. That suits a
-client whose first command arrives with a user's request. It is wrong for a
-long-lived subscriber (Collab's rooms, Matching's event stream), which subscribes
-at startup, and for the Stats job, whose first command races its own connect
-because there is no request to wait for. In both, failing fast means failing at
-startup for a socket that is about to be ready, which is not a useful kind of
-fast.
+client whose first command arrives with a user's request. It is wrong for
+Collab's room subscriber, which subscribes at startup, and for the Stats job,
+whose first command races its own connect because there is no request to wait
+for. In both, failing fast means failing at startup for a socket that is about
+to be ready, which is not a useful kind of fast.
+
+Matching is not one of them any more: it publishes and never subscribes, and a
+publish arrives with a request like any other command.
 
 **No persistence anywhere.** Redis holds queue state, buckets, a cache and the
 event log; on the cluster saving is turned off outright. Losing it costs the
@@ -254,6 +268,18 @@ was the record of.
 ---
 
 ## 7. Tests use the real thing
+
+**The same default has a trap in it for tests, and it caught this repo.** A test
+that creates a client and immediately pings it is a first command racing its own
+connect, exactly like the Stats job — so with the offline queue off the ping
+throws, the suite's `reachable` flag stays false, and every test in the file
+returns early *while still reporting as passed*. Both Redis-backed suites — the match
+queue's and the rate limiter's — looked green for as long as they had existed
+and had never run once, which meant the token bucket ADR-08 rests on was
+unverified the whole time. The tell is the
+timing: five tests against real Redis finishing in 11 ms. Redis-backed suites
+therefore pass `{ enableOfflineQueue: true }` like the two clients above, and a
+suspiciously fast suite is worth a second look rather than a moment of pleasure.
 
 Real Postgres and real Redis, never mocks. The properties under test are a Lua
 script's atomicity, a role being refused a schema, cursor pagination not skipping

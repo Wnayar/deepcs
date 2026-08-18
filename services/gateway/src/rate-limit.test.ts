@@ -18,7 +18,11 @@ let limiter: RateLimiter;
 let reachable = false;
 
 beforeAll(async () => {
-  redis = createRedis(REDIS_URL);
+  // The offline queue back on, because the first command here races its own
+  // connect: `createRedis` defaults it off, so a ping issued before the socket
+  // is ready throws instead of waiting, and every test below quietly turns into
+  // a no-op that still reports as passing.
+  redis = createRedis(REDIS_URL, { enableOfflineQueue: true });
   try {
     await redis.ping();
     reachable = true;

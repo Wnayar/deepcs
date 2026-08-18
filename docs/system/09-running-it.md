@@ -498,6 +498,16 @@ Two things it does not do:
   and a p95 gate on one fails for reasons unrelated to any change. The thresholds
   still do their job locally: nobody has to eyeball a table to know whether the
   run passed.
+- **It does not notice a suite that skips itself.** Every Redis- and
+  Postgres-backed suite probes its dependency in `beforeAll` and returns early
+  from each test if it cannot reach it — reporting as passed, not as skipped.
+  That is deliberate, so a checkout with nothing running still goes green, and it
+  means a suite can stop testing anything without any run turning red. Both
+  Redis-backed suites were in exactly that state until the clients they build
+  were given `{ enableOfflineQueue: true }` ([`08-data.md`](08-data.md) §7).
+  **The tell is always the timing** — five tests against real Redis in 11 ms —
+  and nothing in CI reads it, so it is worth reading by hand after touching a
+  suite's setup.
 
 One bug in this file is worth knowing because the shape recurs. The `changes` job
 used to fail the whole run on any commit that touched no service — a docs-only

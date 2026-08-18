@@ -389,13 +389,16 @@ reads it wrong. Both shipped here before being caught. A clickable card is a
 `<button>` containing spans.
 
 Routing also exposed a bug that had been there since matching was built and only
-became visible once leaving a screen was easy: the match screen watched for a
+became visible once leaving a screen was easy: the match screen asked for a
 result and unmounted when you navigated away, so somebody who queued and then
 went to read a lesson was put into a session nobody told them about, while their
-partner sat alone in the editor. The watching moved into the app shell, where it
-runs from any page. `GET /match/session` takes no topic or difficulty, which is
-what makes one watcher enough — a client that has forgotten what it queued for,
-or has been reloaded since, still finds its way back.
+partner sat alone in the editor. The asking moved into the app shell, where it
+runs from any page: `GET /match/status` every three seconds for as long as the
+`localStorage` queued flag says this browser is waiting, and not one request
+past the minute that flag expires after. Storage rather than React state is the
+whole trick, because navigation and refresh both discard state and neither
+discards this. `GET /match/session` takes no topic or difficulty, which is what
+lets a client that has forgotten what it queued for still find its way back.
 
 The header then has three states rather than two, and the third is the one worth
 having. "Return to session" is right for someone who stepped out of a room they
@@ -515,9 +518,14 @@ which is what the rest of this page is for.
 
 ## Known gaps
 
-- **No component tests.** The two suites that exist test the protocol client and
-  the event stream, which are the parts with a contract to break. The pages are
-  thin enough that a render test would mostly assert that React renders.
+- **No component tests.** The suites that exist test the protocol client and the
+  queued-flag expiry, which are the parts with a contract to break. The pages are
+  thin enough that a render test would mostly assert that React renders. The
+  poll's *contract* is covered from the other side —
+  [`reveal.test.ts`](../../services/matching/src/reveal.test.ts) drives a waiter
+  from `waiting` to `matched` across a partner's join — but the React effect
+  that runs it on a timer is not, so a broken interval or a missed cleanup would
+  not fail a test.
 - **No progress tracking.** There is no completed state and nothing to store it
   in. It needs a table, a route, and an opinion about what finishing means.
 - **No history of your own past sessions.** The data exists in

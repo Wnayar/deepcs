@@ -1,16 +1,30 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router';
-import { currentSession, ensureProfile, type Question, type Session } from './api';
+import {
+  currentSession,
+  ensureProfile,
+  joinQueue,
+  matchStatus,
+  type Question,
+  type Session,
+} from './api';
 import { signOutUser, watchUser, type User } from './auth';
 import { useTheme } from './theme';
 import { clearQueued, readQueued } from './queue';
-import { watchForMatch } from './matchEvents';
 import { RoadmapPage } from './pages/Roadmap';
 import { StepPage } from './pages/Step';
 import { LoginPage } from './pages/Login';
 import { MatchPage } from './pages/Match';
 import { SessionRoute } from './pages/Session';
 import { SummaryPage } from './pages/Summary';
+
+/**
+ * How often a waiting browser asks whether it has been matched. Three seconds
+ * is the latency somebody staring at a waiting screen actually feels, and at
+ * one request per three seconds a waiting user sits far inside the Gateway's
+ * per-user budget (120 requests a minute, services/gateway/src/rate-limit.ts).
+ */
+const MATCH_POLL_MS = 3_000;
 
 export interface SessionSummary {
   question: Question;
@@ -67,26 +81,68 @@ export function App() {
   }, [user]);
 
   /**
-   * Watch for a partner, from wherever the reader happens to be.
+   * Ask whether a partner has arrived, from wherever the reader happens to be.
    *
-   * Being matched is caused by somebody else's request. The match screen could
-   * watch for it, but only while it is on screen, so somebody who queued and
-   * went to read a lesson would be put into a session nobody told them about.
-   * Watching from the shell means it is noticed from any page.
+   * Being matched is caused by somebody else's request, and HTTP gives a server
+   * no way to speak first, so the only way to find out is to keep asking. The
+   * match screen could ask, but only while it is on screen, so somebody who
+   * queued and went to read a lesson would be put into a session nobody told
+   * them about. Asking from the shell means it is noticed from any page.
    *
-   * The guard matters: a held-open stream occupies a concurrency slot and keeps
-   * a service alive, so one is opened only by somebody actually waiting, and
-   * given up once the queue flag expires.
+   * The guard matters twice: only somebody actually waiting asks at all, and
+   * `readQueued` returns null once the wait window has passed, which is what
+   * stops an abandoned tab asking forever.
    */
   useEffect(() => {
     if (!user || active) return;
     if (!readQueued()) return;
 
-    return watchForMatch((session) => {
-      clearQueued();
-      setActive(session);
-      setArrived(true);
-    });
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const ask = async () => {
+      const queued = readQueued();
+      if (stopped || !queued) return;
+
+      try {
+        const status = await matchStatus(queued.topic, queued.difficulty);
+        if (stopped) return;
+
+        if (status.status === 'matched') {
+          clearQueued();
+          setActive(status.session);
+          setArrived(true);
+          return;
+        }
+
+        // Neither matched nor queued: the claim was lost between Redis and
+        // Postgres, or the entry aged out. Re-joining is the documented
+        // recovery for both, and it cannot run past the wait window because
+        // `readQueued` has already returned null by then.
+        if (status.status === 'none') {
+          const rejoined = await joinQueue(queued.topic, queued.difficulty);
+          if (stopped) return;
+          if (rejoined.status === 'matched') {
+            clearQueued();
+            setActive(rejoined.session);
+            setArrived(true);
+            return;
+          }
+        }
+      } catch {
+        // One failed check is not a reason to give up on the whole wait; the
+        // next one is a few seconds away.
+      }
+
+      timer = setTimeout(() => void ask(), MATCH_POLL_MS);
+    };
+
+    void ask();
+
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
   }, [user, active, queuedAt]);
 
   if (!ready) return <main className="muted">Loading…</main>;

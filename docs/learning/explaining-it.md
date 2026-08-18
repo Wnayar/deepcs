@@ -2,7 +2,7 @@
 
 ## The situation you're actually in
 
-You have ~4,100 lines of backend source and ~4,200 lines of system docs and
+You have ~4,000 lines of backend source and ~4,300 lines of system docs and
 ADRs that already explain it well. That ratio matters. **You cannot fail this
 by not knowing enough. You fail it by not being able to pull the right fact
 out when a question arrives in an unexpected shape.**
@@ -150,12 +150,14 @@ rehearse:
    either service fails the request cleanly with nothing to undo.
 4. Only then the queue. One Lua script [a small program Redis runs as one
    uninterruptible step] either **claims a waiting partner** or adds you to
-   the queue. If it claimed one: write the session row to Postgres, then
-   publish to Redis so *both* people hear — the waiter through their event
-   stream, the joiner as backup in case their own response gets lost.
-5. The waiting person hears through **server-sent events** — one HTTP
-   response held open, `GET /match/events`. Not polling. The full mechanism
-   is [`sse.md`](./sse.md); the story of why polling was removed is drill 25.
+   the queue. If it claimed one: write the session row to Postgres. The
+   joiner learns from the reply to their own request; the waiter has to find
+   out some other way.
+5. The waiting person finds out by **asking** — `GET /match/status` every
+   three seconds, answered from the Postgres session row. Bounded on three
+   sides so that asking is affordable: only while queued, only for a minute,
+   and inside the Gateway's per-user budget. Why asking rather than being
+   told is [ADR-11](../adr/11-polling-over-server-sent-events.md) and drill 25.
 6. Both browsers open a **WebSocket** ([`websockets.md`](./websockets.md))
    through the Gateway to **Collab**. Collab asks Matching: "is this uid a
    participant in this session?" — authorization lives with whoever owns the
@@ -202,10 +204,12 @@ sequenceDiagram
     M->>Q: find a question for this topic and difficulty
     M->>R: one Lua script, check-and-claim-or-enqueue — queue empty, so enqueue B
     M-->>B: 200, waiting
-    B->>GW: GET /match/events (SSE, held open)
-    GW->>M: proxy the still-open response
-    M->>R: SUBSCRIBE match:user:B, on a dedicated connection
-    Note over M: then re-check Postgres and resend the current session, if any —<br/>a partner who arrived in the gap is repeated, never missed
+    loop every 3s while queued, up to 60s
+        B->>GW: GET /match/status?topic=&difficulty=
+        GW->>M: forward, with X-User-Id
+        M->>M: read Postgres for an active session — no session yet
+        M-->>B: 200, waiting
+    end
 
     Note over A: A arrives second
     A->>GW: POST /match/join, same topic and difficulty
@@ -215,10 +219,11 @@ sequenceDiagram
     M->>Q: same question fetch, on every join
     M->>R: same Lua script — finds B waiting, claims and removes B atomically
     M->>M: write the session row to Postgres — not one transaction with the claim
-    M->>R: PUBLISH matched on match:user:A and match:user:B
-    R-->>M: delivered to the instance that subscribed at 9
-    M-->>B: SSE event, matched — pushed into the response held open at 7
     M-->>A: 201, matched — the ordinary reply to its own request
+    B->>GW: the next GET /match/status, at most 3s later
+    GW->>M: forward, with X-User-Id
+    M->>M: read Postgres — the session row is there now
+    M-->>B: 200, matched — B finds out by asking, up to 3s after it happened
 
     A->>GW: WebSocket upgrade, /collab/connect?sessionId=…&token=…
     B->>GW: the same upgrade
@@ -242,7 +247,7 @@ next reading target.
 Every numbered arrow, explained. Read this alongside the diagram, in order,
 so each step lands where it happens.
 
-**B joins first (1–9)**
+**B joins first (1–10)**
 
 - **1** — The ID token came from Firebase directly. The Gateway never issues
   tokens — it only checks them. It holds Google's *public* keys and no
@@ -280,67 +285,76 @@ so each step lands where it happens.
 - **6** — B's request is answered `"waiting"` and closed. (On the way out, a
   `queue.joined` event is dropped onto the Redis event stream for Stats —
   fire-and-forget, meaning a Redis hiccup there can never fail B's request.)
-- **7** — A second, separate request: the SSE stream. One ordinary HTTP
-  response the server never finishes ([`sse.md`](./sse.md)). Because it's
-  ordinary HTTP, the Gateway proxies it with zero special handling and the
-  identity header arrives as usual. A comment line every 20 seconds keeps
-  machines in the middle from hanging up a quiet connection.
-- **8** — The Gateway keeps no state for the stream. It's Matching that
-  holds the response open and writes into it.
-- **9** — Matching subscribes to B's personal Redis channel,
-  `match:user:B`, on a dedicated Redis connection [a subscribed Redis
-  connection can do nothing else, so each stream gets its own]. Then the
-  note: it re-checks Postgres and resends the current session if one exists.
-  That closes a race — a partner could have arrived in the gap between B's
-  join answer and this stream opening, published to a channel nobody was on
-  yet. With the re-check, news can arrive twice but can never be missed, and
-  twice is harmless because the browser acts on a session id.
+- **7** — The loop starts, and it exists because of one fact: **HTTP gives a
+  server no way to speak first.** B being matched is caused by *A's* request,
+  and there is no way for Matching to reach into B's browser and say so. So B
+  asks. These are separate, ordinary requests — nothing is held open, so the
+  Gateway proxies them like any other route and keeps nothing between them.
+- **8** — And each one pays the full Gateway toll from arrow 2: strip, verify,
+  set, spend a rate-limit token, forward. **This is the cost of asking, made
+  concrete** — twenty times a minute, for somebody who is doing nothing.
+  It fits only because a user's bucket is 120 a minute, so one waiter spends a
+  sixth of their own allowance and none of anybody else's.
+- **9** — The answer comes from **Postgres**, not from Redis and not from
+  memory. That is the property that makes this work with more than one replica:
+  there is nothing to route to a particular process, because no process is
+  holding anything on B's behalf. Any instance can answer, because the answer is
+  a row.
+- **10** — `"waiting"`, and the loop goes round. The bounds are the design, and
+  there are three: B asks **only while queued** (a `localStorage` flag, so it
+  survives navigation and refresh — React state would not), **only for 60
+  seconds**, and **only every 3 seconds**. Matching drops a queue entry of that
+  same age inside the Lua script, so a browser that has stopped asking also
+  stops being claimable. Without that second half, a closed tab leaves an entry
+  that pairs the next joiner with nobody.
 
-**A joins second — same checks, different outcome (10–19)**
+**A joins second — same checks, different outcome (11–21)**
 
-- **10** — A's own join request. Independent of B's; A has no idea B exists.
-- **11** — Identical Gateway treatment as arrow 2. There is no shortcut
+- **11** — A's own join request. Independent of B's; A has no idea B exists.
+- **12** — Identical Gateway treatment as arrow 2. There is no shortcut
   path — every request pays the full toll.
-- **12–13** — The uid check and the question fetch run on *every* join,
+- **13–14** — The uid check and the question fetch run on *every* join,
   before the queue is touched. Not just for whoever ends up waiting.
-- **14** — The same Lua script runs — and this time finds B waiting. It
+- **15** — The same Lua script runs — and this time finds B waiting. It
   removes B from the queue and returns two things: B's uid, and how long B
   waited. The wait is measured inside the script because the claim deletes
   the queue entry — this is the last instant the number exists to be read.
-- **15** — The session row is written to Postgres. Important: the Redis
-  claim (arrow 14) and this row are *not* one transaction. A crash between
+- **16** — The session row is written to Postgres. Important: the Redis
+  claim (arrow 15) and this row are *not* one transaction. A crash between
   them leaves B claimed out of the queue but with no session existing. That
   exact state is what `GET /match/status` answering `none` detects — and the
-  recovery is "call join again", which arrow 2's note made safe.
-- **16** — The "matched" announcement is published on *both* users'
-  channels, not just B's. Why both? A's own HTTP response could also get
-  lost in transit, so A gets a backup copy too. The announcement names the
-  session and never the partner — sessions are anonymous, and nothing in the
-  whole flow ever tells you the other person's uid. (A `match.created` event
-  also goes onto the event stream for Stats.)
-- **17** — Redis delivers the message to whichever Matching instance
-  subscribed at arrow 9. Publisher and subscriber can be different
-  processes on different machines — that's what makes this work with more
-  than one replica of Matching.
-- **18** — Written straight into B's still-open response from arrow 7. B
-  sends no new request, ever.
-- **19** — A learns the same thing the boring way: as the `201` reply to its
-  own join request.
+  recovery is "call join again", which arrow 2's note made safe. (A
+  `match.created` event also goes onto the event stream for Stats, carrying
+  the wait from arrow 15.)
+- **17** — A learns the boring way: as the `201` reply to its own request. **A
+  never has to ask, and B never gets told.** That asymmetry is the whole
+  problem in one line — the person who causes the match gets the answer for
+  free, and the person who was waiting is the one with no way to be reached.
+- **18–20** — B's next scheduled ask, at most three seconds later. Same
+  requests as 7–9, same full Gateway toll, same Postgres read — except this
+  time the row exists.
+- **21** — `"matched"`, with the session id. **B finds out by asking, up to
+  three seconds after it happened.** That lateness is the price, and it is
+  the honest thing to say out loud: the alternative is holding a response
+  open, which delivers in milliseconds and pins B to one specific process for
+  the whole wait (ADR-11). Note what B is *not* told: the session names the
+  question and never the partner. Sessions are anonymous, and nothing in this
+  flow ever reveals the other person's uid.
 
-**Both connect to Collab (20–29)**
+**Both connect to Collab (22–31)**
 
-- **20–21** — Both browsers upgrade to a WebSocket at
+- **22–23** — Both browsers upgrade to a WebSocket at
   `/collab/connect?sessionId=…&token=…`. The token rides the URL because a
   browser's WebSocket cannot attach the normal login header — and the
   Gateway accepts a token there *only* on upgrade requests, so normal routes
   can't be authenticated that way.
-- **22** — The upgrade means the Gateway opens a second connection of its
+- **24** — The upgrade means the Gateway opens a second connection of its
   own to Collab and copies messages between the two ([`websockets.md`](./websockets.md)
   has the full picture). That second connection carries a request the
   Gateway composes itself, and by default it would carry almost no headers —
   so the ws proxy has its own separate header-rewrite step. Without it,
   Collab would see no `X-User-Id` and reject every socket, logged-in or not.
-- **23** — Collab holds no session data of its own, so before agreeing to
+- **25** — Collab holds no session data of its own, so before agreeing to
   the upgrade it asks Matching: "is this uid a participant in this
   session?" The rule behind this: authorization lives with whoever owns the
   record. A "no" is a plain HTTP 403 and the socket never comes into
@@ -353,23 +367,23 @@ so each step lands where it happens.
   starting text. It subscribes to the session's Redis channels. And it
   publishes a "who has current state?" request that any *other* pod already
   holding this room answers with the whole document.
-- **24** — The server opens the sync with **step 1: a state vector** [a
+- **26** — The server opens the sync with **step 1: a state vector** [a
   compact summary of "how much of each person's edits I already have"] —
   not the document itself. It also sends everyone's current presence
   (cursors).
-- **25** — A replies with step 2 — whatever the server was missing — and
+- **27** — A replies with step 2 — whatever the server was missing — and
   sends its own step 1 back, asking the same question in the other
   direction.
-- **26** — The server's step 2 in return: everything A is missing. For a
+- **28** — The server's step 2 in return: everything A is missing. For a
   browser that just connected with an empty editor, that is effectively the
   whole document.
-- **27** — A keystroke travels as a Yjs update: a small delta saying exactly
+- **29** — A keystroke travels as a Yjs update: a small delta saying exactly
   which positions changed, not the whole text.
-- **28** — Collab sends it to every *other* open socket in the room. Never
+- **30** — Collab sends it to every *other* open socket in the room. Never
   back to the sender — there is no echo. (That detail once mattered a lot:
   the load test was originally written to measure an echo that doesn't
   exist, and §6 story 2 is what that taught.)
-- **29** — And publishes it on the session's Redis channel, for sockets
+- **31** — And publishes it on the session's Redis channel, for sockets
   attached to the other pod. One guard here: if the update itself *arrived*
   from Redis, it is not re-published — that single check is what prevents an
   infinite loop of two pods forwarding each other the same edit forever.
@@ -400,9 +414,11 @@ project's real difficulty lives, and they are small:
   commands leaves a gap where two requests both read "1 token left" and both
   spend it. A Lua script runs on the Redis server as one uninterruptible
   step, so the gap cannot exist.
-- `services/matching/src/queue.ts` (90 lines) — the atomic pair claim. Same
-  shape of problem: two people joining at the same instant race for the same
-  partner.
+- `services/matching/src/queue.ts` (141 lines) — the atomic pair claim, and
+  the queue's expiry. Same shape of problem as the limiter: two people joining
+  at the same instant race for the same partner. The expiry shares the same
+  script because there is no always-on process to sweep the queue from, so the
+  cleanup rides on the operations that already touch it.
 - `services/collab/src/rooms.ts` (608 lines, the biggest file) — rooms, the
   Redis fan-out between pods, the whole-document state reply, snapshots.
 - `packages/shared/src/service.ts` (168 lines) — the four things every HTTP
@@ -464,7 +480,7 @@ first.
    → overview §1
 3. What's deliberately *not* in it, and why? → overview §1 ("Not in scope")
 4. How long did it take and how big is it? *(About four weeks, ~120 commits,
-   ~4,100 lines of backend source.)*
+   ~4,000 lines of backend source.)*
 
 ### Architecture
 5. Why six services and not one? What's the actual forcing reason?
@@ -548,7 +564,8 @@ first.
     transaction. What happens if the process crashes between them?** *(B is
     out of the queue but no session exists. `GET /match/status` answers
     `none`, which means "call join again" — and joining again is safe by
-    design. The frontend's `Match.tsx` has a timer that does exactly this.)*
+    design. The shell's poll does exactly this inline on its next tick, so
+    the same loop that notices a match also recovers from a lost claim.)*
     This is a great question to get — you already know the gap and named
     the recovery.
 23. How does one Node process hold 250 sockets? *(One thread. When code
@@ -565,58 +582,70 @@ first.
     any request path.)*
 
 ### Real-time delivery
-25. How does a waiting user find out they were matched? Why not polling?
-    *(Polling kept the Gateway, Matching and the database busy answering
-    "no" thousands of times, and slowing it down enough to afford made the
-    news up to twenty seconds late. Now: one SSE stream, told the moment it
-    happens. The mechanism is [`sse.md`](./sse.md).)*
-26. What's the failure mode of SSE and how is it caught? *(Silent
-    buffering: anything in the path that collects the response before
-    forwarding turns the stream into one long pause, then everything at
-    once. Nothing errors — the code is correct, the path is broken — so no
-    unit test can catch it. The defence is a wall-clock test through the
-    real Gateway: publish, and assert the event arrives within
-    milliseconds. `frontend/src/matchEvents.test.ts`.)*
-27. Is an open SSE stream free? *(No. It occupies a connection slot on the
-    Gateway and on Matching for its whole life. So one is opened only by
-    somebody actually waiting, and the browser gives up after 15 minutes.)*
+25. How does a waiting user find out they were matched? *(They ask:
+    `GET /match/status` every three seconds, answered from the Postgres
+    session row. HTTP gives a server no way to speak first, and being
+    matched is caused by somebody else's request, so asking is the only
+    option that does not involve holding something open.)*
+26. Why not server-sent events — one response held open and written into?
+    *(It was built, and it worked, delivering in 23 ms. The problem is not
+    the mechanism, it is where the state lives: a held-open response sits in
+    the memory of one process, so scaling that process down severs it, every
+    rolling update severs all of them at once, load stops rebalancing
+    because connected clients never re-land anywhere, and a CPU-based
+    autoscaler reads thousands of idle connections as an idle instance. A
+    queue people leave within a minute does not need to buy any of that for
+    one notification. → ADR-11.)*
+27. Then why is polling not the thing you just argued against? *(Because
+    every one of its costs is bounded, and unbounded is the version that was
+    wrong here first. It runs only for somebody actually waiting, it stops
+    after 60 seconds, and at 20 requests a minute it fits inside a rate-limit
+    budget that already exists. Say the cost out loud: news up to 3 seconds
+    late, and 20 requests that mostly answer "no".)*
+28. What stops a closed tab from breaking matching for the next person?
+    *(Nothing tells the server a tab closed, and there is no leave endpoint,
+    so the queue entry would outlive its owner and be claimed — pairing
+    somebody with a session nobody opens. Entries are claimable for 60
+    seconds only, pruned inside the same Lua scripts that read the queue,
+    against Redis' own clock. It is the server-side half of the same bound
+    the browser keeps.)*
 
 ### Data & events
-28. Why are reference answers never in the shared document? → ADR-06
-29. Why Redis Streams for events, and why is every Stats write safe to
+29. Why are reference answers never in the shared document? → ADR-06
+30. Why Redis Streams for events, and why is every Stats write safe to
     repeat? *(Delivery is at-least-once — a crash mid-processing means the
     same event arrives again. Writes keyed by a natural id (session id,
     user id) just overwrite the same row on a repeat. A counter column is
     the one shape that can't be saved: adding 1 twice is wrong, no matter
     how careful the code is. Hence: no counter columns anywhere.)* → ADR-07
-30. Cursor pagination rather than `OFFSET` — why? *(`OFFSET 500` makes the
+31. Cursor pagination rather than `OFFSET` — why? *(`OFFSET 500` makes the
     database walk and throw away 500 rows to reach yours, and a row
     inserted while you scroll shifts every later page by one — you see
     duplicates or miss rows. A cursor says "give me rows after this id",
     which is a cheap indexed lookup and unaffected by inserts behind it.)*
 
 ### Ops
-31. What does Kubernetes give you that compose doesn't? *(Rolling updates
+32. What does Kubernetes give you that compose doesn't? *(Rolling updates
     and self-healing — replacing pods one at a time with no gap, and
     restarting what dies. The two behaviours compose cannot show.)*
-32. Why is there no deployment? → §6 below, and ADR-05
-33. What makes a rolling update lossless? *(Readiness probes. A pod that
+33. Why is there no deployment? → §6 below, and ADR-05
+34. What makes a rolling update lossless? *(Readiness probes. A pod that
     fails `/health/ready` is removed from the list of pods receiving
     traffic before it's touched, and a new pod isn't added until it passes.
     Requests only ever land on pods that answered "ready".)*
-34. Why are `/health/live` and `/health/ready` separate endpoints?
+35. Why are `/health/live` and `/health/ready` separate endpoints?
     *(They answer different questions. Live: "is this process stuck? if so
     restart it." Ready: "may traffic come here yet?" A service still
     connecting to Postgres is live but not ready — conflate the two and
     the orchestrator kills healthy processes that are merely starting.)*
-35. What's the highest-value line in the Dockerfile? *(The `manifests`
+36. What's the highest-value line in the Dockerfile? *(The `manifests`
     stage copying every `package.json` by name — the root plus the eight
     workspace manifests — rather than `COPY . .`. Docker re-runs a cached
     step when any file it copied changes, so `COPY . .` before the
     dependency install means every code edit re-installs everything.
     Copying only the manifest files keys the install step to dependency
     changes alone.)*
-36. Why does CI run the built image and curl `/health/ready` when typecheck
+37. Why does CI run the built image and curl `/health/ready` when typecheck
     and tests already passed? *(Because green once shipped a bundle that
     died at import: the bundler exits 0 even when its output is broken, and
     the tests run from source and never touch the built output. A green
@@ -624,14 +653,14 @@ first.
     you actually ship.)*
 
 ### Testing
-37. Why real Postgres and Redis rather than mocks? *(The properties under
+38. Why real Postgres and Redis rather than mocks? *(The properties under
     test are a Lua script running atomically, a database role being
     refused, pagination not skipping rows. A mock only proves the code
     agrees with itself — it would happily confirm a racy rate limiter
     works.)*
-38. Why no coverage target? *(A percentage pushes effort toward whatever is
+39. Why no coverage target? *(A percentage pushes effort toward whatever is
     easiest to cover, which is rarely where this system breaks.)*
-39. **What isn't tested?** *(No end-to-end test of sign-in through to
+40. **What isn't tested?** *(No end-to-end test of sign-in through to
     summary. Every piece is covered; nothing joins them. A gap, not a
     decision.)* Say this unprompted if asked "what would you do next" — it
     reads as ownership.
@@ -641,35 +670,35 @@ These cannot be answered by someone who read a design doc. They separate
 "I built this" from "I was near this", so drill them hardest. Name
 **files**, not concepts.
 
-40. **How would you add a seventh event type?** *(Three places, and missing
+41. **How would you add a seventh event type?** *(Three places, and missing
     any one is the bug: the `EventType` list in
     `packages/shared/src/events.ts`; the `switch` in
     `services/stats/src/consumer.ts`; and a table keyed so that processing
     the same event twice changes nothing — because delivery is
     at-least-once.)*
-41. **How would you add a seventh service?** *(A schema and a role in a
+42. **How would you add a seventh service?** *(A schema and a role in a
     migration; a route prefix on the Gateway; a Deployment, Service and
     probes in `k8s/`; the CI path filter. And the one people forget: the
     Dockerfile's `manifests` stage lists every workspace `package.json`
     **by name**, so missing it means "module not found" for that service
     alone. That cost is accepted knowingly in exchange for the build
     cache.)*
-42. **Walk me through adding one endpoint, end to end.** *(A zod schema for
+43. **Walk me through adding one endpoint, end to end.** *(A zod schema for
     the input; a repository function with fully schema-qualified SQL; the
     route with a short comment showing one example request; a Gateway
     prefix if it's a new one. Parameterized query, always.)*
-43. **Add a spectator who can read a session but not write to it.** *(Good
+44. **Add a spectator who can read a session but not write to it.** *(Good
     question because authorization lives with the record owner: the role
     has to be expressed in Matching's participant answer, since that is
     what Collab asks. Then the client attaches the document read-only —
     but the server must also refuse writes from that socket, because
     anything enforced only in the browser is not a control.)*
-44. **Make the question bank full-text searchable.** *(Today tags are a
+45. **Make the question bank full-text searchable.** *(Today tags are a
     text array with a GIN index [an index type that can answer "which rows
     contain this element"]. Full text search is a different index and a
     different query — say so, rather than implying the current one
     stretches to cover it.)*
-45. **A user reports their partner's edits aren't showing up. Debug it
+46. **A user reports their partner's edits aren't showing up. Debug it
     live.** *(Structured logs first: every line carries `service` and
     `request_id`. The id the Gateway assigns follows a request into the
     first service and back to the browser — but the internal service-to-
@@ -679,11 +708,11 @@ These cannot be answered by someone who read a design doc. They separate
     no request-rate, error-rate or latency dashboards and no tracing, so
     past that point you're reading logs. Naming your own blind spots here
     scores better than inventing a dashboard that doesn't exist.)*
-46. **Something in here you'd rip out and redo?** Have one real answer. The
+47. **Something in here you'd rip out and redo?** Have one real answer. The
     missing end-to-end test is the honest one.
 
 ### The killer question
-47. **What went wrong / what would you do differently?** Have three ready,
+48. **What went wrong / what would you do differently?** Have three ready,
     and §6 gives you them. This question decides more interviews than any
     other.
 
@@ -691,7 +720,7 @@ These cannot be answered by someone who read a design doc. They separate
 Two that reward having actually read `docs/system/09-running-it.md` rather
 than its summary — both are real, and both end with a method point.
 
-48. **The load run's minimum edit latency was -522ms. What happened?**
+49. **The load run's minimum edit latency was -522ms. What happened?**
     *(Both simulated users run in one process reading one clock, so it
     can't be two clocks disagreeing. The one clock itself stepped backwards
     mid-run — WSL2 does this when it resyncs against Windows. The tell that
@@ -699,7 +728,7 @@ than its summary — both are real, and both end with a method point.
     second, and nothing went *positive* by that much. It moves neither p50
     nor p95, and it stays in the results — a script that silently discards
     impossible samples can't tell you when they stop being rare.)*
-49. **Why does `make k8s-check` probe with forty identities rather than
+50. **Why does `make k8s-check` probe with forty identities rather than
     one?** *(Each user gets 120 rate-limit tokens refilling at 2 per
     second. One prober running flat out would empty its own bucket and end
     up measuring the rate limiter instead of the rolling update. Forty
@@ -837,7 +866,7 @@ You're ready when all eight pass cold, no notes:
 3. Both Lua scripts explained by the race each prevents.
 4. Any one of the four load-bearing files talked through for 60 seconds
    with the file closed.
-5. Any *Change it* question (40–46) answered by **naming files**.
+5. Any *Change it* question (41–47) answered by **naming files**.
 6. All four numbers quoted with their conditions.
 7. Three "what went wrong" stories told in under a minute each.
 8. "Why no deployment" answered as a decision, in two sentences, without
