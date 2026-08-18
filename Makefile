@@ -27,10 +27,17 @@
 
 up:
 	docker compose up -d --build
-	@echo "gateway  http://localhost:8080"
-	@echo "next     make web"
+	@echo ""
+	@echo "  backend up. Nothing to look at yet: :8080 is the API, not a page."
+	@echo "  next  ->  make web"
+	@echo ""
 
+# The site itself. This one stays in the foreground, so leave it running and
+# stop it with Ctrl+C.
 web:
+	@echo ""
+	@echo "  open  ->  http://localhost:5173"
+	@echo ""
 	pnpm --filter @deepcs/web dev
 
 down:
