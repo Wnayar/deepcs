@@ -400,6 +400,23 @@ whole trick, because navigation and refresh both discard state and neither
 discards this. `GET /match/session` takes no topic or difficulty, which is what
 lets a client that has forgotten what it queued for still find its way back.
 
+**Being matched navigates, but only from the match screen.** The shell knows
+where the reader is when the answer arrives, and the two cases want opposite
+things: somebody watching "waiting for someone to join" is waiting for exactly
+this, so they are taken in; somebody who queued and went off to read is not, and
+pulling them out of a lesson mid-paragraph is hostile, so they get the header
+notice and go in when they choose. Only doing the second left the person who
+waited staring at a screen that had already got its answer.
+
+**A route that finds its session gone has to say so, not just leave.** When a
+partner ends a session while this browser is elsewhere, `/session/:id` refetches,
+finds nothing, and redirects out. That is right and was not enough: the shell's
+`active` still held the old session, so the header went on offering "Return to
+session", and taking it landed on the route that bounces straight back out. A
+loop with no exit, from state that was only stale in one place. The route now
+clears the shell as well as redirecting, which is why `onEnded` is a
+`useCallback` rather than an inline arrow: the effect depends on it.
+
 The header then has three states rather than two, and the third is the one worth
 having. "Return to session" is right for someone who stepped out of a room they
 have been in, and wrong for someone who has never seen it: nothing has happened
@@ -542,6 +559,19 @@ never changes layout.
 The name comes from the profile call the shell already makes on sign-in, so
 showing it costs no extra request. It is a `<span>`, not a control: putting it
 inside the sign-out button made the button read as a destination.
+
+**The sign-in form picks a mode first**, and that is worth knowing because the
+first version did not. Both actions sat on one screen with every field showing,
+so a display name was on the page while somebody was only trying to sign in. It
+read as a third credential, and one you could get wrong.
+
+It never was one: the name is only attached on sign-up, and even if it were sent
+later the upsert ignores it ([`02-users.md`](02-users.md) §4). But **a field that
+cannot reject you still stops people who believe it can**, which is a UI bug
+rather than a behavioural one and does not show up in any test. Sign in now
+shows two fields, creating an account shows three, and `autoComplete` switches
+between `current-password` and `new-password` so a password manager offers the
+right thing.
 
 # Part 13 — Themes are two lists of variables
 

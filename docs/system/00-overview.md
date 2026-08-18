@@ -35,16 +35,18 @@ hand-written — opposite answers from the same test.
 
 1. Arrive at a roadmap of ten topics, laid out in a recommended reading order.
    No account needed.
-2. Open a topic, pick one of its three steps, and read the lesson with the
-   questions it prepares you for.
-3. Sign in.
-4. Optionally join the queue with a topic and difficulty, usually straight from
-   the step you just read.
-5. Get matched with another waiting user.
-6. Land in a shared document seeded from the question's parts.
-7. Co-write the answer in real time, with presence and remote cursors.
-8. Reveal the reference answer, once you both agree.
-9. End the session and see a short summary.
+2. Open a topic, pick one of its three lessons, and read it. The questions it
+   prepares you for are at the end, in the Key summary.
+3. Sign in, or create an account with a display name.
+4. Tick off what you have finished, which fills a bar per topic and a ring over
+   the map. Nothing checks the claim; it is what you said about yourself.
+5. Optionally join the queue with a topic and difficulty, usually straight from
+   the lesson you just read.
+6. Get matched with another waiting user, whose display name the room shows.
+7. Land in a shared document seeded from the question's parts.
+8. Co-write the answer in real time, with presence and remote cursors.
+9. Reveal the reference answer, once you both agree.
+10. End the session and see a short summary.
 
 The roadmap is the front door rather than the question bank, because a list of
 questions you cannot answer yet is not somewhere to start learning. The bank

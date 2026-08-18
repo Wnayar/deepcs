@@ -235,9 +235,23 @@ structural patterns and lesson 3 was the behavioural ones *plus* composition ove
 inheritance. Two subjects sharing a lesson meant neither had room, and the
 roadmap could not show that patterns were a thing you had finished. Splitting it
 out left OOP with three coherent lessons (the pillars, SOLID, composition) and
-gave the catalogue its own topic, in Python, with worked examples rather than
-shape-and-animal ones. Its snippets are Python where OOP's are Java, which is the
-one place the language mix is a choice rather than the subject's own language.
+gave the catalogue its own topic, with worked examples rather than
+shape-and-animal ones.
+
+**Both topics are Python, and that took more than swapping code fences**
+([`013_oop_in_python.sql`](../../packages/db/migrations/013_oop_in_python.sql)).
+Three parts of the pillars lesson were teaching Java's model rather than object
+orientation, so a Python snippet under them would have contradicted the prose
+above it: Python has no access modifiers, no method overloading, and unlike Java
+it *permits* multiple inheritance and resolves the diamond with the MRO instead
+of forbidding it. Those sections now say what Python actually does, which is
+better material for somebody who writes Python than a faithful translation would
+have been. SOLID and composition are language-neutral and were straight swaps.
+
+The rest of the repo keeps the language its subject is written in. The OS
+lessons stay C because `fork`, `exec` and `pthread_cond_wait` *are* the POSIX
+API and a Python wrapper would make the lesson less true, and the database
+lessons stay SQL for the same reason.
 
 Both shapes end the same way: a section pairing question headers with
 full-paragraph answers. That maps directly onto the row shape — **the questions
