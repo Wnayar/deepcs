@@ -36,6 +36,15 @@ const verify = createVerifier({
 await app.register(cors, {
   origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
   credentials: true,
+  /**
+   * Listed, because the plugin's default is `GET,HEAD,POST` and a method left
+   * out of it is refused by the *browser*, in the preflight, before the request
+   * is ever sent. Nothing reaches a log and the server looks innocent: curl
+   * sends no preflight, so the same call succeeds from a terminal and fails in
+   * a tab. That is exactly how `PUT /users/me/progress/:questionId` shipped
+   * broken. Adding a method to the API means adding it here.
+   */
+  methods: ['GET', 'HEAD', 'POST', 'PUT'],
   // A response header a browser cannot read may as well not be sent: `fetch`
   // hides everything outside the CORS-safelist unless it is named here. The
   // frontend backs off on `retry-after` and would otherwise read null.
