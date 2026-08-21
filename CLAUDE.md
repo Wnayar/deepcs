@@ -93,6 +93,8 @@ nowhere.
   it.
 - [docs/future/](./docs/future/) — `cost.md`, the exploration that decided
   against deploying.
+- [docs/style.md](./docs/style.md) — how the docs are written. Follow it when
+  writing or rewriting a page under `docs/`.
 
 ### Comment style
 
