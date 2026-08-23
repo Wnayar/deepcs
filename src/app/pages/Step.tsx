@@ -121,8 +121,8 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
   if (denied === 401)
     return (
       <div className="gate">
-        <h2>This lesson is in the paid tier</h2>
-        <p className="muted">Sign in first, then unlock everything with a one-time purchase.</p>
+        <h2>This lesson is part of DeepCS Pro</h2>
+        <p className="muted">Sign in first, then one payment unlocks everything, forever.</p>
         <Link className="navlink primary" to="/signin">
           Sign in
         </Link>
@@ -131,12 +131,13 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
   if (denied === 402)
     return (
       <div className="gate">
-        <h2>This lesson is in the paid tier</h2>
+        <h2>This lesson is part of DeepCS Pro</h2>
         <p className="muted">
-          One purchase unlocks every topic, lesson, question and answer, for good.
+          One payment unlocks every topic, lesson, question and answer. No subscription, yours
+          for good.
         </p>
         <Link className="navlink primary" to="/upgrade">
-          Unlock everything
+          See what's included
         </Link>
       </div>
     );

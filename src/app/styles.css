@@ -10,18 +10,21 @@
 /* ── Tokens ────────────────────────────────────────────────────────────────── */
 
 :root {
-  /* Surfaces, from furthest back to nearest front. */
-  --bg: #fbfbfa;
+  /* Surfaces, from furthest back to nearest front. Dead-neutral greys: any
+     tint (warm cream, blue-grey) reads as a cast over a page of prose, and
+     neutral is the ground the reference reading sites settle on. */
+  --bg: #fafafa;
   --surface: #ffffff;
-  --surface-2: #f4f4f2;
-  --line: #e4e4e0;
-  --line-strong: #d0d0ca;
+  --surface-2: #f2f2f3;
+  --line: #e5e5e7;
+  --line-strong: #d2d2d6;
 
-  /* Text, in descending prominence. */
-  --fg: #26262a;
-  --fg-strong: #14141a;
-  --fg-muted: #6a6a64;
-  --fg-faint: #93938c;
+  /* Text, in descending prominence. Charcoal, not black: full black on
+     white vibrates at reading sizes. */
+  --fg: #2a2b2e;
+  --fg-strong: #151619;
+  --fg-muted: #6b6c72;
+  --fg-faint: #949599;
 
   --accent: #3b5bdb;
   --accent-fg: #ffffff;
@@ -38,12 +41,12 @@
      block does not glare beside prose. */
   --code-keyword: #8250df;
   --code-string: #0a6b52;
-  --code-comment: #6a6a64;
+  --code-comment: #6b6c72;
   --code-number: #b3261e;
   --code-func: #1f4bb8;
 
   --progress: #2f7d4f;
-  --progress-track: #e4e4e0;
+  --progress-track: #e5e5e7;
   --star: #c99a2e;
   --warn: #9a6212;
   --danger: #b3261e;
@@ -62,43 +65,39 @@
 }
 
 :root[data-theme='dark'] {
-  /* Lifted well off black with a cool cast, text a step off white. Near-black
-     grounds make bright text bloom, which reads as eye strain rather than as
-     a colour problem; every site measured (web.dev #202124, NeetCode #1d1c1e,
-     MDN #18191b) lifts the ground and softens the text the same way. */
-  --bg: #1f2126;
-  --surface: #26292f;
-  --surface-2: #2f3239;
-  --line: #3a3e46;
-  --line-strong: #4d525c;
+  /* Graphite: dead-neutral greys with no tint, lifted a step off true black
+     because near-black makes bright text bloom, which reads as eye strain
+     rather than as a colour problem. */
+  --bg: #17181a;
+  --surface: #1e1f22;
+  --surface-2: #26272b;
+  --line: #333539;
+  --line-strong: #46484e;
 
-  /* Not near-white. #e7e9ee reads at 13:1 on this background, and that much
-     contrast on a dark ground makes text appear to glow and bleed at its
-     edges, which is tiring over a page of prose. #ccd2de is 10.6:1, still well
-     past AAA, and noticeably easier to sit with. The blockquote style was
-     already doing this by accident, which is why that one block was the
-     comfortable part of a lesson. */
-  --fg: #ccd2de;
+  /* Not near-white. Maximum contrast on a dark ground makes text glow and
+     bleed at its edges, which is tiring over a page of prose; #d7d8da sits
+     near 11:1, well past AAA and noticeably easier to sit with. */
+  --fg: #d7d8da;
   /* Headings and anything that has to win against body text, since softening
      the body would otherwise flatten the hierarchy with it. */
-  --fg-strong: #e9ecf3;
-  --fg-muted: #a8aeb9;
-  --fg-faint: #828894;
+  --fg-strong: #f0f0f2;
+  --fg-muted: #a4a6ab;
+  --fg-faint: #7f8187;
 
   --accent: #8ba4ff;
   --accent-fg: #14161a;
   --accent-soft: #2b3150;
 
   --ok: #6cc48d;
-  --ok-soft: #24332a;
+  --ok-soft: #243329;
   --code-keyword: #c8a2f0;
   --code-string: #86d2ae;
-  --code-comment: #828894;
+  --code-comment: #85878c;
   --code-number: #e8a08c;
   --code-func: #8fb8ff;
 
   --progress: #57c98a;
-  --progress-track: #3a3e46;
+  --progress-track: #333539;
   --star: #e0b455;
   --warn: #d6a35c;
   --danger: #e8837c;
@@ -336,6 +335,17 @@ button.quiet:hover:not(:disabled) {
   fill: var(--accent);
 }
 
+/* The connector between the glyph's nodes; unfilled, or the open polyline
+   renders as a solid triangle. */
+.mark path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.5;
+}
+
 /* Where you can go, and what is true about you. `margin-left: auto` on the
    second group is what separates them; without it the header is one
    undifferentiated row and "Sign out" reads as a destination. */
@@ -564,18 +574,91 @@ button:focus-visible {
   fill: var(--progress);
 }
 
+/* The tier spine, in the tracker rows' colours. Qualified like the bars,
+   and placed after the hover rule, so neither repaints it. */
+.node rect.node-tier {
+  stroke: none;
+}
+
+.node rect.tier-easy {
+  fill: var(--ok);
+}
+
+.node rect.tier-medium {
+  fill: var(--warn);
+}
+
+.node rect.tier-hard {
+  fill: var(--danger);
+}
+
+.node rect.tier-skills {
+  fill: var(--accent);
+}
+
 /* Totals, opposite the zoom controls so neither covers the tree. */
 .progress-panel {
   position: absolute;
   right: 1rem;
   top: 1rem;
   z-index: 2;
-  width: 13.5rem;
-  padding: 1.1rem 1rem 1rem;
+  width: 18rem;
+  padding: 1.1rem 1.15rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow-lg);
+}
+
+/* Counts on the left, ring on the right, one glance for both. */
+.tracker {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.tracker-stats {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  font-size: 0.88rem;
+}
+
+.stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.stat dt {
+  font-weight: 600;
+}
+
+/* Each row keyed in the colour its arc uses on the ring. */
+.stat.easy dt {
+  color: var(--ok);
+}
+
+.stat.medium dt {
+  color: var(--warn);
+}
+
+.stat.hard dt {
+  color: var(--danger);
+}
+
+.stat.skills dt {
+  color: var(--accent);
+}
+
+.stat dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 /* The gauge: a ring with its own numbers stacked in the middle of it.
@@ -585,9 +668,9 @@ button:focus-visible {
    That is the whole trick, and it is why nothing here is positioned absolutely:
    the grid cell is as tall as the ring, so the panel still sizes itself. */
 .gauge {
+  flex: none;
   display: grid;
   place-items: center;
-  padding: 0.35rem 0 0.15rem;
 }
 
 .gauge > * {
@@ -597,8 +680,8 @@ button:focus-visible {
 .gauge-ring {
   /* The one size to change. Everything inside the ring is drawn from the
      viewBox, so it scales with this and nothing else needs touching. */
-  width: 9.5rem;
-  height: 9.5rem;
+  width: 8.25rem;
+  height: 8.25rem;
 }
 
 .gauge-track,
@@ -610,15 +693,32 @@ button:focus-visible {
 }
 
 .gauge-track {
-  stroke: var(--progress-track);
+  /* The sector's own colour, washed out: the tier classes set the stroke,
+     this only sets how faint the empty state is. */
+  opacity: 0.25;
 }
 
 .gauge-fill {
-  stroke: var(--progress);
   /* Rounded, so a single finished step reads as a deliberate mark rather than
      as a hairline that could be a rendering artefact. */
   stroke-linecap: round;
   transition: stroke-dashoffset 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.gauge-easy {
+  stroke: var(--ok);
+}
+
+.gauge-medium {
+  stroke: var(--warn);
+}
+
+.gauge-hard {
+  stroke: var(--danger);
+}
+
+.gauge-skills {
+  stroke: var(--accent);
 }
 
 .gauge-count {
@@ -630,7 +730,7 @@ button:focus-visible {
 }
 
 .gauge-count strong {
-  font-size: 2.6rem;
+  font-size: 1.9rem;
   font-weight: 680;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
@@ -639,41 +739,25 @@ button:focus-visible {
 /* The total, under a rule, so the pair reads as "2 out of 27" without the word
    "of" taking up a line of its own. */
 .gauge-total {
-  margin-top: 0.28rem;
-  padding-top: 0.28rem;
+  margin-top: 0.24rem;
+  padding-top: 0.24rem;
   border-top: 1px solid var(--line-strong);
-  min-width: 2.4rem;
+  min-width: 2.1rem;
   text-align: center;
-  font-size: 1rem;
+  font-size: 0.92rem;
   font-weight: 600;
   color: var(--fg-muted);
   font-variant-numeric: tabular-nums;
 }
 
 .gauge-unit {
-  margin-top: 0.3rem;
-  font-size: 0.7rem;
+  margin-top: 0.26rem;
+  font-size: 0.62rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--fg-faint);
 }
 
-/* The line worth wanting more of. Sits on its own under the ring rather than in
-   a list, because it is the only other number here. */
-.gauge-topics {
-  margin: 0.75rem 0 0;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--line);
-  text-align: center;
-  font-size: 0.82rem;
-  color: var(--fg-muted);
-}
-
-.gauge-topics strong {
-  color: var(--fg);
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-}
 
 .canvas-controls {
   position: absolute;
@@ -727,14 +811,46 @@ button:focus-visible {
   position: relative;
   display: flex;
   flex-direction: column;
-  width: min(42rem, 94vw);
+  width: min(52rem, 94vw);
   height: 100%;
   overflow-y: auto;
   background: var(--surface);
   border-left: 1px solid var(--line);
   box-shadow: var(--shadow-lg);
-  padding: 1.4rem 1.5rem;
+  padding: 2.75rem 2.5rem 2rem;
   animation: slide-in 0.22s ease-out;
+}
+
+/* The panel's masthead: tier, title, summary, count, one left-aligned
+   stack, so the eye lands where reading starts instead of on the close
+   button. */
+.dialog-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 1.4rem;
+}
+
+.dialog-head h2,
+.dialog-head p {
+  margin: 0;
+}
+
+/* The tier label wears its tracker colour. */
+.kicker.easy {
+  color: var(--ok);
+}
+
+.kicker.medium {
+  color: var(--warn);
+}
+
+.kicker.hard {
+  color: var(--danger);
+}
+
+.kicker.skills {
+  color: var(--accent);
 }
 
 @keyframes slide-in {
@@ -843,11 +959,12 @@ button:focus-visible {
 
 /* ── The step page ─────────────────────────────────────────────────────────── */
 
-/* One centred reading column, sized so prose wraps at the measure and a
-   78-character code line still fits. Everything else the page knows lives in
-   the step bar above it. */
+/* One centred reading column. 40rem holds prose at the reading size to
+   roughly 72 characters a line (reading measurably slows past 80), and
+   still fits a 78-character code line at the size set on `.prose pre code`.
+   Everything else the page knows lives in the step bar above it. */
 .step-content {
-  max-width: 46rem;
+  max-width: 40rem;
   margin: 0 auto;
 }
 
@@ -858,7 +975,7 @@ button:focus-visible {
   position: sticky;
   top: 3.7rem;
   z-index: 10;
-  max-width: 46rem;
+  max-width: 40rem;
   margin: 0 auto 1.75rem;
   padding: 0.4rem 0.6rem 0.4rem 0.9rem;
   display: flex;
@@ -999,13 +1116,14 @@ button:focus-visible {
 
 .prose {
   /* Reading size, not UI size: the 15px base is right for buttons and cards
-     and small for material read for minutes at a stretch. */
-  font-size: 1.05rem;
-  line-height: 1.75;
+     and small for material read for minutes at a stretch; 17px matches the
+     reference reading sites without tipping into large print. */
+  font-size: 1.0625rem;
+  line-height: 1.7;
 }
 
 /* Lesson text fills its column rather than capping at the measure: the
-   column (.step-content, 46rem) is the reading width here, and text, code
+   column (.step-content, 42rem) is the reading width here, and text, code
    and the step bar sharing the same two edges is what makes the page read
    as one piece instead of ragged blocks. */
 .prose p {
@@ -1050,6 +1168,13 @@ button:focus-visible {
   margin-bottom: 0.35rem;
 }
 
+/* Emphasis has to win against body text in both themes: dark deliberately
+   softens the body ink, which would otherwise swallow a plain browser bold. */
+.prose strong {
+  font-weight: 650;
+  color: var(--fg-strong);
+}
+
 .prose code {
   background: var(--surface-2);
   border-radius: 4px;
@@ -1071,7 +1196,7 @@ button:focus-visible {
   padding: 0;
   /* Sized so a 78-character line fits the content column without horizontal
      scroll on a laptop; lesson content keeps its code lines under that. */
-  font-size: 0.875rem;
+  font-size: 0.8rem;
 }
 
 .prose table {
@@ -1174,14 +1299,73 @@ form.auth {
    Locks, the upgrade page, and the gate screens a refused paid step shows.
    Presentation only: the real gate is the Worker's entitlement check. */
 
-.node-lock {
-  font-size: 13px;
+/* The tier tag pinned across a paid topic's top corner, straddling the
+   border like a physical tab so it reads as attached rather than floating.
+   A product label, not a padlock: seven locks across the map read as a
+   wall rather than an offer. */
+.pro-tag rect {
+  fill: var(--accent);
+}
+
+.pro-tag text {
+  fill: var(--accent-fg);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-anchor: middle;
+  dominant-baseline: central;
   user-select: none;
 }
 
-.lock-banner {
+/* The sell inside a locked topic. One card; the step list below it stays
+   fully readable, because hiding titles is what makes a paywall read as a
+   trick. */
+.upsell {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
   text-align: center;
-  margin: 0.9rem 0 0;
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+
+.upsell-title {
+  margin: 0;
+  font-weight: 650;
+  color: var(--fg-strong);
+}
+
+.kicker {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* Facts, not testimonials: the one-time deal is the trust signal an
+   engineer audience actually checks. */
+.trust {
+  font-size: 0.85rem;
+  color: var(--fg-muted);
+}
+
+/* Small inline glyphs beside nav labels; they take the label's colour. */
+.icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex: none;
+  fill: currentColor;
+}
+
+
+.navlink.with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .gate {

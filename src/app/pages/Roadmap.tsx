@@ -20,8 +20,8 @@ import {
 /** Pointer travel below this keeps a press a click rather than a drag. */
 const DRAG_THRESHOLD_PX = 4;
 
-/** The progress bar inside a node, inset from the box edge. */
-const BAR_W = BOX_W - 44;
+/** The progress bar hung under a node. */
+const BAR_H = 5;
 
 /**
  * The roadmap: a tree read downward, one box per topic, with hand-written
@@ -187,42 +187,61 @@ export function RoadmapPage({ signedIn, progress }: Props) {
               }}
             >
               <rect x={boxLeft(topic)} y={boxTop(topic)} width={BOX_W} height={BOX_H} rx={9} />
-              <text x={topic.gridX * CELL_X} y={topic.gridY * CELL_Y - 4}>
+              {/* The tier, on the box itself: a coloured spine on the left
+                  edge, matching the tracker's row colours, legible at any
+                  zoom without labelling every node. */}
+              <rect
+                className={`node-tier tier-${topic.tier}`}
+                x={boxLeft(topic) + 2.5}
+                y={boxTop(topic) + 2.5}
+                width={4}
+                height={BOX_H - 5}
+                rx={2}
+              />
+              <text x={topic.gridX * CELL_X} y={topic.gridY * CELL_Y}>
                 {topic.title}
               </text>
 
-              {/* Locked topics stay titled and clickable; the badge is the
-                  only difference. The panel does the selling. */}
-              {topic.access === 'paid' && !entitled && (
-                <text
-                  className="node-lock"
-                  aria-hidden="true"
-                  x={boxLeft(topic) + BOX_W - 18}
-                  y={boxTop(topic) + 19}
-                >
-                  🔒
-                </text>
-              )}
-
-              {/* Drawn even at zero, so "nothing done" reads as an empty
-                  track rather than a topic with no steps. */}
+              {/* Hung just below the box, full width: inside the border a
+                  bar reads as a rendering artefact, below it reads as the
+                  topic's base. Drawn even at zero, so "nothing done" reads
+                  as an empty track rather than a topic with no steps. */}
               <rect
                 className="node-track"
-                x={topic.gridX * CELL_X - BAR_W / 2}
-                y={topic.gridY * CELL_Y + 12}
-                width={BAR_W}
-                height={4}
-                rx={2}
+                x={boxLeft(topic) + 1}
+                y={boxTop(topic) + BOX_H + 5}
+                width={BOX_W - 2}
+                height={BAR_H}
+                rx={BAR_H / 2}
               />
               {done(topic) > 0 && (
                 <rect
                   className="node-fill"
-                  x={topic.gridX * CELL_X - BAR_W / 2}
-                  y={topic.gridY * CELL_Y + 12}
-                  width={(BAR_W * done(topic)) / Math.max(1, topic.steps.length)}
-                  height={4}
-                  rx={2}
+                  x={boxLeft(topic) + 1}
+                  y={boxTop(topic) + BOX_H + 5}
+                  width={((BOX_W - 2) * done(topic)) / Math.max(1, topic.steps.length)}
+                  height={BAR_H}
+                  rx={BAR_H / 2}
                 />
+              )}
+
+              {/* Paid topics stay titled and clickable, tagged with a tier
+                  pill pinned across the top corner rather than a padlock:
+                  seven locks read as a wall, a product name reads as an
+                  offer. The panel does the selling. */}
+              {topic.access === 'paid' && !entitled && (
+                <g className="pro-tag" aria-hidden="true">
+                  <rect
+                    x={boxLeft(topic) + BOX_W - 48}
+                    y={boxTop(topic) - 8}
+                    width={38}
+                    height={17}
+                    rx={8.5}
+                  />
+                  <text x={boxLeft(topic) + BOX_W - 29} y={boxTop(topic) + 0.5}>
+                    PRO
+                  </text>
+                </g>
               )}
             </g>
           ))}

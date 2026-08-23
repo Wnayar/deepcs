@@ -6,6 +6,7 @@
       "summary": "Sample content. This repo ships fixtures so it runs standalone; the real lessons live in a private content repo and appear only on the deployed site.",
       "dependsOn": [],
       "grid": { "x": 1, "y": 0 },
+      "tier": "easy",
       "access": "free",
       "steps": [
         { "id": "sample-processes-1", "step": 1, "title": "What a sample process is", "difficulty": "easy" },
@@ -18,6 +19,7 @@
       "summary": "A second free sample topic, so the map has an edge to draw and the progress bar has something to fill.",
       "dependsOn": ["sample-processes"],
       "grid": { "x": 0, "y": 1 },
+      "tier": "easy",
       "access": "free",
       "steps": [
         { "id": "sample-memory-1", "step": 1, "title": "A sample page of memory", "difficulty": "easy" }
@@ -29,6 +31,7 @@
       "summary": "A sample paid topic. It exists so the paywall is runnable and testable from the public repo: this lesson is served only through the Worker, after an entitlement check.",
       "dependsOn": ["sample-processes"],
       "grid": { "x": 2, "y": 1 },
+      "tier": "medium",
       "access": "paid",
       "steps": [
         { "id": "sample-premium-1", "step": 1, "title": "A sample locked lesson", "difficulty": "easy" }

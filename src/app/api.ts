@@ -7,6 +7,9 @@ import { idToken } from './auth';
  */
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
+/** A topic's band on the map: the difficulty ladder, or the Skills track
+ * (craft and career topics with no prerequisites). */
+export type Tier = 'easy' | 'medium' | 'hard' | 'skills';
 export type Access = 'free' | 'paid';
 
 /** A failed request, carrying the status so callers can tell 401 from 402
@@ -57,6 +60,7 @@ export interface RoadmapTopic {
   dependsOn: string[];
   gridX: number;
   gridY: number;
+  tier: Tier;
   access: Access;
   steps: RoadmapStep[];
 }
@@ -68,6 +72,7 @@ interface RoadmapFile {
     summary: string;
     dependsOn: string[];
     grid: { x: number; y: number };
+    tier: Tier;
     access: Access;
     steps: RoadmapStep[];
   }[];
@@ -91,6 +96,7 @@ export function getRoadmap(): Promise<RoadmapTopic[]> {
         dependsOn: t.dependsOn,
         gridX: t.grid.x,
         gridY: t.grid.y,
+        tier: t.tier,
         access: t.access,
         steps: t.steps,
       })),

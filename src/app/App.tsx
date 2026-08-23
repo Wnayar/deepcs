@@ -8,14 +8,38 @@ import { StepPage } from './pages/Step';
 import { LoginPage } from './pages/Login';
 import { UpgradePage, UpgradeThanksPage } from './pages/Upgrade';
 
-/** The wordmark glyph. Inline SVG so it takes the text colour and follows
- * theme switches. */
+/** The wordmark glyph: a three-node path, the roadmap in miniature. Inline
+ * SVG so it takes the theme's accent and follows theme switches. */
 function Mark() {
   return (
     <svg className="mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <rect x="3" y="4.5" width="18" height="3.4" rx="1.7" />
-      <rect x="3" y="10.3" width="12.5" height="3.4" rx="1.7" opacity="0.72" />
-      <rect x="3" y="16.1" width="7" height="3.4" rx="1.7" opacity="0.45" />
+      <path d="M7 6 L16.5 12 L8 18.5" />
+      <circle cx="7" cy="6" r="3.1" />
+      <circle cx="16.5" cy="12" r="3.1" opacity="0.72" />
+      <circle cx="8" cy="18.5" r="3.1" opacity="0.45" />
+    </svg>
+  );
+}
+
+/** A map pin, "you are here": the roadmap's own glyph, distinct from the
+ * wordmark's node path so the brand mark stays unique to the brand. */
+function PinIcon() {
+  return (
+    <svg className="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path
+        fillRule="evenodd"
+        d="M8 1.5a5.2 5.2 0 0 0-5.2 5.2C2.8 10.3 8 14.8 8 14.8s5.2-4.5 5.2-8.1A5.2 5.2 0 0 0 8 1.5Zm0 7a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8Z"
+      />
+    </svg>
+  );
+}
+
+/** A gem for the paid tier: the premium convention, and pointedly not a
+ * padlock. */
+function GemIcon() {
+  return (
+    <svg className="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path d="M4.6 2.2h6.8L14.2 6 8 14 1.8 6l2.8-3.8Z" />
     </svg>
   );
 }
@@ -52,19 +76,23 @@ export function App() {
         </h1>
 
         <nav className="nav-primary">
-          <NavLink className="navlink" to="/">
+          <NavLink className="navlink with-icon" to="/">
+            <PinIcon />
             Roadmap
           </NavLink>
-          {/* Hidden once entitled: the page it links to has nothing left to
-              sell. */}
-          {!progress.entitled && (
-            <NavLink className="navlink" to="/upgrade">
-              Unlock everything
-            </NavLink>
-          )}
         </nav>
 
         <div className="nav-utility">
+          {/* Top right, where paid tiers live on every dev tool; hidden once
+              entitled, because the page it links to has nothing left to
+              sell. */}
+          {!progress.entitled && (
+            <NavLink className="navlink primary with-icon" to="/upgrade">
+              <GemIcon />
+              Pro
+            </NavLink>
+          )}
+
           {user ? (
             <button className="quiet" onClick={() => void signOutUser()} title={user.email ?? ''}>
               Sign out

@@ -28,9 +28,13 @@ const topicIds = new Set(roadmap.topics.map((t) => t.id));
 const stepAccess = new Map();
 const emDash = /[–—]/;
 
+const TIERS = ['easy', 'medium', 'hard', 'skills'];
+
 for (const topic of roadmap.topics) {
   if (topic.access !== 'free' && topic.access !== 'paid')
     fail(`topic ${topic.id} has access "${topic.access}", not free|paid`);
+  if (!TIERS.includes(topic.tier))
+    fail(`topic ${topic.id} has tier "${topic.tier}", not ${TIERS.join('|')}`);
   for (const dep of topic.dependsOn)
     if (!topicIds.has(dep)) fail(`topic ${topic.id} depends on unknown ${dep}`);
   if (emDash.test(topic.title + topic.summary)) fail(`em/en dash in topic ${topic.id}`);

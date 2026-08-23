@@ -7,7 +7,10 @@
 /** Grid to pixels. `gridX`/`gridY` name the centre of a box. */
 export const CELL_X = 122;
 export const CELL_Y = 112;
-export const BOX_W = 194;
+/* Wide enough that the longest topic title keeps clear air inside the box;
+   at two grid columns between siblings this still leaves a gap between
+   neighbours. */
+export const BOX_W = 216;
 export const BOX_H = 54;
 
 export const MIN_SCALE = 0.4;

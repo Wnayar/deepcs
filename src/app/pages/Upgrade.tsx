@@ -34,22 +34,23 @@ export function UpgradePage({ signedIn, entitled }: { signedIn: boolean; entitle
 
   return (
     <div className="upgrade">
-      <h2>Unlock the whole roadmap</h2>
+      <p className="kicker">DeepCS Pro</p>
+      <h2>Understand the fundamentals interviews actually test</h2>
       <p className="muted">
-        The first three topics are free, forever. One payment unlocks the other seven: every
-        lesson, every question, every reference answer.
+        The Easy topics are free, forever. One payment unlocks the rest: Medium, Hard, and the
+        whole Skills track, with every lesson, question, and reference answer.
       </p>
 
       <ul className="upgrade-points">
-        <li>All ten topics, read in the order the map recommends</li>
+        <li>All ten topics on one dependency-ordered map, so the next step is never a guess</li>
         <li>Reference answers for every question, self-serve</li>
-        <li>Lifetime access: pay once, keep everything the site ever adds</li>
+        <li>Everything the site ever adds, included</li>
         <li>Progress tracking stays free for everyone either way</li>
       </ul>
 
       {signedIn ? (
         <button className="primary" onClick={() => void buy()} disabled={busy}>
-          {busy ? 'Opening checkout…' : 'Unlock everything'}
+          {busy ? 'Opening checkout…' : 'Unlock all ten topics'}
         </button>
       ) : (
         <>
@@ -59,6 +60,8 @@ export function UpgradePage({ signedIn, entitled }: { signedIn: boolean; entitle
           </NavLink>
         </>
       )}
+
+      <p className="trust">One-time payment · No subscription · Secure checkout by Stripe</p>
 
       {error && <p className="error">{error}</p>}
     </div>
@@ -105,7 +108,7 @@ export function UpgradeThanksPage() {
     <div className="gate">
       {state === 'checking' && (
         <>
-          <h2>Thanks — confirming your purchase…</h2>
+          <h2>Thanks! Confirming your purchase…</h2>
           <p className="muted">This usually takes a few seconds.</p>
         </>
       )}
@@ -120,7 +123,7 @@ export function UpgradeThanksPage() {
       )}
       {state === 'pending' && (
         <>
-          <h2>Payment received — unlock in progress</h2>
+          <h2>Payment received, unlock in progress</h2>
           <p className="muted">
             The confirmation is taking longer than usual. It lands on its own; refresh in a minute
             and the lock will be gone. Nothing is lost either way.

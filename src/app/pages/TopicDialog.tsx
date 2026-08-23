@@ -1,7 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router';
-import type { RoadmapTopic } from '../api';
+import type { RoadmapTopic, Tier } from '../api';
 import type { Mark } from '../progress';
+
+const TIER_LABEL: Record<Tier, string> = {
+  easy: 'Easy',
+  medium: 'Medium',
+  hard: 'Hard',
+  skills: 'Skills',
+};
 
 interface Props {
   topic: RoadmapTopic;
@@ -57,26 +64,37 @@ export function TopicDialog({ topic, signedIn, locked, markOf, onMark, onOpenSte
           ✕
         </button>
 
-        {/* Top-aligned: centring makes the title jump between topics with
-            different step counts. */}
+        {/* Left-aligned, pushed down from the edge: reading starts at the
+            top left, so that is where the title sits; a centred title in a
+            wide panel leaves the eye hunting. */}
         <div>
-          <h2 style={{ margin: '0 0 0.35rem', textAlign: 'center' }}>{topic.title}</h2>
-          {signedIn && !locked && (
-            <p className="muted" style={{ textAlign: 'center', margin: '0 0 0.6rem' }}>
-              ({done} / {topic.steps.length})
+          <div className="dialog-head">
+            <p className={`kicker ${topic.tier}`}>
+              {TIER_LABEL[topic.tier]}
+              {locked && ' · Pro'}
             </p>
-          )}
-          <p className="muted" style={{ textAlign: 'center' }}>
-            {topic.summary}
-          </p>
+            <h2>{topic.title}</h2>
+            <p className="muted">{topic.summary}</p>
+            {signedIn && !locked && (
+              <p className="muted">
+                {done} of {topic.steps.length} completed
+              </p>
+            )}
+          </div>
 
+          {/* The sell, transparent about the deal: the step list below stays
+              fully readable, because hiding titles is what makes a paywall
+              read as a trick. */}
           {locked && (
-            <p className="lock-banner">
-              This topic is part of the paid tier.{' '}
+            <div className="card upsell">
+              <p className="upsell-title">Part of DeepCS Pro</p>
+              <p className="muted" style={{ margin: 0 }}>
+                One payment unlocks every Pro topic, forever. No subscription.
+              </p>
               <Link className="navlink primary" to="/upgrade">
-                Unlock everything
+                See what's included
               </Link>
-            </p>
+            </div>
           )}
 
           <div className="stack" style={{ gap: '0.35rem', marginTop: '1.1rem' }}>
