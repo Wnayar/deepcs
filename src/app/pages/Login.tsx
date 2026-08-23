@@ -40,11 +40,8 @@ export function LoginPage() {
         void submit();
       }}
     >
-      <h2>Tracking progress needs an account</h2>
-      <p className="muted">
-        Ticks and stars belong to somebody, so they are the one thing here that cannot be
-        anonymous. Reading the free lessons and questions needs no account at all.
-      </p>
+      <h2>Sign in to DeepCS to track your progress</h2>
+      <p className="muted">Free account. Your progress syncs across devices.</p>
 
       <div className="tabs" role="group" aria-label="Sign in or create an account">
         <button type="button" aria-pressed={!creating} onClick={() => switchTo('in')}>

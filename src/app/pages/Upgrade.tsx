@@ -152,9 +152,12 @@ export function UpgradeThanksPage() {
       {state === 'unlocked' && (
         <>
           <h2>Everything is unlocked</h2>
-          <p className="muted">
-            All ten topics are yours, and you just backed the ongoing work on this site. Thank
-            you. Pick up where the map left off.
+          <p className="muted">The whole roadmap and every future addition is yours.</p>
+          <p className="support">
+            <span className="support-heart" aria-hidden="true">
+              ♥
+            </span>
+            Thank you for the support.
           </p>
           <Link className="navlink primary" to="/">
             Back to the roadmap
