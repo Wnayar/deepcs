@@ -231,7 +231,26 @@ deepcs/
 
 ## 5. Data
 
-The entire database is two tables.
+The entire database is two tables. They never join each other, and there is
+no user table: Firebase is the user table, and the verified `sub` claim is
+the only key that ever names a person. Every reference points outward, to
+content or to Stripe, never sideways.
+
+```
+Firebase Auth                D1 (the only state)               external truth
+
+token.sub ────┬──▶ progress                 one row per tick
+              │      uid      PK ┐
+              │      step_id  PK ┘────────▶ a step in roadmap.json (content)
+              │      done · starred · updated_at
+              │
+              └──▶ entitlements             a cache of Stripe's ledger
+                     uid      PK ┐
+                     product  PK ┘  'lifetime'
+                     provider_order_id ───▶ Stripe payment intent (refunds name it)
+                     provider_event_id ───▶ Stripe event id (UNIQUE: idempotency)
+                     purchased_at · revoked_at
+```
 
 ```sql
 CREATE TABLE progress (
@@ -268,6 +287,11 @@ Firebase Auth issues identity; the Worker only ever verifies it, with `jose`
 against Google's published JWKS, held in module scope so the keys are fetched
 once per isolate. There is no `firebase-admin` and no service-account
 credential, so nothing in the system can mint a token.
+
+Sign-in is Google or GitHub only, no passwords: nothing to brute force, no
+verification email machinery, and a bot needs a real provider account per
+fake user, which prices out mass signup. The Worker never knows which door
+was used; it only verifies the token.
 
 The load-bearing line is the audience check:
 

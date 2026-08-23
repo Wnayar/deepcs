@@ -1317,11 +1317,26 @@ button:focus-visible {
 
 /* ── Sign in ───────────────────────────────────────────────────────────────── */
 
-form.auth {
+.auth {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
   max-width: 20rem;
+}
+
+/* The two provider doors; base button styles carry the rest. */
+.provider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.65rem 0.9rem;
+  font-weight: 600;
+}
+
+.provider .icon {
+  width: 1.05rem;
+  height: 1.05rem;
 }
 
 /* ── v2: the paid tier ────────────────────────────────────────────────────

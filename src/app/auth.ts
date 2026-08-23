@@ -1,10 +1,11 @@
 import { initializeApp } from 'firebase/app';
 import {
   connectAuthEmulator,
-  createUserWithEmailAndPassword,
   getAuth,
+  GithubAuthProvider,
+  GoogleAuthProvider,
   onAuthStateChanged,
-  signInWithEmailAndPassword,
+  signInWithPopup,
   signOut,
   type User,
 } from 'firebase/auth';
@@ -23,12 +24,17 @@ export function watchUser(onChange: (user: User | null) => void): () => void {
   return onAuthStateChanged(auth, onChange);
 }
 
-export async function signIn(email: string, password: string): Promise<void> {
-  await signInWithEmailAndPassword(auth, email, password);
+/* Google and GitHub only, no passwords: nothing to brute force, no
+ * verification emails to run, and a bot needs a real provider account per
+ * fake user, which prices out mass signup. The Worker never knows which
+ * door was used; it only verifies the token. */
+
+export async function signInWithGoogle(): Promise<void> {
+  await signInWithPopup(auth, new GoogleAuthProvider());
 }
 
-export async function signUp(email: string, password: string): Promise<void> {
-  await createUserWithEmailAndPassword(auth, email, password);
+export async function signInWithGithub(): Promise<void> {
+  await signInWithPopup(auth, new GithubAuthProvider());
 }
 
 export function signOutUser(): Promise<void> {
