@@ -86,6 +86,8 @@ export default defineConfig({
     port: 5173,
   },
   test: {
-    include: ['src/**/*.test.{ts,tsx}', 'test/**/*.test.{ts,tsx}'],
+    // Unit tests only. The integration suite runs inside workerd via
+    // vitest.workers.config.ts (`pnpm test:integration`).
+    include: ['src/**/*.test.{ts,tsx}'],
   },
 });

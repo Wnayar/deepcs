@@ -1,0 +1,26 @@
+# The public repo's CI: typecheck, unit, build, and the workerd integration
+# suite, all on the sample fixtures — fully green with zero secrets
+# (DESIGN.md §15). Deploys happen from the private content repo's workflow,
+# which is where the Cloudflare token lives.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      # Builds first, then runs the real Worker in workerd with a real local
+      # D1 — hermetic, so it needs no services and no credentials.
+      - run: pnpm test:integration

@@ -13,6 +13,9 @@ allowBuilds:
   workerd: true
   '@firebase/util': false
   protobufjs: false
+  # Transitive via the workers tooling; image processing this app never
+  # does, so its native build stays off.
+  sharp: false
 
 # One esbuild for the whole tree. wrangler pins 0.28.1 exactly while vite
 # floats a patch ahead, and pnpm installed the floated version without its

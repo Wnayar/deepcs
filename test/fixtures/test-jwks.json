@@ -1,0 +1,27 @@
+{
+  "//": "A THROWAWAY key pair for tests only. It signs test JWTs so the Worker verifies real RS256 signatures against a local JWKS instead of Google. Never used anywhere else; committing it is deliberate.",
+  "privateJwk": {
+    "kty": "RSA",
+    "n": "ouRsGEvHWrADwPGLyt-6wNYskdx3qsgkSgqDZzeAq75_xdrxu9f4RpuLxWdDJWJ0y6HiBQSnxypdMB32LZN_eAD0ojbDj9LhZF7MphUsdszASew6ldODtGAUd03qUFZqRcNdV9YYw5IgrxJlXhhSbnkCa83Et4skc3Pfe9o2gSAGzmff3psfRLzGi21JKPAv_mqMjFfblF-pFzKEyjV1i2PEPR2FeqIK9LJBdoNoAI1ivttS2-FiwvvNL-jRwF0CXMybsm9JctxA829YiiN6I2c7auvgtkx1UkV0_WI_zLQvTKS_q8io_dtDL_zIDFFb0Vka9BX51CJDFsJfamXvQQ",
+    "e": "AQAB",
+    "d": "H2JpXUkEcPmmz376ky0GG29oiPX0bIhBTa624KU1-mEq1yE3IB0dbeU8Sd16d3J_1FgtZxAdj2cfK00qiF952NI-UB7DESvtV1xYi8talM0gY13Lb-Cf6Jn2d4Igmjf8I9LfYjQS82NtPq4Jr9Z502UnTUQJGeAKNuBld8R0ae5F496iL4LD5-MHnbO3zbry5lM4dYEmTRlYhLcEF8Qck-nO3j54bZ0ywVw_JFJzN1qCmujVLSnC1dEVLkl8F1lmRiY--dRpaC0LHczkuk7np9dB1uTqtnI9GFsETqQujDPM3w1gHcE8zTP4HsJOnQWrjkWjNFW2VB-OrPkt9nRljQ",
+    "p": "2k1FF1OmG5Jc6Sekop5ePsNspE1LpKNXg_Fe4DaJTD8HumO6N3OQh1jcY1dy-9AE7jvbL5tAUZaFkmk9tmx5J8Ib_2KlrFI2Y5UjHVarwkIHr3TnxTxGFj59GAOAmYbynEfgPgjGnmzMgyDPdqkQNe3WDNYb2QPXb9BK9jBoxMc",
+    "q": "vwWYfkGBXO4FnW5COTwnu_cNGMmweoex99BXNHIYNwDFKea92u4owsqguCL3DIU-UFrJzTWphXlXsm0A0U-FbNmRwEGG7YCI7YJ3Z3m0TDsBpNq7btYHhBsZbPBNXIxiPo9gRKuOcqT92v0arbV66s-4d684yB4_iWgAqtxlk7c",
+    "dp": "zoANfVVpaed38C3J9PJuIFzoZjuf9Gt3G561qs6r7e4pt00jF9U_wGh0gZx1bnKGV31Th6MKoqMKU0cuU2Qk71EU_u4n3ewe-vBWuSgFbcrcTkL-A3tSqTQPTSny-kfHM8JiAwx2JeKxStE8rviaFwmWU6otyYlyv5h_cIa2dH0",
+    "dq": "k4XJyC_krRUxhuyg_jzD3vkjxzH0NhzXx6_BuUIoC0pv-jU2CH8HQbBlQO_X5XZ9smb7FJ1Nx0P4A1cFW6DTRUYdtuGkR4WNugeZGXO3V2v2kA9Q0389nLuk_inzRPcx5GisCzyGrWlYl6gC04alX_R93QiYjIw3u3FzmoDNfa8",
+    "qi": "FaH4GN1eQ8JRyhLB_89NXLJgfLk0ZFjoBZRCR2IqLWzpgrDw8x2Bh_4d8F8k2wQW2D_1J0DzlojU2hajMCj-UyyDzeMtMPbgKBuuY83wy42tLNh07fWSxDGjSGxZGgerpvGS6uhudu8aODsTAmVYeRZZKI1KTp5pygVX4ghFe5E",
+    "kid": "test-key",
+    "alg": "RS256"
+  },
+  "publicJwks": {
+    "keys": [
+      {
+        "kty": "RSA",
+        "n": "ouRsGEvHWrADwPGLyt-6wNYskdx3qsgkSgqDZzeAq75_xdrxu9f4RpuLxWdDJWJ0y6HiBQSnxypdMB32LZN_eAD0ojbDj9LhZF7MphUsdszASew6ldODtGAUd03qUFZqRcNdV9YYw5IgrxJlXhhSbnkCa83Et4skc3Pfe9o2gSAGzmff3psfRLzGi21JKPAv_mqMjFfblF-pFzKEyjV1i2PEPR2FeqIK9LJBdoNoAI1ivttS2-FiwvvNL-jRwF0CXMybsm9JctxA829YiiN6I2c7auvgtkx1UkV0_WI_zLQvTKS_q8io_dtDL_zIDFFb0Vka9BX51CJDFsJfamXvQQ",
+        "e": "AQAB",
+        "kid": "test-key",
+        "alg": "RS256"
+      }
+    ]
+  }
+}

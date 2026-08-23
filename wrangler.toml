@@ -1,0 +1,38 @@
+# The entire deployment. One Worker serves the SPA and free content as
+# static assets (the Worker is never invoked for those), and runs for
+# exactly two kinds of path: the API, and paid content (DESIGN.md §3).
+
+name = "deepcs"
+main = "src/worker/index.ts"
+# The newest date the test pool's workerd also supports, so tests and
+# production run identical runtime behavior. Nothing here needs a newer one.
+compatibility_date = "2025-09-06"
+
+[assets]
+directory = "dist/client"
+binding = "ASSETS"
+# Unknown paths get index.html with a 200: every screen is a URL, and the
+# router exists only once the bundle runs. A 404 here breaks exactly the
+# shared links and refreshes that never break while clicking around.
+not_found_handling = "single-page-application"
+# These paths always run the Worker, so paid files are never served by the
+# platform directly and /api/* never falls through to the SPA fallback.
+run_worker_first = ["/api/*", "/content/paid/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "deepcs"
+# Filled in by `wrangler d1 create deepcs` before the first deploy. Local
+# dev and tests use a local D1 and never read this id.
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[vars]
+# Public identifiers, not secrets (DESIGN.md §12). The dev default matches
+# the Firebase emulator project; production overrides at deploy time.
+FIREBASE_PROJECT_ID = "demo-deepcs"
+# The two real secrets never appear here or anywhere in git:
+#   wrangler secret put STRIPE_SECRET_KEY
+#   wrangler secret put STRIPE_WEBHOOK_SECRET
+# and the lifetime price is a var set at deploy time:
+#   STRIPE_PRICE_ID
