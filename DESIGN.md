@@ -171,7 +171,7 @@ deepcs/
 │
 ├── content/              SAMPLE FIXTURES ONLY, one paid topic so the gate
 │   ├── roadmap.json        is runnable and testable here (real content is
-│   ├── questions.json      the private deepcs-content repo, §8)
+│   ├── questions.json      the private deepcs-content repo, §7)
 │   └── lessons/*.md
 │
 ├── migrations/           D1, wrangler-tracked
@@ -291,6 +291,15 @@ Content ships as static files, split by tier at build time (ADR-003). The map
 (`roadmap.json`) is public in full — locked topics are the sales page. Free
 lessons and questions are public assets; paid lessons and questions deploy
 under `/content/paid/*`, which `run_worker_first` routes through the Worker.
+
+**The build, mechanically:** `pnpm build` is two writers into one output
+directory. `vite build` compiles the SPA into `dist/client/`; then
+`scripts/build-content.mjs` reads content from `CONTENT_DIR` (the fixtures in
+`content/` when unset), validates it, and copies it in beside the app: free
+files to `dist/client/content/`, paid files to `dist/client/content/paid/`.
+Code and content never meet in git — only in `dist/`, which deploy uploads
+and `.gitignore` keeps out. Which content is live is therefore decided
+entirely by what `CONTENT_DIR` pointed at during the last deployed build.
 
 **The gate, mechanically:** a request for a paid file always runs the Worker,
 which verifies the token, reads one entitlement row, and either streams the
