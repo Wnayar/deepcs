@@ -1,18 +1,24 @@
 # TODO: before real money
 
-The launch runbook is done: the site is live at deepcs.org with real
-content, a sandbox purchase verified end to end, CI deploying on every
-content push, and Bot Fight Mode plus the /api/ rate limit at the edge.
-What remains is the switch from fake money to real:
+Everything else is live at deepcs.org: real content, Google and GitHub
+sign-in (no passwords), a sandbox purchase verified end to end on the real
+domain, CI deploying on every content push, adaptive pricing enabled, and
+the edge protections on. What remains:
 
-1. Stripe live mode: activate the account (business and payout details,
-   Managed Payments as merchant of record), then create the live $57
-   price (tax inclusive) and a live webhook at
-   https://deepcs.org/api/webhooks/stripe with the same two events.
-2. Point the Worker at live: swap STRIPE_PRICE_ID in wrangler.toml, then
-   `wrangler secret put` the live secret key and signing secret.
-3. Run `scripts/reconcile.mjs` against the live ledger; sandbox-era test
+1. Privacy policy and terms pages: required for live payments, and the
+   prerequisite for Google consent-screen branding (logo upload triggers
+   Google's brand verification, which wants a privacy policy URL).
+2. Playwright e2e flows (DESIGN.md §11): sign-in, read, tick, paywall,
+   purchase, against the real stack.
+3. Stripe live mode: activate the account (business and payout details,
+   Managed Payments as merchant of record). Review takes time; start it
+   before it blocks anything.
+4. The live switch, in one sitting: create the live $57 price (tax
+   inclusive) and live webhook at https://deepcs.org/api/webhooks/stripe
+   (same two events), swap STRIPE_PRICE_ID in wrangler.toml,
+   `wrangler secret put` the live secret key and signing secret, enable
+   Adaptive Pricing in live settings, deploy.
+5. Run `scripts/reconcile.mjs` against the live ledger; sandbox-era test
    unlocks vanish with it.
-4. The Playwright e2e flows (DESIGN.md §11).
-5. Soft launch: a few real people through sign-up, purchase, and a
-   refund before any public post.
+6. Soft launch: a few real people through sign-up and purchase, plus one
+   real refund to prove the revoke path, before any public post.
