@@ -1173,19 +1173,21 @@ button:focus-visible {
   border-top: 0;
 }
 
+/* A subheader must be unmissable as a boundary, not just a bolder word:
+   readers were sailing past "UDP" because it carried the same weight as
+   inline bold. The accent rule under the full line is the boundary. */
 .prose h3 {
-  margin: 2rem 0 0.5rem;
-  font-size: 1.2rem;
-  /* Subheaders share one colour so a scroll through a section reads as a
-     list of landmarks; the section title above them stays neutral, which
-     keeps the two levels apart without a size jump doing all the work. */
-  color: var(--accent);
+  margin: 2.75rem 0 0.9rem;
+  font-size: 1.3rem;
+  color: var(--fg-strong);
+  padding-bottom: 0.45rem;
+  border-bottom: 2px solid var(--accent);
 }
 
 .prose h4 {
-  margin: 1.1rem 0 0.3rem;
-  font-size: 1rem;
-  color: var(--fg-muted);
+  margin: 1.6rem 0 0.4rem;
+  font-size: 1.08rem;
+  color: var(--fg-strong);
 }
 
 .prose ul,

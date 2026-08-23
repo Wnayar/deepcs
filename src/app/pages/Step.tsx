@@ -1,6 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router';
 import { renderMarkdown } from '../markdown';
+
+/** Rendered lesson markdown; content comes from the build, never users. */
+function Prose({
+  md,
+  className = 'prose',
+  style,
+}: {
+  md: string;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <div className={className} style={style} dangerouslySetInnerHTML={{ __html: renderMarkdown(md) }} />
+  );
+}
 import { ApiError, getStep, type StepDetail } from '../api';
 import { splitLesson, splitReference, type SplitReference } from '../lesson-sections';
 
@@ -205,27 +220,14 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
                     </button>
                   </div>
                   {open.has(index) && answers && answers.answers[index] && (
-                    <div
-                      className="prose"
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown(answers.answers[index]) }}
-                    />
+                    <Prose md={answers.answers[index]} />
                   )}
-                  {open.has(index) && blob && (
-                    <div
-                      className="reference prose"
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown(blob) }}
-                    />
-                  )}
+                  {open.has(index) && blob && <Prose className="reference prose" md={blob} />}
                 </div>
               ))}
             </div>
 
-            {answers?.extra && (
-              <div
-                className="card prose"
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(answers.extra) }}
-              />
-            )}
+            {answers?.extra && <Prose className="card prose" md={answers.extra} />}
 
             <div className="row" style={{ marginTop: '1.5rem' }}>
               <button className="primary" onClick={() => void navigate(`/topic/${step.topic}`)}>
@@ -236,19 +238,10 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
         ) : (
           <>
             {section === 1 && lesson.preamble && (
-              <div
-                className="prose"
-                style={{ marginBottom: '1.5rem' }}
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(lesson.preamble) }}
-              />
+              <Prose md={lesson.preamble} style={{ marginBottom: '1.5rem' }} />
             )}
 
-            <article
-              className="prose"
-              dangerouslySetInnerHTML={{
-                __html: renderMarkdown(`## ${current.title}\n\n${current.body}`),
-              }}
-            />
+            <Prose md={`## ${current.title}\n\n${current.body}`} />
 
             <div className="row pager">
               {prev ? <button onClick={() => goTo(section - 1)}>← {prev.title}</button> : <span />}
