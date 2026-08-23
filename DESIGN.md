@@ -79,7 +79,7 @@ flowchart TD
     subgraph CF["Cloudflare — one origin, one deploy (wrangler deploy)"]
         EDGE["Static assets at the edge<br/>index.html · app.js · css<br/>content/roadmap.json (all topics, lock flags)<br/>free lessons + free questions<br/><i>free, unlimited, Worker never invoked;<br/>unknown paths fall back to index.html with 200</i>"]
         RL["Edge rate-limit rule on /api/* and /content/paid/*<br/><i>a blocked request never becomes<br/>a billable Worker invocation</i>"]
-        W["Worker — the entire backend (~400 lines)<br/>verify Firebase ID token (jose · issuer · audience · RS256)<br/>check entitlement (D1) · zod-validate · manifest-validate<br/>create checkouts · consume payment webhooks"]
+        W["Worker — the entire backend (~480 lines)<br/>verify Firebase ID token (jose · issuer · audience · RS256)<br/>check entitlement (D1) · zod-validate · manifest-validate<br/>per-uid rate limit · create checkouts · consume webhooks"]
         D1[("D1 (SQLite)<br/>progress(uid, step_id, …)<br/>entitlements(uid, product, …)")]
         PAID["Paid content files<br/>(assets on run_worker_first paths —<br/>only reachable through the Worker)"]
     end
@@ -115,6 +115,115 @@ The request paths, stated as the meters see them:
 | Paid lesson, not entitled | Worker answers **402** before any file bytes move | 1 Worker request |
 | Buying | `POST /api/checkout` → hosted Stripe checkout page → one webhook → 1 D1 insert | 2 Worker requests, total |
 | Sign-in / token refresh | Browser ↔ Firebase directly | $0 to us; free to 50k MAU |
+
+### Control flow
+
+How a single request is decided. The platform splits first: only `/api/*`
+and `/content/paid/*` reach the Worker (`run_worker_first`); everything else
+is served from the edge without the Worker ever running. Inside the Worker,
+each guard is ordered cheapest-and-most-defensive first, so a bad request
+dies before doing any work.
+
+```mermaid
+flowchart TD
+    REQ(["incoming request"]) --> SPLIT{"path?"}
+
+    SPLIT -->|"/  /step/*  /content/* (free)"| STATIC["edge serves the file<br/>Worker never runs · $0<br/>unknown path → index.html, 200"]
+    SPLIT -->|"/api/*  ·  /content/paid/*"| EDGE{"per-IP edge rule<br/>+ Bot Fight Mode"}
+
+    EDGE -->|"over limit"| R429a["429"]
+    EDGE -->|"ok"| ROUTE{"route match?"}
+    ROUTE -->|"none"| R404["404 JSON"]
+
+    ROUTE -->|"POST /api/webhooks/stripe"| SIG{"valid Stripe<br/>signature?"}
+    SIG -->|"no"| R400a["400"]
+    SIG -->|"yes"| GRANT["grant / revoke entitlement<br/>(idempotent by event id)"] --> R200a["200"]
+
+    ROUTE -->|"every other route"| AUTH{"verify Firebase token<br/>issuer · audience · exp · RS256"}
+    AUTH -->|"missing / invalid"| R401["401"]
+    AUTH -->|"uid"| KIND{"which route?"}
+
+    KIND -->|"GET /api/me · /api/me/entitlement"| READ["read own rows from D1"] --> R200b["200"]
+
+    KIND -->|"GET /content/paid/*"| ENT{"entitled?"}
+    ENT -->|"no"| R402a["402 · no bytes"]
+    ENT -->|"yes"| SERVE["serve file · Cache-Control: private"] --> R200c["200"]
+
+    KIND -->|"PUT /api/me/progress/:id"| RLW{"per-uid limit<br/>60/min"}
+    RLW -->|"over"| R429b["429"]
+    RLW -->|"ok"| VALID{"step id in manifest?<br/>body = two booleans?"}
+    VALID -->|"no"| R400b["400"]
+    VALID -->|"yes"| UPSERT["idempotent upsert (D1)"] --> R200d["200"]
+
+    KIND -->|"POST /api/checkout"| RLC{"per-uid limit<br/>5/min"}
+    RLC -->|"over"| R429c["429"]
+    RLC -->|"ok"| ENT2{"already entitled?"}
+    ENT2 -->|"yes"| R409["409"]
+    ENT2 -->|"no"| STRIPE["create Stripe session<br/>bound to uid"] --> R200e["200 · checkout URL"]
+```
+
+### Repository layout
+
+One package, no workspace members. Each directory is one concern; the whole
+backend is `src/worker/`, the whole frontend is `src/app/`.
+
+```
+deepcs/
+├── DESIGN.md              this document — the decision record
+├── README.md              how to run and test it
+├── CLAUDE.md              working agreements + invariants
+├── TODO.md                the launch runbook
+├── wrangler.toml          the entire deployment: assets, SPA fallback,
+│                          run_worker_first, D1 binding, vars, rate limits
+├── package.json           one package
+├── pnpm-workspace.yaml    install-script policy + the single esbuild pin
+├── tsconfig*.json         three: app (DOM), worker, integration tests
+├── vite.config.ts         SPA build + the CSP + dev-only content server
+├── vitest.workers.config.ts   the workerd integration pool
+├── index.html
+│
+├── content/              SAMPLE FIXTURES ONLY, one paid topic so the gate
+│   ├── roadmap.json        is runnable and testable here (real content is
+│   ├── questions.json      the private deepcs-content repo, §8)
+│   └── lessons/*.md
+│
+├── migrations/           D1, wrangler-tracked
+│   ├── 0001_progress.sql
+│   └── 0002_entitlements.sql
+│
+├── src/
+│   ├── worker/           the entire backend (~480 lines)
+│   │   ├── index.ts        the router
+│   │   ├── auth.ts         Firebase token verification (jose)
+│   │   ├── manifest.ts     step id → tier, from roadmap.json
+│   │   ├── progress.ts     GET /api/me · PUT progress
+│   │   ├── entitlement.ts  read · grant · revoke
+│   │   ├── checkout.ts     create a Stripe session
+│   │   ├── webhook.ts      verify signature · grant/revoke
+│   │   ├── content.ts      the paid-content gate
+│   │   ├── rate-limit.ts   per-uid limiter
+│   │   ├── http.ts         HttpError + json()
+│   │   └── env.ts          bindings and vars
+│   │
+│   └── app/              the React SPA
+│       ├── main.tsx · App.tsx · styles.css
+│       ├── api.ts · auth.ts · config.ts · progress.ts · theme.ts
+│       ├── roadmap-layout.ts · lesson-sections.ts · markdown.ts
+│       ├── *.test.ts       unit tests, beside the pure logic they cover
+│       └── pages/          Roadmap · Step · TopicDialog · ProgressPanel
+│                           · Login · Upgrade
+│
+├── scripts/
+│   ├── build-content.mjs   validate + split content by tier into dist/
+│   └── reconcile.mjs       rebuild entitlements from the Stripe ledger (§9)
+│
+├── test/integration/    the real Worker in workerd, real local D1
+│   ├── api.test.ts · paywall.test.ts · platform.test.ts
+│   ├── helpers.ts         mint real JWTs · sign real webhooks
+│   └── setup.ts · env.d.ts · tsconfig.json
+│
+└── .github/workflows/ci.yml   typecheck · unit · integration, on fixtures
+```
 
 ---
 
@@ -690,47 +799,18 @@ skip-in-CI contract tests all dissolve because the reasons for them dissolved.
 
 ## 16. Repository end state — two repos
 
-**`deepcs` (public — this repo):**
+**`deepcs` (public — this repo):** layout in §3. It carries the code and
+sample fixtures only; real content never enters it.
 
-```
-deepcs/
-├── DESIGN.md               ← this document
-├── wrangler.toml           ← the entire deployment: assets dir, SPA fallback,
-│                             run_worker_first globs, D1 binding, vars
-├── package.json            ← ONE package. No workspace, no catalog.
-├── content/                ← SAMPLE FIXTURES ONLY, clearly labeled as such;
-│   ├── roadmap.json          includes one paid fixture topic so the gate
-│   ├── questions.json        is runnable and testable from the public repo
-│   └── lessons/sample-*.md
-├── migrations/
-│   ├── 0001_progress.sql
-│   └── 0002_entitlements.sql
-├── src/
-│   ├── worker/             ← index.ts, auth.ts, progress.ts, entitlement.ts,
-│   │                         checkout.ts, webhook.ts (~400 lines total)
-│   └── app/                ← the React SPA: pages/, roadmap-layout.ts,
-│                             lesson-sections.ts, markdown.ts, theme.ts …
-├── scripts/
-│   └── reconcile.ts        ← rebuild entitlements from the Stripe ledger (§9)
-├── test/
-│   ├── unit/
-│   ├── integration/        ← vitest-pool-workers
-│   └── e2e/                ← Playwright
-├── docs/
-│   ├── overview.md         ← rewritten for this system
-│   └── adr/                ← surviving ADRs + ADR-12 (this pivot)
-└── .github/workflows/ci.yml   ← tests on fixtures; no secrets, no deploy
-```
-
-**`deepcs-content` (private — new):**
+**`deepcs-content` (private):**
 
 ```
 deepcs-content/
-├── roadmap.json            ← all 10 topics, access: "free" (3) | "paid" (7)
+├── roadmap.json            all 10 topics, access: "free" (3) | "paid" (7)
 ├── questions.json
-├── lessons/<id>.md         ← all real lessons, free and paid
-└── .github/workflows/deploy.yml  ← §8.2: checkout both repos, lint content,
-                                    build, wrangler deploy, smoke
+├── lessons/<id>.md         all real lessons, free and paid
+└── .github/workflows/deploy.yml  §8.2: checkout both repos, lint content,
+                                   build, wrangler deploy, smoke
 ```
 
 Not carried into v2: `services/` (all six), `packages/` (db, shared),
