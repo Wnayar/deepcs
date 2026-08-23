@@ -44,16 +44,23 @@ export const boxTop = (node: Placed) => node.gridY * CELL_Y - BOX_H / 2;
 
 export const clampScale = (scale: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
 
-/** A curve from the bottom of one box to the top of the next. Control points
- * sit straight below the start and above the end, so the line reads as
- * downward travel even when the boxes are far apart sideways. */
+/** A circuit trace from the bottom of one box to the top of the next:
+ * straight drops with one horizontal jog at the midpoint, corners rounded.
+ * Right angles, because the map is a board of connected parts, not a vine. */
 export function edgePath(from: Placed, to: Placed): string {
   const x1 = from.gridX * CELL_X;
   const y1 = from.gridY * CELL_Y + BOX_H / 2;
   const x2 = to.gridX * CELL_X;
   const y2 = to.gridY * CELL_Y - BOX_H / 2;
-  const bend = (y2 - y1) / 2;
-  return `M ${x1} ${y1} C ${x1} ${y1 + bend}, ${x2} ${y2 - bend}, ${x2} ${y2}`;
+  if (x1 === x2) return `M ${x1} ${y1} L ${x2} ${y2}`;
+
+  const midY = (y1 + y2) / 2;
+  const dir = Math.sign(x2 - x1);
+  const r = Math.min(10, Math.abs(x2 - x1) / 2, (y2 - y1) / 2);
+  return (
+    `M ${x1} ${y1} L ${x1} ${midY - r} Q ${x1} ${midY}, ${x1 + dir * r} ${midY} ` +
+    `L ${x2 - dir * r} ${midY} Q ${x2} ${midY}, ${x2} ${midY + r} L ${x2} ${y2}`
+  );
 }
 
 /**

@@ -2,6 +2,40 @@ import { useEffect, useState } from 'react';
 import { Link, NavLink } from 'react-router';
 import { getEntitlement, startCheckout } from '../api';
 
+/** Display prices only, set at build time beside the Firebase values. The
+ * charge is whatever the Stripe price says, and Stripe shows that again
+ * before paying, so drift here embarrasses rather than overcharges.
+ * ANCHOR is the list price PRICE is discounted from; leave it unset unless
+ * it is a price you genuinely intend to charge, because an invented one is
+ * exactly the scam signal the rest of the site avoids. */
+const PRICE = import.meta.env.VITE_PRICE_DISPLAY as string | undefined;
+const ANCHOR = import.meta.env.VITE_PRICE_ANCHOR as string | undefined;
+
+/** The plan card's contents, shared by the buy button and the sign-in
+ * link. Spans, not a list: the card renders inside a button, where only
+ * phrasing content is valid. */
+function PlanInner({ busy }: { busy: boolean }) {
+  return (
+    <>
+      <span className="plan-name">
+        <span className="support-heart" aria-hidden="true">
+          ♥
+        </span>
+        Lifetime
+      </span>
+      <span className="plan-pricerow">
+        <span className="plan-price">{PRICE ?? 'One payment'}</span>
+        {PRICE && ANCHOR && <s className="plan-anchor">{ANCHOR}</s>}
+      </span>
+      <span className="plan-sub">{busy ? 'Opening checkout…' : 'one-time payment'}</span>
+      <span className="plan-points">
+        <span className="plan-point">The whole roadmap, forever</span>
+        <span className="plan-point">Every future topic included</span>
+      </span>
+    </>
+  );
+}
+
 /** The sales page. It only states the offer and starts the redirect; price
  * and product live in Stripe, so nothing here is worth tampering with. */
 export function UpgradePage({ signedIn, entitled }: { signedIn: boolean; entitled: boolean }) {
@@ -33,37 +67,40 @@ export function UpgradePage({ signedIn, entitled }: { signedIn: boolean; entitle
     );
 
   return (
-    <div className="upgrade">
+    <div className="upgrade centered">
       <p className="kicker">DeepCS Pro</p>
-      <h2>Understand the fundamentals interviews actually test</h2>
-      <p className="muted">
-        The Easy topics are free, forever. One payment unlocks the rest: Medium, Hard, and the
-        whole Skills track, with every lesson, question, and reference answer.
-      </p>
-
-      <ul className="upgrade-points">
-        <li>All ten topics on one dependency-ordered map, so the next step is never a guess</li>
-        <li>Reference answers for every question, self-serve</li>
-        <li>Everything the site ever adds, included</li>
-        <li>Progress tracking stays free for everyone either way</li>
-      </ul>
+      <h2>Interviews are changing. Fundamentals are the new edge.</h2>
 
       {signedIn ? (
-        <button className="primary" onClick={() => void buy()} disabled={busy}>
-          {busy ? 'Opening checkout…' : 'Unlock all ten topics'}
+        <button className="plan" onClick={() => void buy()} disabled={busy}>
+          <PlanInner busy={busy} />
         </button>
       ) : (
         <>
-          <p className="muted">Buying needs an account, so the purchase has somewhere to live.</p>
-          <NavLink className="navlink primary" to="/signin">
-            Sign in first
+          <NavLink className="plan" to="/signin">
+            <PlanInner busy={false} />
           </NavLink>
+          <p className="muted">Sign in first; the purchase needs an account to live on.</p>
         </>
       )}
 
       <p className="trust">One-time payment · No subscription · Secure checkout by Stripe</p>
 
+      <p className="origin">
+        DeepCS started as a centralized resource used for my own interview revision and prep. After
+        enough requests from friends, I deployed it to help them and other aspiring software
+        engineers through the interview process.
+      </p>
+
       {error && <p className="error">{error}</p>}
+
+      <p className="support">
+        <span className="support-heart" aria-hidden="true">
+          ♥
+        </span>
+        Thank you for supporting DeepCS. It helps cover the ongoing costs of the site, and I hope
+        to see your success.
+      </p>
     </div>
   );
 }
@@ -115,7 +152,10 @@ export function UpgradeThanksPage() {
       {state === 'unlocked' && (
         <>
           <h2>Everything is unlocked</h2>
-          <p className="muted">All ten topics are yours. Pick up where the map left off.</p>
+          <p className="muted">
+            All ten topics are yours, and you just backed the ongoing work on this site. Thank
+            you. Pick up where the map left off.
+          </p>
           <Link className="navlink primary" to="/">
             Back to the roadmap
           </Link>

@@ -18,6 +18,8 @@
   --surface-2: #f2f2f3;
   --line: #e5e5e7;
   --line-strong: #d2d2d6;
+  /* The canvas grid: a step fainter than --line, texture rather than lines. */
+  --grid: #f1f1f2;
 
   /* Text, in descending prominence. Charcoal, not black: full black on
      white vibrates at reading sizes. */
@@ -73,6 +75,7 @@
   --surface-2: #26272b;
   --line: #333539;
   --line-strong: #46484e;
+  --grid: #1d1e21;
 
   /* Not near-white. Maximum contrast on a dark ground makes text glow and
      bleed at its edges, which is tiring over a page of prose; #d7d8da sits
@@ -441,6 +444,15 @@ nav button[aria-current='page'] {
   font-weight: 600;
 }
 
+/* A primary pill stays a primary pill on its own page: the generic active
+   tint above would paint accent text on an accent ground and vanish the
+   label. */
+.navlink.primary[aria-current='page'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
 /* The header's links sit on a bar, not on a page, so they carry no border
    until pointed at: a row of six outlined boxes reads as six controls
    competing, and the wordmark stops being the first thing seen. */
@@ -495,8 +507,12 @@ button:focus-visible {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background-image: radial-gradient(circle, var(--line) 1px, transparent 1px);
-  background-size: 26px 26px;
+  /* Graph paper, not a dot field: fine lines suit the circuit-trace edges
+     and give the canvas its own texture. --grid keeps them a whisper. */
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 52px 52px;
   cursor: grab;
   /* Both matter for dragging. `touch-action` stops the browser claiming the
      gesture as a scroll on a trackpad or touchscreen, and `user-select` stops
@@ -523,7 +539,13 @@ button:focus-visible {
 .edge {
   fill: none;
   stroke: var(--line-strong);
-  stroke-width: 1.5;
+  stroke-width: 2;
+}
+
+.edge-casing {
+  fill: none;
+  stroke: var(--bg);
+  stroke-width: 7;
 }
 
 .node rect {
@@ -596,11 +618,12 @@ button:focus-visible {
   fill: var(--accent);
 }
 
-/* Totals, opposite the zoom controls so neither covers the tree. */
+/* Totals, bottom right: diagonal from the zoom controls, so the corners
+   share the chrome and the tree keeps the top of the canvas. */
 .progress-panel {
   position: absolute;
   right: 1rem;
-  top: 1rem;
+  bottom: 1rem;
   z-index: 2;
   width: 18rem;
   padding: 1.1rem 1.15rem;
@@ -862,6 +885,12 @@ button:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .dialog {
     animation: none;
+  }
+
+  .plan,
+  .plan:hover:not(:disabled) {
+    transition: none;
+    transform: none;
   }
 }
 
@@ -1368,6 +1397,53 @@ form.auth {
   gap: 0.4rem;
 }
 
+/* Four parallel tracks, so no numbers: numbering would claim an order the
+   advice does not have. */
+.playbook {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  max-width: var(--measure);
+}
+
+.playbook strong {
+  color: var(--fg-strong);
+}
+
+/* One colour per track: green is go (the grind), brand blue is trust
+   (ours), gold is the prize (the job you reverse engineer), purple is
+   ambition (apply early), borrowed from the palette's keyword purple so
+   nothing here reads as alarm. */
+.playbook .lead-neetcode {
+  color: var(--ok);
+}
+
+.playbook .lead-deepcs {
+  color: var(--accent);
+}
+
+.playbook .lead-projects {
+  color: var(--star);
+}
+
+.playbook .lead-apply {
+  color: var(--code-keyword);
+}
+
+/* The backing line on the upgrade page; the heart matches the nav pill. */
+.support {
+  margin: 0;
+  color: var(--fg-muted);
+}
+
+.support-heart {
+  color: var(--danger);
+  margin-right: 0.35rem;
+}
+
 .gate {
   text-align: center;
   padding: 3rem 0;
@@ -1385,10 +1461,107 @@ form.auth {
   align-items: flex-start;
 }
 
-.upgrade-points {
-  margin: 0;
-  padding-left: 1.2rem;
+/* The sales page centres on the card; the advice page stays a left-read.
+   min-height fills the window so the backing line can sit at its foot. */
+.upgrade.centered {
+  align-items: center;
+  text-align: center;
+  min-height: calc(100dvh - 12rem);
+}
+
+.upgrade.centered .support {
+  margin-top: auto;
+  padding-top: 1.5rem;
+}
+
+/* The origin note: a quiet plaque, not small print. */
+.origin {
+  margin: 0.4rem 0 0;
+  padding: 0.85rem 1.15rem;
+  max-width: 30rem;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+}
+
+/* The one plan, as a card that is itself the buy button. Hover lifts it
+   and rings it in accent, so the whole card reads as clickable. */
+.plan {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  align-items: center;
+  gap: 0.4rem;
+  width: min(24rem, 100%);
+  padding: 1.8rem 1.6rem 1.6rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font: inherit;
+  color: inherit;
+  text-decoration: none;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.plan:hover:not(:disabled) {
+  transform: translateY(-3px);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-lg);
+  color: inherit;
+}
+
+.plan:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.plan-name {
+  font-weight: 650;
+  color: var(--fg-strong);
+}
+
+.plan-pricerow {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.plan-price {
+  font-size: 2.4rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--fg-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The list price the launch price is cut from. */
+.plan-anchor {
+  color: var(--fg-faint);
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.plan-sub {
+  font-size: 0.9rem;
+  color: var(--fg-muted);
+}
+
+.plan-points {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  text-align: left;
+}
+
+.plan-point::before {
+  content: '✓';
+  color: var(--ok);
+  font-weight: 700;
+  margin-right: 0.55rem;
 }

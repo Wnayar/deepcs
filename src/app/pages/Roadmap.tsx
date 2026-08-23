@@ -161,13 +161,18 @@ export function RoadmapPage({ signedIn, progress }: Props) {
             topic.dependsOn
               .map((name) => byName.get(name))
               .filter((from): from is RoadmapTopic => from !== undefined)
-              .map((from) => (
-                <path
-                  key={`${from.topic}->${topic.topic}`}
-                  className="edge"
-                  d={edgePath(from, topic)}
-                />
-              )),
+              .map((from) => {
+                const d = edgePath(from, topic);
+                return (
+                  /* Cased like a subway line: the bg-coloured underlay cuts
+                     the grid wherever the trace runs, so an axis-aligned
+                     edge never sinks into an axis-aligned grid line. */
+                  <g key={`${from.topic}->${topic.topic}`}>
+                    <path className="edge-casing" d={d} />
+                    <path className="edge" d={d} />
+                  </g>
+                );
+              }),
           )}
 
           {topics.map((topic) => (

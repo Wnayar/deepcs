@@ -11,6 +11,10 @@ interface Props {
 const R = 42;
 const CIRCUMFERENCE = 2 * Math.PI * R;
 
+/** A horseshoe, not a full circle: 300 degrees with the gap at the bottom,
+ * so the sequence has a visible start (Easy, seven o'clock) and end. */
+const SWEEP = 300 / 360;
+
 /** Row order matches the map's flow: the difficulty ladder, then Skills. */
 const TIERS: { tier: Tier; label: string }[] = [
   { tier: 'easy', label: 'Easy' },
@@ -31,7 +35,7 @@ export function ProgressPanel({ topics, marks }: Props) {
   const total = rows.reduce((sum, row) => sum + row.total, 0);
 
   // An empty roadmap would divide by zero; a NaN dash offset draws nothing.
-  const arc = (count: number) => (total === 0 ? 0 : (CIRCUMFERENCE * count) / total);
+  const arc = (count: number) => (total === 0 ? 0 : (CIRCUMFERENCE * SWEEP * count) / total);
 
   /* The ring is partitioned: each tier owns a sector sized by its share of
      all lessons, and its progress fills within that sector only, so "how
@@ -67,10 +71,10 @@ export function ProgressPanel({ topics, marks }: Props) {
             role="img"
             aria-label={`${done} of ${total} lessons done`}
           >
-            {/* Rotated so the ring starts at twelve o'clock. An untouched
-                tier draws nothing: a zero-length arc's round line cap would
-                render as a dot. */}
-            <g transform="rotate(-90 50 50)">
+            {/* Rotated so the arc starts at seven o'clock and sweeps up and
+                over. An untouched tier draws nothing: a zero-length arc's
+                round line cap would render as a dot. */}
+            <g transform="rotate(120 50 50)">
               {/* Each sector's track in a faint wash of its own colour, so
                   the empty ring already maps where every tier begins and
                   ends; progress paints over it at full strength. */}

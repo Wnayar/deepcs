@@ -7,6 +7,7 @@ import { RoadmapPage } from './pages/Roadmap';
 import { StepPage } from './pages/Step';
 import { LoginPage } from './pages/Login';
 import { UpgradePage, UpgradeThanksPage } from './pages/Upgrade';
+import { AdvicePage } from './pages/Advice';
 
 /** The wordmark glyph: a three-node path, the roadmap in miniature. Inline
  * SVG so it takes the theme's accent and follows theme switches. */
@@ -34,12 +35,12 @@ function PinIcon() {
   );
 }
 
-/** A gem for the paid tier: the premium convention, and pointedly not a
- * padlock. */
-function GemIcon() {
+/** A heart for the paid tier: buying Pro is backing the site, and the
+ * upgrade page says so in words. */
+function HeartIcon() {
   return (
     <svg className="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <path d="M4.6 2.2h6.8L14.2 6 8 14 1.8 6l2.8-3.8Z" />
+      <path d="M8 13.9 3.1 9.1a3.4 3.4 0 0 1 4.7-4.9l.2.2.2-.2a3.4 3.4 0 0 1 4.7 4.9Z" />
     </svg>
   );
 }
@@ -80,6 +81,9 @@ export function App() {
             <PinIcon />
             Roadmap
           </NavLink>
+          <NavLink className="navlink" to="/advice">
+            Start here
+          </NavLink>
         </nav>
 
         <div className="nav-utility">
@@ -88,7 +92,7 @@ export function App() {
               sell. */}
           {!progress.entitled && (
             <NavLink className="navlink primary with-icon" to="/upgrade">
-              <GemIcon />
+              <HeartIcon />
               Pro
             </NavLink>
           )}
@@ -133,6 +137,7 @@ export function App() {
             element={<UpgradePage signedIn={Boolean(user)} entitled={progress.entitled} />}
           />
           <Route path="/upgrade/thanks" element={<UpgradeThanksPage />} />
+          <Route path="/advice" element={<AdvicePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
