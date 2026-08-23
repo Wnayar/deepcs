@@ -18,7 +18,7 @@ in [DESIGN.md](./DESIGN.md).
 ## This repo runs on sample content
 
 The real lessons live in a private content repo and meet this code only at
-deploy time (DESIGN.md §8). What ships here is a small set of clearly
+deploy time (DESIGN.md §7). What ships here is a small set of clearly
 labeled fixtures — including one *paid* fixture topic, so the paywall is
 runnable and testable from this repo alone. Everything below works with no
 accounts, no secrets, and no network beyond `pnpm install`.

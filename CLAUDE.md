@@ -68,9 +68,10 @@ DeepCS: a deployed CS-fundamentals roadmap with a free tier and a one-time
 paid unlock. One Cloudflare Worker serves the React SPA and free content as
 static assets and runs a six-route API (progress, entitlement, checkout,
 webhook, paid-content gate) against D1. Firebase Auth is verified in-Worker;
-Stripe Managed Payments is the merchant of record. **DESIGN.md is the
-decision record**: when a change contradicts it, update the document in the
-same change or don't make the change.
+Stripe Managed Payments is the merchant of record. **DESIGN.md states what
+the system is; `docs/adr/` records why.** When a change contradicts DESIGN.md,
+update it in the same change or don't make the change; a decision that weighs
+alternatives goes in a new ADR, not inline.
 
 **Real content never enters this repo.** It lives in the private
 `deepcs-content` repo and joins this code at deploy time. This repo carries

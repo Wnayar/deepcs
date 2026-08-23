@@ -9,7 +9,7 @@ import type { Env } from './env';
 /**
  * The entire backend. The platform serves the SPA and free content without
  * invoking this; only /api/* and /content/paid/* run it. No route accepts a
- * uid — /me is whoever the verified token says (DESIGN.md §12).
+ * uid — /me is whoever the verified token says (DESIGN.md §9).
  */
 export default {
   async fetch(request, env): Promise<Response> {

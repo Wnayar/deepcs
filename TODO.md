@@ -19,7 +19,7 @@
 
 7. Edge protection (Cloudflare dashboard, no code): turn on Bot Fight Mode,
    and add one rate-limiting rule on `/api/*` keyed by IP. The per-uid limits
-   deploy with the Worker already (DESIGN.md §13).
+   deploy with the Worker already (DESIGN.md §10).
 
 Before real money: Stripe live-mode activation, the live price, and the
-Playwright e2e flows (DESIGN.md §15.3).
+Playwright e2e flows (DESIGN.md §11).
