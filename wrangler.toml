@@ -28,3 +28,19 @@ migrations_dir = "migrations"
 # (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET) are set with `wrangler secret
 # put`, and STRIPE_PRICE_ID is a deploy-time var.
 FIREBASE_PROJECT_ID = "demo-deepcs"
+
+# Per-uid rate limits, keyed by uid inside the Worker so one account cannot
+# exhaust the shared quota or spam Stripe from many IPs. namespace_id is any
+# unique number; no dashboard setup. Checkout is tight (reaches Stripe);
+# writes are generous (worst case is quota, which fails safe).
+[[unsafe.bindings]]
+name = "RATE_LIMIT_CHECKOUT"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 5, period = 60 }
+
+[[unsafe.bindings]]
+name = "RATE_LIMIT_WRITE"
+type = "ratelimit"
+namespace_id = "1002"
+simple = { limit = 60, period = 60 }

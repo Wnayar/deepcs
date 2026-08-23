@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { HttpError, json } from './http';
 import { requireUid } from './auth';
 import { isEntitled } from './entitlement';
+import { limitByUid } from './rate-limit';
 import { stepAccess } from './manifest';
 import type { Env } from './env';
 
@@ -35,6 +36,10 @@ export async function putProgress(
   stepId: string,
 ): Promise<Response> {
   const uid = await requireUid(request, env);
+
+  // Generous: caps a bot loop without touching a human ticking boxes. Worst
+  // case past it is quota, which fails safe to 429 with no bill.
+  await limitByUid(env.RATE_LIMIT_WRITE, uid);
 
   if (!(await stepAccess(request, env)).has(stepId)) throw new HttpError(400, 'no such step');
 

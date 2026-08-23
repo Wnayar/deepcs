@@ -1,6 +1,7 @@
 import { HttpError, json } from './http';
 import { requireUid } from './auth';
 import { isEntitled } from './entitlement';
+import { limitByUid } from './rate-limit';
 import type { Env } from './env';
 
 /**
@@ -11,6 +12,10 @@ import type { Env } from './env';
  */
 export async function checkout(request: Request, env: Env): Promise<Response> {
   const uid = await requireUid(request, env);
+
+  // Tight, because each call reaches Stripe: nobody legitimately starts many
+  // checkouts, and this is the only route with an external abuse cost.
+  await limitByUid(env.RATE_LIMIT_CHECKOUT, uid);
 
   if (!env.STRIPE_SECRET_KEY || !env.STRIPE_PRICE_ID)
     throw new HttpError(503, 'payments are not configured');

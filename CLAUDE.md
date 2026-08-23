@@ -104,6 +104,9 @@ pnpm test:integration                 # builds, then the real Worker in workerd
   body, timestamp-bounded, idempotent by event id. Never trust a field the
   signature doesn't cover.
 - The Worker can only verify tokens, never mint them: no `firebase-admin`.
+- **Mutating routes are per-uid rate limited** (checkout, progress write) via
+  the native binding, keyed by uid so IP spread does not evade it. Absent
+  binding is a no-op, so local dev and tests run unthrottled.
 
 **Data:**
 

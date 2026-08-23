@@ -516,10 +516,10 @@ remains, then rate-limit what validation can't help.**
 - **Static-asset headers** set a CSP that forbids inline script, plus
   `X-Content-Type-Options: nosniff` and `Referrer-Policy`. Paid content is
   served `Cache-Control: private`.
-- **Rate limiting** is §13. Anonymous traffic cannot reach compute at all;
-  checkout sits under the same edge rule, so the endpoint cannot be farmed as
-  a free card-testing API (and card testing itself is the merchant of
-  record's fraud surface, not ours).
+- **Rate limiting** is §13: per-IP at the edge, and per-uid in the Worker on
+  the mutating routes, so a bought account cannot farm checkout as a
+  card-testing API or exhaust the shared quota (card testing itself is the
+  merchant of record's fraud surface, not ours).
 - **Residual risk, accepted and named:** a stolen Firebase ID token works for
   up to an hour and nothing here detects it. What sits behind it is checkbox
   state and paid prose — never money, which lives entirely on Stripe's
@@ -529,24 +529,44 @@ remains, then rate-limit what validation can't help.**
 
 ---
 
-## 13. Decision: rate limiting at the edge
+## 13. Decision: rate limiting
 
-The belief to drop first: "rate limiting needs Redis." It needed Redis because
-several gateway replicas shared one bucket. Nothing shares anything now.
+The floor under everything: on the **free plan there is no overage billing**,
+so no attacker can produce a bill — a flood only ever fails to 429s and
+errors. Rate limiting therefore defends against denial-of-service and Stripe
+abuse, not against a surprise invoice. Each control sits where it is
+cheapest.
 
-| Option | Cost of a blocked request | New components | Covers | Verdict |
-|---|---|---|---|---|
-| **Edge rate-limit rule on `/api/*` + `/content/paid/*` (per-IP, fixed window)** | $0 — blocked **before** the Worker is invoked, so the limiter is cheaper than what it limits | none (the free plan includes exactly one rule; one is what's needed) | volumetric abuse per IP, including hammering checkout or the gate | ✅ **Chosen**, as layer 2 of 3 |
-| Per-uid counter in a Durable Object | a billable DO request per check | a new billable component with its own meter | a signed-in user across many IPs | ❌ for now — the protected resources are a boolean and prose; documented as the designated next step if it ever matters |
-| In-Worker in-memory counter | a Worker invocation per check | none | almost nothing — isolates are many and short-lived, so the counter resets constantly | ❌ False comfort |
-| Nothing | n/a | none | n/a | ❌ Free, but the write quota is daily and account-wide; §18.3 |
+**Per-IP, at the edge** — a Cloudflare rate-limit rule on `/api/*` plus
+Cloudflare Bot Fight Mode. Both run before the Worker is invoked, so a blocked
+request never becomes a billable invocation. The free plan includes exactly
+one rate-limit rule, which is what an anonymous flood needs. Dashboard
+toggles, no code; carried in the launch TODO.
 
-The three layers, cheapest first: (1) every write and every paid read
-requires a valid Firebase token, so anonymous abuse of metered paths is
-impossible and abuse costs an account; (2) the edge rule above; (3) the
-free-tier ceiling itself, which fails in the right direction — past 100k
-Worker requests in a day, gated routes return 429 while the free static site
-keeps serving.
+**Per-uid, in the Worker** — Cloudflare's native rate-limiting binding, keyed
+by the verified uid, because only the Worker knows it and IP does not identify
+a person. This is what stops a bought account: it holds however many IPs the
+bot spreads across.
+
+| Option for the per-uid layer | Cost | Covers | Verdict |
+|---|---|---|---|
+| **Native rate-limiting binding, keyed by uid** | free; runs at the edge; ~10 lines | a signed-in account spamming from any number of IPs | ✅ **Chosen** — no new infrastructure, no component to operate |
+| Durable Object counter | a billable DO request per check, a component to operate | the same | ❌ The expensive way to the same result |
+| In-Worker in-memory counter | a Worker invocation per check | almost nothing — isolates are many and short-lived, so the count resets constantly | ❌ False comfort |
+
+Applied where the blast radius differs: **checkout at 5/min** (each call
+reaches Stripe, the only route with an external abuse cost, and nobody
+legitimately starts many), **progress writes at 60/min** (a bot loop dies,
+a human ticking boxes never notices; worst case past it is quota). Reads are
+left to the edge layer, since their quota is high and the failure is a
+harmless 429.
+
+So, cheapest first: (1) every write and every paid read requires a valid
+Firebase token, so anonymous abuse of metered paths is impossible and abuse
+costs an account; (2) the per-IP edge rule and Bot Fight Mode; (3) the
+per-uid binding above; (4) the free-tier ceiling itself, which fails in the
+right direction — past the daily quota, gated routes return 429 while the
+free static site keeps serving, and nothing bills.
 
 ---
 
@@ -653,7 +673,7 @@ forwards genuine test-mode events to localhost.)
 | **Anonymous reader:** open `/` → free topic → lesson → questions → reveal an answer → hard-refresh on `/step/:id` | The static content pipeline, client routing, and the deep-link rewrite as a user experiences them |
 | **Progress:** sign in → tick two steps → reload → ticks persist → sign out → ticks gone from UI → sign back in → ticks return | The full auth handshake (SDK ↔ emulator ↔ Worker) and the read-your-writes loop across a session boundary |
 | **Purchase:** sign in → open a locked lesson → 402 screen with the upgrade pitch → checkout initiated → (test-signed webhook lands) → the lesson unlocks without re-login | The paywall as a buyer experiences it, including the §9.4 entitlement poll winning its race |
-| **Degraded write path:** API forced to 401/429 → the free site still browses fully, ticks show a visible failure state | The design's core failure promise: the read-only site survives every backend failure (§13 layer 3) |
+| **Degraded write path:** API forced to 401/429 → the free site still browses fully, ticks show a visible failure state | The design's core failure promise: the read-only site survives every backend failure (§13) |
 
 Four flows, not ten: every additional e2e flow re-walks the same wiring at
 the highest cost-per-test and the highest flake rate in the suite. Anything
