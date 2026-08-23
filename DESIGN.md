@@ -11,7 +11,8 @@ WebSockets anywhere in this design**, by requirement, not by accident.
 
 Rewrite effort is explicitly not a constraint. The end state is the two-repo
 structure in §16. The distributed v1 (six services, Yjs collab, matching,
-Redis, local Kubernetes) is preserved at a git tag, not in the working tree.
+Redis, local Kubernetes) is preserved complete in a private repo
+(`deepcs-v1`), not in this one — this repository begins at the pivot.
 
 Pricing below was checked against vendor pricing pages on 2026-08-23; the
 monetization decisions were made the same day (sources in §18.5 and §7–§9).
@@ -68,7 +69,8 @@ One Cloudflare Worker deployment serves everything: the static SPA and free
 content from the edge cache (free, unlimited, the Worker is never invoked),
 paid content through the Worker after an entitlement check, and a small API
 for progress and checkout. Progress and entitlements live in D1. Identity
-stays with Firebase Auth; money is Lemon Squeezy's problem end to end.
+stays with Firebase Auth; money is Stripe's problem end to end (Managed
+Payments, their merchant-of-record product).
 
 ```mermaid
 flowchart TD
@@ -84,7 +86,7 @@ flowchart TD
 
     FB["Firebase Auth<br/>sign-in · hourly token refresh<br/>(browser talks to Google directly)"]
     JWKS["Google's public JWKS<br/>(cached in the isolate)"]
-    LS["Lemon Squeezy — merchant of record<br/>hosted checkout · card + tax + invoices<br/>chargebacks · the permanent order ledger"]
+    PAY["Stripe Managed Payments — merchant of record<br/>hosted checkout · card + tax + invoices<br/>chargebacks · the permanent order ledger"]
 
     V -->|"free reads: /  /step/*  content/*"| EDGE
     V -->|"/api/*  /content/paid/*<br/>Authorization: Bearer &lt;ID token&gt;"| RL
@@ -93,8 +95,8 @@ flowchart TD
     W -->|"env.ASSETS.fetch after<br/>entitlement check"| PAID
     V <-->|"sign-in, refresh"| FB
     W -.->|"key fetch, cached"| JWKS
-    V -->|"redirect to hosted checkout"| LS
-    LS -->|"webhook: order_created / order_refunded<br/>HMAC-SHA256 signed"| W
+    V -->|"redirect to hosted checkout"| PAY
+    PAY -->|"webhook: checkout completed / refunded<br/>signature-verified (Stripe-Signature)"| W
 ```
 
 **Reading is a file fetch. Writing is a token plus one upsert. Buying is a
@@ -111,7 +113,7 @@ The request paths, stated as the meters see them:
 | Tick or star a step | `PUT /api/me/progress/:stepId` | 1 Worker request, 1 D1 upsert |
 | Paid lesson, entitled | Worker: verify token, 1 entitlement read, serve the file via the assets binding | 1 Worker request |
 | Paid lesson, not entitled | Worker answers **402** before any file bytes move | 1 Worker request |
-| Buying | `POST /api/checkout` → hosted Lemon Squeezy page → one webhook → 1 D1 insert | 2 Worker requests, total |
+| Buying | `POST /api/checkout` → hosted Stripe checkout page → one webhook → 1 D1 insert | 2 Worker requests, total |
 | Sign-in / token refresh | Browser ↔ Firebase directly | $0 to us; free to 50k MAU |
 
 ---
@@ -153,7 +155,7 @@ Tie-breaker: number of things to deploy.
 
 **The cost this choice carries, said plainly:** the Workers free plan caps CPU
 at **10 ms per request**. Verifying a JWT against a cached JWKS, one D1 read,
-and an HMAC check on a webhook are each 1–3 ms of CPU (the Lemon Squeezy API
+and an HMAC check on a webhook are each 1–3 ms of CPU (the Stripe API
 call in checkout is I/O, not CPU), so this API fits with room to spare — but
 the platform choice is only correct while the API stays this small. A future
 feature that needs real compute revisits this decision rather than working
@@ -216,9 +218,10 @@ an individual with no registered company, which decides this table:
 
 | Option | Fee per sale | Who owes global sales tax / chargebacks | Accepts individuals | Verdict |
 |---|---|---|---|---|
-| **Lemon Squeezy (merchant of record)** | ~5% + 50¢ | **They do** — legally the customer buys from Lemon Squeezy, which remits VAT/sales tax worldwide, eats chargebacks, and issues invoices; we receive payouts and declare them as ordinary personal income | Yes (ID verification, personal bank account) | ✅ **Chosen.** The ~2% premium over Stripe buys away the entire tax-compliance problem, which an individual cannot sensibly own. Stripe-owned, proper API + signed webhooks |
-| Stripe Checkout | 2.9% + 30¢ | **You do**, personally: foreign VAT registrations and filings as a private person | Yes | ❌ Cheapest fees and the biggest name, but only sensible after a company exists and volume justifies owning compliance. Revisit then — the flow in §9 is provider-generic |
-| Paddle | 5% + 50¢ | They do (also MoR) | Yes, but onboarding reviews your site before approval — slow when the product is not yet live | ❌ Same benefits as Lemon Squeezy with more friction at exactly the wrong moment |
+| **Stripe Managed Payments (merchant of record)** | standard processing + **3.5% MoR fee** (≈ $7 all-in on a $99 sale) | **Stripe does** — liable for global sales tax and VAT, automates fraud and dispute handling; we receive payouts and declare them as ordinary personal income | Yes — individual onboarding completed 2026-08-23, sandbox active | ✅ **Chosen.** The MoR premium buys away the entire tax-compliance problem, which an individual cannot sensibly own — on the platform with the industry's best API, docs, and test tooling |
+| Lemon Squeezy | ~5% + 50¢ | They do (also MoR) | Yes | ❌ The original paper choice, superseded during signup: it is Stripe-owned and in maintenance mode, and its own onboarding recommends Managed Payments for this location and product. Building a new store on the product being wound down is the worse bet |
+| Stripe Checkout, classic | 2.9% + 30¢ | **You do**, personally: foreign VAT registrations and filings as a private person (EU VAT from the first euro) | Yes | ❌ Cheapest fees, but only sensible after a company exists and volume justifies owning compliance. The flow in §9 is provider-generic, so this stays a clean fallback |
+| Paddle | 5% + 50¢ | They do (also MoR) | Yes, but onboarding reviews your site before approval — slow when the product is not yet live | ❌ Same benefits with more friction at exactly the wrong moment |
 | Gumroad | ~10% flat | They do (also MoR) | Yes | ❌ Double the fee for a weaker API and webhook story |
 
 ### 7.2 What is being sold
@@ -241,7 +244,7 @@ Two facts make lifetime uniquely safe *in this architecture*:
 
 What "lifetime" obligates, in writing: access while the product exists (the
 ToS defines it as the product's lifetime, which is standard), and the refund
-window — which, like chargebacks, is Lemon Squeezy's to process. It does not
+window — which, like chargebacks, is Stripe's to process. It does not
 obligate new content forever or a support SLA. The recovery story for the
 entitlement records themselves is §9.
 
@@ -251,8 +254,8 @@ the machine — or sample — that produced them): a Google Forms survey,
 picked the cheapest annual option, 3/6 the cheapest lifetime), so treat the
 absolute numbers as ceilings-of-enthusiasm, not demand. The corridor:
 $59–79/year, $149–199 lifetime, one respondent at $297. Launch price will be
-picked inside **$99–149**; a price is a dashboard value in Lemon Squeezy, so
-it is revisited on real sales data, not re-architected.
+picked inside **$99–149**; a price is a dashboard value in Stripe, so it is
+revisited on real sales data, not re-architected.
 
 **Progress stays free for everyone.** It costs ~30 rows per user, it is the
 habit loop that brings free users back, and returning free users are the
@@ -288,8 +291,10 @@ renamed-away predecessor found only by enumerating every path that ever
 existed under `migrations/`** (a filter list built from the final tree would
 have missed it). Verification: zero commits reference any stripped path, and
 a grep for distinctive lesson phrases across every revision returns nothing.
-The GitHub repo was then deleted and recreated so no pre-rewrite object
-remains fetchable by SHA. Residual exposure is Risk §18.8.
+The original GitHub repo was then renamed `deepcs-v1` and taken private, and
+v2 began in a brand-new public repository — so no pre-rewrite object is
+publicly fetchable at all, and the scrubbed history is banked privately in
+case a public v1 showcase is ever wanted. Residual exposure is Risk §18.8.
 
 ### 8.2 The two repos
 
@@ -337,37 +342,38 @@ variable, dev runs on fixtures.
 ## 9. The purchase flow, end to end
 
 Provider-generic in shape (checkout redirect → signed webhook → entitlement
-row); Lemon Squeezy fills in the details.
+row); Stripe Managed Payments fills in the details.
 
 1. **Checkout.** A *signed-in* user hits `POST /api/checkout`. The Worker
-   verifies the Firebase token, calls the Lemon Squeezy API to create a
-   checkout with `custom_data.uid` set to the **verified** uid, and returns
-   the hosted checkout URL. (Sign-in before buying is required — it is what
-   binds the purchase to an account.)
-2. **Payment.** The browser lands on Lemon Squeezy's hosted page. Card
-   handling, tax, receipts, and fraud screening are all theirs — nothing
-   card-shaped ever touches this system.
-3. **The webhook is the source of the entitlement.** Lemon Squeezy POSTs
-   `order_created` to `/api/webhooks/lemonsqueezy`, HMAC-SHA256-signed. The
-   Worker verifies the signature, checks the product/variant id is the one we
-   sell, reads the uid from `custom_data`, and inserts the entitlement row —
-   idempotently, because webhooks are delivered at least once (a `UNIQUE`
-   event id and the `(uid, product)` primary key make redelivery a no-op).
-   This route is the one endpoint not authenticated by Firebase: its
-   credential is the signature, its trust model is §12.
+   verifies the Firebase token, creates a Stripe Checkout Session for the
+   lifetime price with `client_reference_id` set to the **verified** uid, and
+   returns the session's hosted URL. (Sign-in before buying is required — it
+   is what binds the purchase to an account.)
+2. **Payment.** The browser lands on Stripe's hosted checkout. Card handling,
+   tax, receipts, and fraud screening are all theirs — nothing card-shaped
+   ever touches this system.
+3. **The webhook is the source of the entitlement.** Stripe POSTs
+   `checkout.session.completed` to `/api/webhooks/stripe`, signed via the
+   `Stripe-Signature` header (HMAC-SHA256 over a timestamped payload, which
+   also bounds replay). The Worker verifies the signature, checks the price
+   id is the one we sell, reads the uid from `client_reference_id`, and
+   inserts the entitlement row — idempotently, because webhooks are delivered
+   at least once (a `UNIQUE` event id and the `(uid, product)` primary key
+   make redelivery a no-op). This route is the one endpoint not authenticated
+   by Firebase: its credential is the signature, its trust model is §12.
 4. **Return.** The success URL lands the buyer on `/upgrade/thanks`, where
    the SPA polls `GET /api/me/entitlement` a few times — bounded, like every
    poll this project has ever shipped — because the webhook usually wins the
    race against the redirect, but not always.
-5. **Refunds.** `order_refunded` sets `revoked_at`. Entitled means: row
-   exists and `revoked_at IS NULL`.
+5. **Refunds.** The refund event for the session's payment sets
+   `revoked_at`. Entitled means: row exists and `revoked_at IS NULL`.
 
-**The ledger, and why entitlements are recoverable from nothing.** Lemon
-Squeezy's order history is permanent and queryable by API — it, not D1, is
-the authoritative record of who paid. D1 is a cache of that ledger: a
-`reconcile` script (fetch all orders, upsert entitlements) can rebuild the
-table from scratch, which turns "the database is lost" from a broken promise
-into an hour's inconvenience. Belt and braces on top: D1's built-in 30-day
+**The ledger, and why entitlements are recoverable from nothing.** Stripe's
+payment ledger is permanent and queryable by API — it, not D1, is the
+authoritative record of who paid. D1 is a cache of that ledger: a `reconcile`
+script (list completed sessions, upsert entitlements) can rebuild the table
+from scratch, which turns "the database is lost" from a broken promise into
+an hour's inconvenience. Belt and braces on top: D1's built-in 30-day
 point-in-time restore, and a monthly `wrangler d1 export` dump from CI.
 
 ---
@@ -405,12 +411,12 @@ CREATE TABLE progress (
 );
 
 CREATE TABLE entitlements (
-  uid               TEXT NOT NULL,      -- Firebase sub, from checkout custom_data
+  uid               TEXT NOT NULL,      -- Firebase sub, from client_reference_id
   product           TEXT NOT NULL DEFAULT 'lifetime',
-  provider_order_id TEXT NOT NULL,      -- Lemon Squeezy order id: the ledger key
-  provider_event_id TEXT NOT NULL UNIQUE, -- webhook delivery id: idempotency
+  provider_order_id TEXT NOT NULL,      -- Stripe checkout session id: the ledger key
+  provider_event_id TEXT NOT NULL UNIQUE, -- Stripe event id: idempotency
   purchased_at      TEXT NOT NULL,
-  revoked_at        TEXT,               -- set by order_refunded
+  revoked_at        TEXT,               -- set by the refund webhook
   PRIMARY KEY (uid, product)
 );
 ```
@@ -477,30 +483,33 @@ remains, then rate-limit what validation can't help.**
   surface is `/api/me/*`. There is no request a user can craft that addresses
   somebody else's data, so the entire IDOR class is removed by the shape of
   the API rather than by a check somebody could forget to write. (The one
-  deliberate exception: checkout `custom_data` names the uid to entitle — set
-  server-side from the verified token, and worth nothing to forge, because
-  forging it means *paying for someone else's upgrade*.)
+  deliberate exception: the checkout session's `client_reference_id` names
+  the uid to entitle — set server-side from the verified token, and worth
+  nothing to forge, because forging it means *paying for someone else's
+  upgrade*.)
 - **The webhook route has a different trust model, stated rather than
-  implied.** It carries no Firebase token; its credential is the HMAC-SHA256
-  signature under the Lemon Squeezy signing secret. Verification checks the
-  signature over the raw body, the product/variant id, and idempotency by
-  event id — so a replayed delivery is a no-op, and a forged one dies on the
-  signature. It never trusts amounts or uids beyond what the signed payload
-  asserts.
+  implied.** It carries no Firebase token; its credential is the
+  `Stripe-Signature` header — HMAC-SHA256 under the endpoint's signing
+  secret, over a timestamped payload, which bounds replay in time.
+  Verification checks the signature over the raw body, the price id, and
+  idempotency by event id — so a redelivered event is a no-op and a forged
+  one dies on the signature. It never trusts amounts or uids beyond what the
+  signed payload asserts.
 - **`stepId` is validated against the shipped roadmap manifest**, which the
   Worker has at hand. An unknown id is a 400 before any SQL. Without this, one
   signed-in user can write unbounded distinct rows, which is the storage meter
   and the daily write quota both.
 - **Bodies are zod-validated** — two booleans; anything else is a 400.
   Parameterized statements only, as ever.
-- **Exactly two secrets, and no database credential.** The Lemon Squeezy API
-  key (creates checkouts, reads the order ledger) and the webhook signing
-  secret, both held as Worker secrets via `wrangler secret`, in no repo. D1
-  is a binding, not a connection string; the Firebase API key and project id
-  are public identifiers by design. v1 had five database URLs and a Redis URL
-  in a Secret; v2 has two strings whose worst-case leak is fraudulent
-  checkouts on a merchant-of-record account — Lemon Squeezy's fraud problem
-  more than ours, and rotation is a dashboard click plus `wrangler secret put`.
+- **Exactly two secrets, and no database credential.** The Stripe secret key
+  (restricted to creating checkout sessions and reading the ledger) and the
+  webhook signing secret, both held as Worker secrets via `wrangler secret`,
+  in no repo. D1 is a binding, not a connection string; the Firebase API key
+  and project id are public identifiers by design. v1 had five database URLs
+  and a Redis URL in a Secret; v2 has two strings whose worst-case leak is
+  fraudulent checkouts on a merchant-of-record account — Stripe's fraud
+  problem more than ours, and rotation is a dashboard click plus
+  `wrangler secret put`.
 - **One origin, so CORS does not exist.** The SPA and `/api/*` are the same
   origin by construction. The whole v1 class of "method missing from the CORS
   list, browser refuses, curl passes" bugs is unrepresentable.
@@ -513,7 +522,7 @@ remains, then rate-limit what validation can't help.**
   record's fraud surface, not ours).
 - **Residual risk, accepted and named:** a stolen Firebase ID token works for
   up to an hour and nothing here detects it. What sits behind it is checkbox
-  state and paid prose — never money, which lives entirely on Lemon Squeezy's
+  state and paid prose — never money, which lives entirely on Stripe's
   side. The mitigation is not shipping XSS, same as v1 and no stronger. With
   money or private data behind the token, this paragraph would be a redesign
   instead of an acceptance.
@@ -622,9 +631,9 @@ never stubbed.
 | Unknown `stepId` → 400 and no row written | Quota-burning writes |
 | No token / expired / wrong-audience token → 401 | The trust boundary, end to end through the real handler |
 | Two users' tokens → each sees only their rows | The `/me`-shaped isolation actually isolating |
-| **`order_created` webhook delivered twice → one entitlement row** | At-least-once delivery vs. the ledger — v1's idempotency discipline, applied where it now matters most |
+| **`checkout.session.completed` delivered twice → one entitlement row** | At-least-once delivery vs. the ledger — v1's idempotency discipline, applied where it now matters most |
 | **Paid asset: anonymous → 401, signed-in unentitled → 402 with zero content bytes, entitled → 200 with the file** | The gate itself, through the real `run_worker_first` routing |
-| **`order_refunded` → gated fetch returns 402 again** | Revocation actually revoking |
+| **refund webhook → gated fetch returns 402 again** | Revocation actually revoking |
 | **Checkout route without a token → 401** | The purchase-binds-to-an-account invariant (§9.1) |
 | Unknown path returns `index.html` with **200** | The SPA deep-link promise — v1 documented this exact failure; now it's a test |
 | Migrations apply twice cleanly on a fresh D1 | Deploy repeatability |
@@ -635,8 +644,9 @@ Playwright (chosen over Cypress: first-class multi-browser, no proprietary
 runner, trivially CI-parallel) against `wrangler dev` on the fixtures plus
 the Firebase Auth emulator — the whole stack, offline, no cloud credentials
 in CI. The purchase flow's webhook is posted by the test itself, signed with
-the test secret, because Lemon Squeezy cannot call localhost — signature
-verification still runs for real.
+the test secret, because Stripe cannot call into CI — signature verification
+still runs for real. (Local manual testing can use `stripe listen`, which
+forwards genuine test-mode events to localhost.)
 
 | Flow | What only a browser can prove |
 |---|---|
@@ -681,7 +691,7 @@ deepcs/
 │   └── app/                ← the React SPA: pages/, roadmap-layout.ts,
 │                             lesson-sections.ts, markdown.ts, theme.ts …
 ├── scripts/
-│   └── reconcile.ts        ← rebuild entitlements from the Lemon Squeezy ledger (§9)
+│   └── reconcile.ts        ← rebuild entitlements from the Stripe ledger (§9)
 ├── test/
 │   ├── unit/
 │   ├── integration/        ← vitest-pool-workers
@@ -703,14 +713,17 @@ deepcs-content/
                                     build, wrangler deploy, smoke
 ```
 
-Deleted from the public working tree: `services/` (all six), `packages/` (db,
-shared), `k8s/`, `load/`, `docker-compose.yml`, the Makefile targets that
-drove them, and every doc page describing deleted machinery. **Preserved:**
-the commit before the rip-out is tagged `v1-distributed`, the README links
-it, and the story stays tellable as "built it, measured demand, removed it" —
-which is only honest while the code stays reachable. The one-time content
-export (seed SQL → files, diffed clean against the database seed) happens
-before the rip-out and becomes `deepcs-content`'s first commit.
+Not carried into v2: `services/` (all six), `packages/` (db, shared),
+`k8s/`, `load/`, `docker-compose.yml`, the Makefile targets that drove them,
+and every doc page describing that machinery. **Preserved:** v1 survives
+complete — code, commit history, measurements — in the private `deepcs-v1`
+repo (with a content-scrubbed copy of its history alongside, should a public
+v1 showcase ever be wanted), so the story stays tellable as "built it,
+measured demand, removed it", shown to anyone on request. The public repo
+begins at the pivot, with this document as its first commit. The one-time
+content export (seed SQL → files, byte-verified against the database seed)
+was completed before the pivot and is `deepcs-content`'s first content
+commit.
 
 Local development: `wrangler dev` (Worker + assets + local D1) on fixtures,
 `CONTENT_DIR=../deepcs-content wrangler dev` for real content, plus the
@@ -727,7 +740,7 @@ containers, and local runs the same engine production runs.
 | Worker (`/api/*` + gated reads) | $0 | ~6k requests | 100k requests/**day** | 429 on gated routes; free site stays up |
 | D1 | $0 | ~4k rows written | 5M reads/day · 100k writes/day · 5 GB | refused, not billed |
 | Firebase Auth | $0 | $0 | 3k DAU / 50k MAU | sign-in refused |
-| Lemon Squeezy | $0 — no monthly fee; the meter only moves when money does | ~5% + 50¢ **per sale**, deducted from the payout (≈ $5.45 on $99, ≈ $7.95 on $149) | n/a | n/a |
+| Stripe Managed Payments | $0 — no monthly fee; the meter only moves when money does | standard processing + 3.5% MoR fee **per sale**, deducted from the payout (≈ $7 all-in on $99) | n/a | n/a |
 | **Total** | **$0** | **$0 fixed; fees only as a % of revenue** | | **no path to a surprise bill** |
 
 *Realistic = 5,000 page views, 200 signed-in sessions, 4,000 ticks, a few
@@ -763,24 +776,26 @@ price of a coffee, with no architecture change.
    user from spending them; entitlement traffic is too small to matter.
 4. **Single-vendor exposure.** Cloudflare's outage is the site's outage.
    Accepted: content and code are in git, state is two small tables (one
-   rebuildable from the Lemon Squeezy ledger), so redeploying elsewhere is an
+   rebuildable from the Stripe ledger), so redeploying elsewhere is an
    afternoon by design.
 5. **Free tiers move.** Every infrastructure figure here was checked
    2026-08-23; re-verify before build-out. Sources: Cloudflare Workers
    pricing & static-asset billing, D1 pricing & limits, WAF rate-limiting
-   rules (free plan), Firebase Auth pricing, Lemon Squeezy fees, Neon plans
+   rules (free plan), Firebase Auth pricing, Stripe Managed Payments fees
+   (quoted in its onboarding, 2026-08-23), Neon plans
    (for the rejected row) — full URL list in `docs/future/deployment.md`,
    which this design supersedes and absorbs.
-6. **A missed webhook.** Lemon Squeezy retries failed deliveries, but the
-   backstop is structural: the reconcile script (§9) rebuilds entitlements
-   from the order ledger, so a buyer reporting missing access is a
-   one-command fix, never data archaeology.
-7. **Merchant-of-record dependency.** Lemon Squeezy changing fees or terms,
-   or an account dispute, interrupts *sales* — never existing access, which
-   is already granted in D1 and recoverable from exported ledgers. The flow
-   is provider-generic (§9): swapping providers touches `checkout.ts` and
-   `webhook.ts` only. Revisit Stripe if a company is ever registered and
-   volume justifies owning tax compliance (§7.1).
+6. **A missed webhook.** Stripe retries failed deliveries with backoff for
+   days, but the backstop is structural: the reconcile script (§9) rebuilds
+   entitlements from the payment ledger, so a buyer reporting missing access
+   is a one-command fix, never data archaeology.
+7. **Merchant-of-record dependency.** Stripe changing Managed Payments fees
+   or terms, or an account dispute, interrupts *sales* — never existing
+   access, which is already granted in D1 and recoverable from exported
+   ledgers. The flow is provider-generic (§9): swapping providers touches
+   `checkout.ts` and `webhook.ts` only, and classic Stripe (you as merchant)
+   is the designated fallback if a company is ever registered and volume
+   justifies owning tax compliance (§7.1).
 8. **Pre-rewrite copies (§8.1).** The content spent about a month
    (2026-07-22 to 2026-08-23) in public git history before the rewrite, with
    zero forks, stars, or watchers the day it was scrubbed. Nothing is
