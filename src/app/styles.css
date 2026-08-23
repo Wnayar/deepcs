@@ -52,7 +52,7 @@
   --radius-sm: 6px;
   --shadow-lg: 0 8px 40px rgb(0 0 0 / 14%);
 
-  /* One measure for running text everywhere, so a lesson and a summary
+  /* One measure for running text everywhere, so a lesson and a dialog
      paragraph wrap at the same width and the page reads as one document.
      Sized for 60-75 characters a line; longer and the eye loses the line
      on the way back, which reads as "hard to read" without a nameable why. */
@@ -389,18 +389,6 @@ button.quiet:hover:not(:disabled) {
   box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
 }
 
-/* The signed-in reader's own name. Quiet on purpose: it is there to answer
-   "am I signed in, and as who", not to be clicked. */
-.who {
-  padding: 0 0.15rem 0 0.4rem;
-  font-weight: 600;
-  color: var(--fg-muted);
-  max-width: 12rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* A navigation link wearing the same clothes as the buttons beside it.
    NavLink sets aria-current itself, so the highlight is driven by the route
    that is actually rendered rather than by a second copy of that knowledge. */
@@ -685,23 +673,6 @@ button:focus-visible {
   color: var(--fg);
   font-weight: 650;
   font-variant-numeric: tabular-nums;
-}
-
-/* Shared by the panel and anything else that needs a filled track. The span is
-   the fill, so the width can be set inline from a percentage. */
-.bar {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--progress-track);
-  overflow: hidden;
-}
-
-.bar span {
-  display: block;
-  height: 100%;
-  border-radius: 3px;
-  background: var(--progress);
-  transition: width 0.18s;
 }
 
 .canvas-controls {
@@ -1179,18 +1150,7 @@ button:focus-visible {
   margin: 2rem 0;
 }
 
-/* ── The session screen ────────────────────────────────────────────────────── */
-
-.editor {
-  /* A fixed height, not a fraction of the viewport. Revealing the answer adds
-     a panel below, and a vh-based editor shrinks as the page grows, so the
-     document you are writing in gets smaller the moment you ask for help. */
-  height: 32rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
+/* The answer key panel on the step page. */
 .reference {
   border: 1px solid var(--ok);
   background: var(--ok-soft);
@@ -1199,106 +1159,6 @@ button:focus-visible {
   margin-top: 1rem;
   max-height: 26rem;
   overflow: auto;
-}
-
-.live {
-  font-size: 0.85rem;
-  color: var(--ok);
-  border: 1px solid var(--ok);
-  border-radius: var(--radius-sm);
-  padding: 0.3rem 0.65rem;
-}
-
-.status {
-  font-size: 0.87rem;
-  color: var(--fg-muted);
-}
-
-/* Two independent signals, each a coloured dot plus what it means. Colour is
-   never the only carrier: the text says the same thing, because a dot alone is
-   unreadable to anyone who cannot tell the hues apart. */
-.signal {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin-right: 1rem;
-}
-
-.signal .dot {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.signal.ok {
-  color: var(--ok);
-}
-
-.signal.wait {
-  color: var(--warn);
-}
-
-.signal.bad {
-  color: var(--danger);
-}
-
-/* CodeMirror ships almost no chrome of its own, which is the point: this is a
-   shared prose document and should read like one. */
-.editor .cm-editor {
-  height: 100%;
-  background: var(--surface);
-  color: var(--fg);
-  font-size: 0.95rem;
-}
-
-.editor .cm-scroller {
-  font-family: inherit;
-  line-height: 1.7;
-  padding: 0.6rem 0.2rem;
-}
-
-/* The ring belongs on the bordered container, not the inner editor, or it is
-   drawn inside the box it is meant to surround. */
-.editor .cm-editor.cm-focused {
-  outline: none;
-}
-
-.editor:focus-within {
-  border-color: var(--accent);
-}
-
-.editor .cm-content {
-  caret-color: var(--fg);
-}
-
-.editor .cm-placeholder {
-  color: var(--fg-faint);
-}
-
-/* The other person's cursor and selection.
- *
- * The binding writes these colours inline from the awareness state, and what
- * it writes is `var(--accent)`: inline styles resolve custom properties, so the
- * palette stays in `:root` and follows a theme switch without the editor
- * knowing themes exist. Left unset it falls back to a hard-coded blue.
- *
- * One colour, not one per client. A session has exactly two people in it: you
- * are the native caret and the other one is this. A palette keyed by client id
- * solved a crowd this room never has. */
-.cm-ySelectionCaret {
-  position: relative;
-  border-left: 2px solid;
-  border-right: none;
-  margin-left: -1px;
-  box-sizing: border-box;
-}
-
-/* The binding also draws a label carrying the peer's name. Awareness here
-   carries a colour and nothing else, on purpose, so there is no name to show
-   and the label would sit over the text reading "Anonymous". */
-.cm-ySelectionInfo {
-  display: none;
 }
 
 /* ── Sign in ───────────────────────────────────────────────────────────────── */

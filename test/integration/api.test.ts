@@ -2,9 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { SELF, env } from 'cloudflare:test';
 import { mintToken } from './helpers';
 
-/** The trust boundary and the progress API, through the real handler
- * (DESIGN.md §15.2). Every token below is really signed and really
- * verified; the failing ones fail on exactly one wrong claim. */
+/** The trust boundary and the progress API. Every token is really signed
+ * and verified; the failing ones are wrong in exactly one claim. */
 
 const base = 'https://deepcs.test';
 

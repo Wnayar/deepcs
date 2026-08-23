@@ -1,20 +1,16 @@
 import { idToken } from './auth';
 
 /**
- * The typed client for everything the page fetches.
- *
- * Two kinds of fetch live here and the split is the architecture (DESIGN.md
- * §3): content is static files served from the edge, and only `/api/*` plus
- * paid content ever reaches the Worker. Free reads carry no token and cost
- * nothing; gated reads carry the Firebase ID token and answer 401 (who are
- * you), 402 (pay first), or the bytes.
+ * Data access. Content is static files served from the edge; only `/api/*`
+ * and paid content reach the Worker. Gated fetches carry the Firebase ID
+ * token and answer 401 (sign in), 402 (pay first), or the bytes.
  */
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
 export type Access = 'free' | 'paid';
 
-/** A failed request, carrying the status so a caller can tell "not signed
- * in" (401) from "not entitled" (402) from "the service is down". */
+/** A failed request, carrying the status so callers can tell 401 from 402
+ * from an outage. */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -27,8 +23,7 @@ export class ApiError extends Error {
 
 async function authHeaders(): Promise<Headers> {
   const headers = new Headers();
-  // Absent when signed out, and that is a valid state rather than an error —
-  // the free tier needs no identity at all.
+  // Absent when signed out; the free tier needs no identity.
   const token = await idToken();
   if (token) headers.set('authorization', `Bearer ${token}`);
   return headers;
@@ -46,10 +41,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   return (await res.json()) as T;
 }
-
-// ---------------------------------------------------------------------------
-// Content: static files. The shapes here mirror content/roadmap.json and
-// content/questions.json, then get adapted to what the pages render.
 
 export interface RoadmapStep {
   id: string;
@@ -82,9 +73,8 @@ interface RoadmapFile {
   }[];
 }
 
-/** The roadmap file is one fetch for the whole map, so one in-flight promise
- * serves every caller and navigation never refetches it. The browser cache
- * holds it across visits regardless; this only dedupes within one page. */
+/** One in-flight promise serves every caller, so navigation never refetches
+ * the map within a page. */
 let roadmapOnce: Promise<RoadmapTopic[]> | null = null;
 
 export function getRoadmap(): Promise<RoadmapTopic[]> {
@@ -106,8 +96,7 @@ export function getRoadmap(): Promise<RoadmapTopic[]> {
       })),
     )
     .catch((err: unknown) => {
-      // A failed fetch must not poison every later caller with a rejected
-      // cached promise; the next call retries.
+      // Do not cache a rejection; the next call retries.
       roadmapOnce = null;
       throw err;
     });
@@ -117,8 +106,6 @@ export function getRoadmap(): Promise<RoadmapTopic[]> {
 export interface StepQuestions {
   id: string;
   parts: string[];
-  /** The whole answer key for this step. Self-serve: on the free tier it is
-   * public, on the paid tier the file only arrives entitled. */
   referenceMd: string;
 }
 
@@ -146,9 +133,8 @@ function getQuestions(access: Access): Promise<Map<string, StepQuestions>> {
   return once;
 }
 
-/** One step in full: everything the step page renders. Throws ApiError 402
- * on a paid step for an unentitled caller, 401 for an anonymous one — the
- * page turns those into the upgrade and sign-in prompts. */
+/** One step in full. Throws ApiError 401/402 on a paid step the caller may
+ * not see; the step page turns those into sign-in and upgrade prompts. */
 export interface StepDetail {
   id: string;
   topic: string;
@@ -191,25 +177,19 @@ export async function getStep(id: string): Promise<StepDetail> {
   throw new ApiError(404, 'no such step');
 }
 
-// ---------------------------------------------------------------------------
-// The API: progress and entitlement, keyed to the verified caller. No route
-// takes a uid; `/me` is whoever the token says (DESIGN.md §12).
-
 export interface Progress {
   stepId: string;
   done: boolean;
   starred: boolean;
 }
 
-/** Everything the signed-in shell needs, in one call: the reader's marks and
- * whether they own the paid tier. */
+/** The reader's marks and entitlement, in one call. */
 export function getMe() {
   return request<{ progress: Progress[]; entitled: boolean }>('/api/me');
 }
 
-/** Set both flags for one step. Sent on every click without waiting for the
- * answer, which is safe because the route replaces state rather than
- * toggling it — the same call twice lands on the same row. */
+/** Replaces both flags for one step, so the same call twice lands on the
+ * same row and optimistic retries are safe. */
 export function setProgress(stepId: string, done: boolean, starred: boolean) {
   return request<Progress>(`/api/me/progress/${stepId}`, {
     method: 'PUT',
@@ -217,14 +197,13 @@ export function setProgress(stepId: string, done: boolean, starred: boolean) {
   });
 }
 
-/** Just the entitlement flag: what /upgrade/thanks polls (bounded) while the
- * purchase webhook races the redirect back. */
+/** What /upgrade/thanks polls while the purchase webhook races the redirect. */
 export function getEntitlement() {
   return request<{ entitled: boolean }>('/api/me/entitlement');
 }
 
-/** Start a checkout. The Worker binds the session to the verified uid and
- * hands back Stripe's hosted checkout URL. */
+/** Starts a checkout; the Worker binds it to the verified uid and returns
+ * the hosted checkout URL. */
 export function startCheckout() {
   return request<{ url: string }>('/api/checkout', { method: 'POST' });
 }

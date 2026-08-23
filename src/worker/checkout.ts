@@ -4,21 +4,14 @@ import { isEntitled } from './entitlement';
 import type { Env } from './env';
 
 /**
- * POST /api/checkout — create a Stripe Checkout Session bound to the
- * verified caller and hand back its hosted URL (DESIGN.md §9.1).
- *
- * `client_reference_id` is the uid the webhook will entitle, set here from
- * the verified token — the one place a uid crosses to a third party, and
- * worth nothing to forge, because forging it means paying for someone
- * else's upgrade. `metadata.product` is what the webhook checks so a signed
- * event for some other thing this account might ever sell cannot mint a
- * lifetime unlock.
+ * POST /api/checkout: create a Stripe Checkout Session and return its
+ * hosted URL. `client_reference_id` carries the verified uid the webhook
+ * will entitle; `metadata.product` is what the webhook checks, so a signed
+ * event for anything else cannot mint a lifetime unlock.
  */
 export async function checkout(request: Request, env: Env): Promise<Response> {
   const uid = await requireUid(request, env);
 
-  // Unconfigured is a state the public repo runs in (fixtures, no Stripe):
-  // fail plainly rather than pretending a checkout could start.
   if (!env.STRIPE_SECRET_KEY || !env.STRIPE_PRICE_ID)
     throw new HttpError(503, 'payments are not configured');
 

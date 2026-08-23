@@ -27,7 +27,7 @@ describe('splitLesson', () => {
     expect(split.sections[0]?.body).toContain('## not a heading');
   });
 
-  it('strips the trailing horizontal rule the seeds end sections with', () => {
+  it('strips a trailing horizontal rule at the end of a section', () => {
     const md = '## A\nalpha\n\n---\n\n## B\nbeta\n\n---';
     const split = splitLesson(md);
     expect(split.sections[0]?.body).toBe('alpha');

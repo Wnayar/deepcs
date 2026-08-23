@@ -5,12 +5,9 @@ import type { Mark } from '../progress';
 
 interface Props {
   topic: RoadmapTopic;
-  /** Signed out, the tick and star are not drawn at all rather than drawn and
-   * refused: the panel is readable by anyone, the marks belong to somebody. */
   signedIn: boolean;
-  /** A paid topic for a reader who has not bought: the steps still list, the
-   * marks hide, and the panel says plainly what unlocks them. The real gate
-   * is the Worker's — this is presentation. */
+  /** A paid topic for a reader who has not bought: steps still list, marks
+   * hide, a banner sells. Presentation only; the Worker is the gate. */
   locked: boolean;
   markOf: (stepId: string) => Mark;
   onMark: (stepId: string, next: Mark) => void;
@@ -18,20 +15,14 @@ interface Props {
   onClose: () => void;
 }
 
-/**
- * What is inside a topic, shown over the roadmap rather than on a page of its
- * own so that closing it puts you back exactly where you were on the map.
- *
- * Escape closes it and so does a click on the backdrop, because a dialog with
- * only one small close button is the kind of thing people get stuck in.
- */
+/** A topic's contents, shown over the map so closing it returns exactly to
+ * where you were. Escape and a backdrop click both close it. */
 export function TopicDialog({ topic, signedIn, locked, markOf, onMark, onOpenStep, onClose }: Props) {
   const panel = useRef<HTMLDivElement>(null);
   const done = topic.steps.filter((step) => markOf(step.id).done).length;
 
   useEffect(() => {
-    // Focus moves into the dialog so the keyboard follows the eye, and Escape
-    // works without first clicking something inside it.
+    // Focus enters the dialog so Escape works without a click first.
     panel.current?.focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -44,8 +35,7 @@ export function TopicDialog({ topic, signedIn, locked, markOf, onMark, onOpenSte
     <div
       className="scrim"
       onClick={onClose}
-      // The map is behind this and drags from anywhere, so a press that lands
-      // on the backdrop must not also start a pan.
+      // A press on the backdrop must not start a pan on the map behind it.
       onPointerDown={(event) => event.stopPropagation()}
     >
       <div
@@ -55,8 +45,7 @@ export function TopicDialog({ topic, signedIn, locked, markOf, onMark, onOpenSte
         aria-modal="true"
         aria-label={topic.title}
         tabIndex={-1}
-        // A click inside the panel must not reach the backdrop behind it,
-        // which would close the dialog the moment anyone tried to use it.
+        // A click inside must not reach the backdrop and close the dialog.
         onClick={(event) => event.stopPropagation()}
       >
         <button
@@ -68,9 +57,8 @@ export function TopicDialog({ topic, signedIn, locked, markOf, onMark, onOpenSte
           ✕
         </button>
 
-        {/* Top-aligned, not centred. Centring moved the title up and down
-            depending on how many steps a topic has, so opening two topics in a
-            row made the panel appear to jump. */}
+        {/* Top-aligned: centring makes the title jump between topics with
+            different step counts. */}
         <div>
           <h2 style={{ margin: '0 0 0.35rem', textAlign: 'center' }}>{topic.title}</h2>
           {signedIn && !locked && (
@@ -95,10 +83,9 @@ export function TopicDialog({ topic, signedIn, locked, markOf, onMark, onOpenSte
             {topic.steps.map((step) => {
               const mark = markOf(step.id);
               return (
-                /* A row, not a button. The tick, the star and the step itself
-                   are three separate actions, and a button inside a button is
-                   invalid markup that React builds through the DOM: nothing
-                   looks broken and then clicks land on the wrong one. */
+                /* A row, not a button: the tick, the star and the step are
+                   three separate actions, and nested buttons are invalid
+                   markup with unpredictable clicks. */
                 <div key={step.id} className="card step-item">
                   {signedIn && !locked && (
                     <>
@@ -124,9 +111,6 @@ export function TopicDialog({ topic, signedIn, locked, markOf, onMark, onOpenSte
                     </>
                   )}
 
-                  {/* The title alone. A number in front of it repeated what
-                      the reading order already shows, and a question count is
-                      the wrong thing to promise a reader before they arrive. */}
                   <button className="step-open" onClick={() => onOpenStep(step.id)}>
                     <span className="label">
                       <strong>{step.title}</strong>

@@ -1,6 +1,5 @@
--- Who paid. D1 is a cache of Stripe's ledger, rebuildable from it
--- (DESIGN.md §9): losing this table is an inconvenience, not a broken
--- promise.
+-- Who paid. A cache of Stripe's ledger, rebuildable from it by
+-- scripts/reconcile.mjs.
 CREATE TABLE entitlements (
   uid               TEXT NOT NULL,        -- Firebase sub, from client_reference_id
   product           TEXT NOT NULL DEFAULT 'lifetime',

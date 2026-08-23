@@ -5,11 +5,9 @@ import { isEntitled } from './entitlement';
 import { stepAccess } from './manifest';
 import type { Env } from './env';
 
-/** Exactly two booleans; anything else is a 400 before any SQL. */
 const Body = z.object({ done: z.boolean(), starred: z.boolean() }).strict();
 
-/** GET /api/me — the reader's marks and their entitlement, in one call,
- * because every signed-in page load wants both (DESIGN.md §3). */
+/** GET /api/me: the reader's marks and entitlement in one call. */
 export async function me(request: Request, env: Env): Promise<Response> {
   const uid = await requireUid(request, env);
   const [rows, entitled] = await Promise.all([
@@ -26,10 +24,11 @@ export async function me(request: Request, env: Env): Promise<Response> {
   });
 }
 
-/** PUT /api/me/progress/:stepId — replaces state rather than toggling it,
- * so the same call twice lands on the same row and retries are free.
- * Progress is free for everyone, paid steps included: the content is what
- * is sold, not the checkbox (DESIGN.md §7). */
+/**
+ * PUT /api/me/progress/:stepId. Replaces state rather than toggling, so
+ * retries are free. Progress works on paid steps too: the content is what
+ * is sold, not the checkbox.
+ */
 export async function putProgress(
   request: Request,
   env: Env,
@@ -37,8 +36,7 @@ export async function putProgress(
 ): Promise<Response> {
   const uid = await requireUid(request, env);
 
-  if (!(await stepAccess(request, env)).has(stepId))
-    throw new HttpError(400, 'no such step');
+  if (!(await stepAccess(request, env)).has(stepId)) throw new HttpError(400, 'no such step');
 
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) throw new HttpError(400, 'body must be {done, starred}');

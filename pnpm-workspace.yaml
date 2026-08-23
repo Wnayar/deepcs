@@ -1,25 +1,17 @@
-# One package, no workspace members: this file exists only to carry the
-# install-script policy below.
+# No workspace members; this file only carries pnpm settings.
 #
-# pnpm blocks dependency install scripts by default (a supply-chain control:
-# a compromised transitive package cannot run code on install). esbuild's
-# postinstall places its platform-native binary, and workerd is wrangler's
-# runtime binary — both are dead without theirs. @firebase/util and
-# protobufjs arrive with the Firebase web SDK and are deliberately declined:
-# only Auth is used, and a bundle Vite builds from source needs neither
-# script. Declining is the default this list exists to make explicit.
+# Install scripts are blocked by default (a supply-chain control). esbuild
+# and workerd need theirs to place native binaries; @firebase/util,
+# protobufjs, and sharp arrive transitively and are declined because nothing
+# here uses what their scripts build.
 allowBuilds:
   esbuild: true
   workerd: true
   '@firebase/util': false
   protobufjs: false
-  # Transitive via the workers tooling; image processing this app never
-  # does, so its native build stays off.
   sharp: false
 
-# One esbuild for the whole tree. wrangler pins 0.28.1 exactly while vite
-# floats a patch ahead, and pnpm installed the floated version without its
-# platform binary — two esbuilds buy nothing but that failure, so both ride
-# wrangler's pin.
+# One esbuild for the whole tree: wrangler pins 0.28.1 exactly while vite
+# floats a patch ahead, and two copies buy nothing but install races.
 overrides:
   esbuild: 0.28.1

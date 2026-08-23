@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getMe, setProgress } from './api';
 
-/** One reader's mark on one step. Two flags rather than one status, because
- * starring something you have not done is most of the point of starring it. */
+/** One reader's mark on one step. Two flags, not one status: starring
+ * something you have not done is most of the point of starring. */
 export interface Mark {
   done: boolean;
   starred: boolean;
@@ -11,27 +11,19 @@ export interface Mark {
 const UNMARKED: Mark = { done: false, starred: false };
 
 export interface ProgressState {
-  /** Marks by step id. A step with no entry is unmarked. */
+  /** Marks by step id; no entry means unmarked. */
   marks: Map<string, Mark>;
   mark: (stepId: string, next: Mark) => void;
   markOf: (stepId: string) => Mark;
-  /** Whether this reader owns the paid tier. False while signed out and
-   * while the answer is still in flight — the UI may only ever upgrade from
-   * locked to unlocked, never flash the other way. */
+  /** False while signed out or in flight: the UI only ever upgrades from
+   * locked to unlocked, never flashes the other way. */
   entitled: boolean;
 }
 
 /**
- * The reader's ticks, stars and entitlement, loaded in one call and written
- * through on each click.
- *
- * Kept here rather than in the roadmap page because two screens read it: the
- * map draws a bar per topic, and the topic panel draws a row per step. The
- * map owns the state and hands the panel what it needs, so opening a topic
- * never refetches.
- *
- * **Signed out is not an error.** The map is public and the request 401s,
- * which is caught and read as "no marks, no entitlement".
+ * The reader's marks and entitlement, loaded once and written through on
+ * each click. Owned by the shell because the header, the map, and the topic
+ * panel all read it. Signed out is not an error: no marks, no entitlement.
  */
 export function useProgress(signedIn: boolean): ProgressState {
   const [marks, setMarks] = useState<Map<string, Mark>>(new Map());
@@ -39,8 +31,7 @@ export function useProgress(signedIn: boolean): ProgressState {
 
   useEffect(() => {
     if (!signedIn) {
-      // Signing out must clear what the previous reader had marked, or their
-      // ticks stay on the map for whoever signs in next.
+      // Signing out must clear the previous reader's marks.
       setMarks(new Map());
       setEntitled(false);
       return;
@@ -56,9 +47,7 @@ export function useProgress(signedIn: boolean): ProgressState {
         setEntitled(res.entitled);
       })
       .catch(() => {
-        // Offline, or signed out between the check and the call. An empty
-        // map is the honest answer: nothing is shown as done or unlocked
-        // that is not known to be.
+        // Offline or signed out mid-flight; an empty map is the honest state.
       });
 
     return () => {
@@ -66,15 +55,9 @@ export function useProgress(signedIn: boolean): ProgressState {
     };
   }, [signedIn]);
 
-  /**
-   * Redraw first, then tell the server.
-   *
-   * Waiting for the round trip would put a visible lag on every click, and
-   * the route replaces state rather than toggling it, so a burst of clicks
-   * settles on whatever the last one said no matter what order the replies
-   * arrive in. A failed write puts the box back, because a tick the server
-   * does not have is worse than a click that visibly did not take.
-   */
+  // Redraw first, then tell the server. The route replaces state rather
+  // than toggling, so a burst of clicks settles on the last one; a failed
+  // write puts the box back.
   const mark = useCallback(
     (stepId: string, next: Mark) => {
       const before = marks.get(stepId) ?? UNMARKED;
@@ -92,8 +75,8 @@ export function useProgress(signedIn: boolean): ProgressState {
   return { marks, mark, markOf, entitled };
 }
 
-/** How many of these steps are done. The roadmap's only arithmetic, in one
- * place because the node bars, the topic panel and the totals all need it. */
+/** How many of these steps are done; shared by the node bars, the topic
+ * panel, and the totals. */
 export function doneCount(marks: Map<string, Mark>, stepIds: string[]): number {
   return stepIds.reduce((n, id) => n + (marks.get(id)?.done ? 1 : 0), 0);
 }

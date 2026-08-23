@@ -1,18 +1,8 @@
 import { useState } from 'react';
 import { signIn, signUp } from '../auth';
 
-/**
- * Email and password only. Firebase owns credentials entirely (ADR-04) — this
- * form hands them to the SDK and never sees a token afterwards except to
- * attach it to requests.
- *
- * **The form picks a mode first**, and it did not always. Both actions used to
- * sit on one screen with every field showing, so a display name was on the page
- * while somebody was only trying to sign in: it reads as a third credential,
- * and one you could get wrong. It never was one, since the name is only sent on
- * sign-up and is ignored by the upsert on any later call, but a field that
- * cannot reject you still stops people who think it can.
- */
+/** Email and password only; Firebase owns credentials entirely. This form
+ * hands them to the SDK and never sees a token except to attach it. */
 export function LoginPage() {
   const [mode, setMode] = useState<'in' | 'up'>('in');
   const [email, setEmail] = useState('');
@@ -28,8 +18,7 @@ export function LoginPage() {
     try {
       await (creating ? signUp(email, password) : signIn(email, password));
     } catch (err) {
-      // Firebase error codes read like `auth/invalid-credential`; the tail is
-      // the only part worth showing.
+      // Firebase codes read like `auth/invalid-credential`; show the tail.
       const code = (err as { code?: string }).code ?? 'unknown';
       setError(code.replace(/^auth\//, '').replace(/-/g, ' '));
     } finally {
@@ -37,8 +26,7 @@ export function LoginPage() {
     }
   };
 
-  /** Switching mode clears the error, which otherwise belongs to the form you
-   * just left and reads as a complaint about the one you are now looking at. */
+  /** Switching mode clears the error; it belonged to the other form. */
   const switchTo = (next: 'in' | 'up') => {
     setMode(next);
     setError(null);
@@ -58,8 +46,6 @@ export function LoginPage() {
         anonymous. Reading the free lessons and questions needs no account at all.
       </p>
 
-      {/* Buttons rather than links: these switch what this form is, they do not
-          navigate, and the URL is the same page either way. */}
       <div className="tabs" role="group" aria-label="Sign in or create an account">
         <button type="button" aria-pressed={!creating} onClick={() => switchTo('in')}>
           Sign in
@@ -81,7 +67,6 @@ export function LoginPage() {
         type="password"
         placeholder="password"
         value={password}
-        // Tells a password manager whether to offer a saved one or a new one.
         autoComplete={creating ? 'new-password' : 'current-password'}
         onChange={(event) => setPassword(event.target.value)}
         required

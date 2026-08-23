@@ -3,8 +3,7 @@ import { SELF, env } from 'cloudflare:test';
 import { completedEvent, mintToken, refundEvent, stripeSignature } from './helpers';
 
 /** The paywall end to end: the webhook that mints an entitlement, the gate
- * that enforces it, and the refund that takes it back (DESIGN.md §15.2).
- * Signatures are always real; the failing ones are wrong in exactly one way. */
+ * that enforces it, and the refund that takes it back. */
 
 const base = 'https://deepcs.test';
 const PAID_FILE = '/content/paid/lessons/sample-premium-1.md';
@@ -108,8 +107,7 @@ describe('checkout', () => {
   });
 
   it('says plainly when payments are not configured', async () => {
-    // The test env deliberately sets no STRIPE_SECRET_KEY: the public repo
-    // runs fixtures-first, and this is the state it runs in.
+    // The test env sets no STRIPE_SECRET_KEY on purpose.
     const res = await SELF.fetch(`${base}/api/checkout`, {
       method: 'POST',
       headers: { authorization: `Bearer ${await mintToken('user-a')}` },

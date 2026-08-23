@@ -3,15 +3,13 @@ import { grant, revoke } from './entitlement';
 import type { Env } from './env';
 
 /**
- * POST /api/webhooks/stripe — the source of every entitlement (DESIGN.md
- * §9.3), and the one route not authenticated by Firebase: its credential is
- * the `Stripe-Signature` header. HMAC-SHA256 under the endpoint's signing
- * secret over `${timestamp}.${rawBody}`, the timestamp bounded to five
- * minutes, the comparison constant-time. A forged delivery dies on the
- * signature; a redelivered one is a no-op in the database.
+ * POST /api/webhooks/stripe: the source of every entitlement, and the one
+ * route not authenticated by Firebase. Its credential is the
+ * Stripe-Signature header: HMAC-SHA256 over `${timestamp}.${rawBody}`,
+ * timestamp-bounded, compared constant-time.
  */
 
-/** Stripe's default tolerance: a signature older than this is a replay. */
+/** Signatures older than this are replays (Stripe's default tolerance). */
 const TOLERANCE_S = 300;
 
 const encoder = new TextEncoder();
@@ -80,9 +78,8 @@ export async function webhook(request: Request, env: Env): Promise<Response> {
   const obj = event.data.object;
 
   if (event.type === 'checkout.session.completed') {
-    // The metadata check is the product check: this account sells exactly
-    // one thing, and stamping it at creation (checkout.ts) means a signed
-    // event for anything else cannot mint a lifetime unlock.
+    // metadata.product is stamped at session creation (checkout.ts); a
+    // signed event for anything else grants nothing.
     if (
       obj.payment_status === 'paid' &&
       obj.metadata?.product === 'lifetime' &&
@@ -99,8 +96,7 @@ export async function webhook(request: Request, env: Env): Promise<Response> {
   } else if (event.type === 'charge.refunded') {
     if (typeof obj.payment_intent === 'string') await revoke(env, obj.payment_intent);
   }
-  // Every other event type is acknowledged and ignored: Stripe keeps
-  // sending what the endpoint subscribes to, and 200 is what stops retries.
+  // Other event types are acknowledged: 200 is what stops Stripe retrying.
 
   return json({ received: true });
 }

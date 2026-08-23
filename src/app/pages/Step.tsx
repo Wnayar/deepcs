@@ -5,25 +5,11 @@ import { ApiError, getStep, type StepDetail } from '../api';
 import { splitLesson, splitReference, type SplitReference } from '../lesson-sections';
 
 /**
- * One step as a focused read: a slim bar carrying where you are, then one
- * lesson section per screen in a single centred column, then a closing screen
- * where each question reveals its own answer.
- *
- * Everything that is not the current section lives in the bar's dropdown, so
- * a screen holds exactly: where you are, one section, and the way onward. The
- * bar hides while you scroll down and returns when you scroll up, the way
- * mobile browser chrome does.
- *
- * The section lives in the URL (`?s=2`, `?s=check`) rather than component
- * state, so refresh keeps your place and Back is "previous section" instead
- * of "leave the lesson".
- *
- * Content arrives as static files (DESIGN.md §6): the lesson markdown by
- * step id, the questions and answers from the tier's questions file. Answers
- * are self-serve — there is no consent machinery and nothing to earn; on the
- * paid tier the whole file only arrives entitled, which is the actual gate.
- * A paid step answers 401 (sign in) or 402 (upgrade) and this page turns
- * each into its prompt rather than an error.
+ * One step as a focused read: one lesson section per screen, then a closing
+ * screen where each question reveals its answer. The section lives in the
+ * URL (`?s=2`, `?s=check`) so refresh keeps your place and Back means
+ * "previous section". A paid step answers 401 or 402 and this page turns
+ * each into its prompt (sign in / upgrade) rather than an error.
  */
 export function StepPage({ signedIn }: { signedIn: boolean }) {
   const navigate = useNavigate();
@@ -52,8 +38,7 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
           setError('This step could not be loaded. Try refreshing the page.');
         }
       });
-    // `signedIn` is a dependency because signing in changes what this fetch
-    // is allowed to see, and the 401 prompt below is how you get here.
+    // signedIn: signing in changes what this fetch is allowed to see.
   }, [stepId, signedIn]);
 
   const lesson = useMemo(() => {
@@ -65,16 +50,14 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
     return split;
   }, [step]);
 
-  /** The answer key, split per question. A key without the `### N.`
-   * numbering cannot be split, so it is kept whole and every card shows all
-   * of it rather than nothing. */
+  /** The answer key, split per question; unsplittable keys are kept whole
+   * and every card shows all of it rather than nothing. */
   const reference = useMemo<SplitReference | { blob: string } | null>(() => {
     if (!step || !step.referenceMd) return null;
     return splitReference(step.referenceMd) ?? { blob: step.referenceMd };
   }, [step]);
 
-  // Which screen the URL names: a 1-based section number, or the check
-  // screen. Out-of-range numbers clamp instead of erroring.
+  // Out-of-range section numbers clamp instead of erroring.
   const count = lesson?.sections.length ?? 1;
   const raw = params.get('s');
   const checking = raw === 'check';
@@ -85,16 +68,14 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
     setParams(next === 'check' ? { s: 'check' } : next > 1 ? { s: String(next) } : {});
   };
 
-  // A new screen starts at its top, whether reached by the pager or by Back,
-  // and always with the bar in view.
+  // A new screen starts at its top with the bar in view.
   useEffect(() => {
     window.scrollTo({ top: 0 });
     setBarHidden(false);
   }, [stepId, raw]);
 
-  // Scrolling down is reading, so the bar gets out of the way; any scroll up
-  // means the reader wants their bearings, so it comes back. The threshold
-  // ignores rubber-band jitter.
+  // The bar hides on scroll down and returns on any scroll up; the
+  // threshold ignores rubber-band jitter.
   useEffect(() => {
     let last = window.scrollY;
     const onScroll = () => {
@@ -111,8 +92,7 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // The dropdown closes like the topic panel does: Escape, or any press
-  // outside it.
+  // The dropdown closes on Escape or any press outside it.
   useEffect(() => {
     if (!menuOpen) return;
     const onPress = (event: PointerEvent) => {
@@ -136,9 +116,8 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
     setOpen(next);
   };
 
-  // A paid step, refused. 401 is "who are you", 402 is "pay first"; each
-  // gets the one action that fixes it, not an error tone — the reader did
-  // nothing wrong.
+  // A refused paid step gets the one action that fixes it, not an error
+  // tone: the reader did nothing wrong.
   if (denied === 401)
     return (
       <div className="gate">
@@ -167,8 +146,7 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
 
   const answers = reference && 'answers' in reference ? reference : null;
   const blob = reference && 'blob' in reference ? reference.blob : null;
-  // `section` is clamped to [1, count] above and `lesson` always has at
-  // least one section, so this cannot miss; the fallback satisfies the types.
+  // section is clamped above, so the fallback only satisfies the types.
   const current = lesson.sections[section - 1] ?? { title: step.title, body: '' };
   const prev = lesson.sections[section - 2];
   const next = lesson.sections[section];
@@ -202,9 +180,8 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
                   {index + 1}. {entry.title}
                 </button>
               ))}
-              {/* The one entry that is not just another section: the questions
-                  are the point of the lesson, so it is marked rather than left
-                  to look like a seventh heading. */}
+              {/* Marked, not styled as another section: the questions are
+                  the point of the lesson. */}
               <button
                 className="menu-key"
                 aria-current={checking ? 'true' : undefined}
@@ -260,9 +237,6 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
             )}
 
             <div className="row" style={{ marginTop: '1.5rem' }}>
-              {/* Out, not back. This is the end of the lesson, so the useful
-                  move is choosing the next one; re-reading the last section is
-                  a click away in the section list either way. */}
               <button className="primary" onClick={() => void navigate(`/topic/${step.topic}`)}>
                 ← Back to the roadmap
               </button>

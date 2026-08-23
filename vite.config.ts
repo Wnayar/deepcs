@@ -5,18 +5,10 @@ import type { Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
 /**
- * The Content-Security-Policy for the built page.
- *
- * Injected on build only. The dev server needs inline scripts for hot
- * reload, and a policy loose enough to allow those is not a policy worth
- * shipping; the built bundle has no inline scripts, so the built one gets
- * the strict version.
- *
- * `connect-src` is one origin plus Firebase Auth: the SPA, the API and the
- * content are all served by the same Worker, which is what makes this list
- * short (DESIGN.md §12). The emulator entry only matters in a local build
- * pointed at it, and is harmless in production, where nothing tries it.
- * `style-src 'unsafe-inline'` covers React's inline style attributes.
+ * The CSP for the built page, injected on build only: the dev server needs
+ * inline scripts for hot reload. connect-src is one origin plus Firebase
+ * Auth (the localhost entry is the emulator, inert in production);
+ * 'unsafe-inline' on styles covers React's inline style attributes.
  */
 const CSP = [
   "default-src 'self'",
@@ -29,14 +21,8 @@ const CSP = [
   "form-action 'none'",
 ].join('; ');
 
-/**
- * Serve the content files during `vite dev`, where no Worker is running.
- * Production never sees this: there, content is deployed static assets and
- * the paid half sits behind the Worker. Dev serves whatever CONTENT_DIR
- * points at (the fixtures by default) with no gate, which is fine because
- * the fixtures are samples and real-content previews are a local, signed-in
- * developer convenience.
- */
+/** Serves content files during `vite dev`, where no Worker runs. Dev-only
+ * and ungated; production content is deployed assets behind the Worker. */
 function contentInDev(): Plugin {
   const dir = process.env.CONTENT_DIR ?? 'content';
   const types: Record<string, string> = { json: 'application/json', md: 'text/markdown' };
@@ -47,8 +33,7 @@ function contentInDev(): Plugin {
       server.middlewares.use((req, res, next) => {
         const url = (req.url ?? '').split('?')[0] ?? '';
         if (!url.startsWith('/content/')) return next();
-        // Dev has no entitlement check, so paid paths map straight back to
-        // the flat content dir.
+        // No gate in dev: paid paths map back to the flat content dir.
         const rel = url.replace('/content/paid/', '/').replace('/content/', '/');
         try {
           const body = readFileSync(join(dir, rel));
@@ -78,8 +63,7 @@ export default defineConfig({
     },
   ],
   build: {
-    // The Worker's static-assets directory. scripts/build-content.mjs adds
-    // the content files here after the bundle is built.
+    // The Worker's assets directory; build-content.mjs adds content here.
     outDir: 'dist/client',
   },
   server: {

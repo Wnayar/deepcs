@@ -6,25 +6,13 @@ interface Props {
   marks: Map<string, Mark>;
 }
 
-/**
- * The gauge's geometry, in the SVG's own coordinates rather than in pixels.
- * The `viewBox` below is 100 wide, so these numbers are percentages of the
- * drawing and the whole thing scales with whatever CSS width it is given.
- */
+/** Gauge geometry in viewBox coordinates (100 wide), so it scales with
+ * whatever CSS width it is given. */
 const R = 42;
 const CIRCUMFERENCE = 2 * Math.PI * R;
 
-/**
- * What this reader has got through, over the map.
- *
- * The count sits *inside* the ring rather than beside it, because the two are
- * one fact and reading them as one is the whole point of a gauge. A number next
- * to a circle is two things to look at.
- *
- * The second line is topics finished, not steps part-done. "Six steps started"
- * is a measure of activity; "two topics you could explain end to end" is a
- * measure of what you have, and only the second one is worth wanting more of.
- */
+/** The reader's totals, drawn over the map: lessons done inside a ring,
+ * topics finished below it. */
 export function ProgressPanel({ topics, marks }: Props) {
   const steps = topics.flatMap((topic) => topic.steps.map((step) => step.id));
   const done = doneCount(marks, steps);
@@ -38,16 +26,13 @@ export function ProgressPanel({ topics, marks }: Props) {
       ) === topic.steps.length,
   ).length;
 
-  // Guarded, because an empty roadmap would divide by zero and the ring would
-  // render with a NaN offset — which draws nothing and looks like a styling bug
-  // rather than like missing data.
+  // An empty roadmap would divide by zero; a NaN dash offset draws nothing.
   const fraction = steps.length === 0 ? 0 : done / steps.length;
 
   return (
     <aside className="progress-panel" aria-label="Your progress">
-      {/* Both children are placed in the same grid cell (see `.gauge` in the
-          stylesheet), which is how the number ends up centred inside the ring
-          without either one being positioned absolutely. */}
+      {/* Both children share one grid cell (.gauge), centring the number in
+          the ring without absolute positioning. */}
       <div className="gauge">
         <svg
           className="gauge-ring"
@@ -55,8 +40,7 @@ export function ProgressPanel({ topics, marks }: Props) {
           role="img"
           aria-label={`${done} of ${steps.length} lessons done`}
         >
-          {/* Rotated so the ring starts at twelve o'clock. A dash offset starts
-              at three o'clock, which reads as though progress began late. */}
+          {/* Rotated so the ring starts at twelve o'clock. */}
           <g transform="rotate(-90 50 50)">
             <circle className="gauge-track" cx="50" cy="50" r={R} />
             <circle

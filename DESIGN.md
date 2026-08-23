@@ -779,12 +779,14 @@ price of a coffee, with no architecture change.
    rebuildable from the Stripe ledger), so redeploying elsewhere is an
    afternoon by design.
 5. **Free tiers move.** Every infrastructure figure here was checked
-   2026-08-23; re-verify before build-out. Sources: Cloudflare Workers
-   pricing & static-asset billing, D1 pricing & limits, WAF rate-limiting
-   rules (free plan), Firebase Auth pricing, Stripe Managed Payments fees
-   (quoted in its onboarding, 2026-08-23), Neon plans
-   (for the rejected row) — full URL list in `docs/future/deployment.md`,
-   which this design supersedes and absorbs.
+   2026-08-23; re-verify before build-out. Sources:
+   - Cloudflare Workers pricing and limits — https://developers.cloudflare.com/workers/platform/pricing/
+   - Workers static assets billing and SPA routing — https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/
+   - D1 pricing and limits — https://developers.cloudflare.com/d1/platform/pricing/ and https://developers.cloudflare.com/d1/platform/limits
+   - Rate-limiting rules on the free plan — https://developers.cloudflare.com/waf/rate-limiting-rules/best-practices/
+   - Firebase Authentication pricing — https://firebase.google.com/pricing
+   - Stripe Managed Payments fee — quoted in its onboarding flow, 2026-08-23
+   - Neon and Cloud Run (rejected rows) — https://neon.com/docs/introduction/plans and https://cloud.google.com/run/pricing
 6. **A missed webhook.** Stripe retries failed deliveries with backoff for
    days, but the backstop is structural: the reconcile script (§9) rebuilds
    entitlements from the payment ledger, so a buyer reporting missing access

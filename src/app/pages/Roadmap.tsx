@@ -17,48 +17,31 @@ import {
   type View,
 } from '../roadmap-layout';
 
-/** How far the pointer may move before a press counts as a drag rather than a
- * click. Below this, a press that wobbles by a pixel still opens the topic. */
+/** Pointer travel below this keeps a press a click rather than a drag. */
 const DRAG_THRESHOLD_PX = 4;
 
-/** The progress bar inside a node, inset from the box so it reads as part of
- * the card rather than as its edge. */
+/** The progress bar inside a node, inset from the box edge. */
 const BAR_W = BOX_W - 44;
 
 /**
- * The roadmap: a tree read downward, one box per topic.
- *
- * Pan and zoom are hand-written because the boxes never move, so the whole
- * interaction is one translate and one scale on a single SVG group. The
- * arithmetic lives in `roadmap-layout.ts` where it can be tested; what is left
- * here is the event handling, and three details in it are the difference
- * between the map being smooth and being unusable:
- *
- *   1. The pointer is *not* captured when a press starts. Capturing on
- *      pointerdown routes every later event to the canvas, so the click never
- *      reaches the topic under the cursor and nothing opens. Movement is
- *      tracked on `window` instead, and a press that never moves stays an
- *      ordinary click on whatever it landed on.
- *   2. The wheel listener is attached natively with `passive: false`, because
- *      React's onWheel cannot call preventDefault. It depends on `topics`
- *      because the canvas does not exist until they arrive.
- *   3. Text selection is off in the stylesheet, or dragging across a label
- *      turns into a highlight halfway through.
+ * The roadmap: a tree read downward, one box per topic, with hand-written
+ * pan and zoom (one translate and one scale on a single SVG group; the
+ * arithmetic is in roadmap-layout.ts). Two constraints in the event
+ * handling: the pointer is not captured on pointerdown, or the click would
+ * never reach the topic under it (movement is tracked on `window` instead),
+ * and the wheel listener is attached natively with `passive: false` because
+ * React's onWheel cannot preventDefault.
  */
 interface Props {
-  /** Ticks and stars need a caller identity, so signed out the map is drawn
-   * without them rather than offering controls that would 401. */
+  /** Signed out, the map draws without marks rather than offering controls
+   * that would 401. */
   signedIn: boolean;
-  /** Owned by the shell, because the header reads `entitled` too; the map
-   * and the topic panel just render from it. */
   progress: ProgressState;
 }
 
 export function RoadmapPage({ signedIn, progress }: Props) {
   const navigate = useNavigate();
-  // Present when the URL is /topic/:topic, absent at /. The panel is part of
-  // this screen rather than a separate one, so opening it does not unmount the
-  // map and closing it does not have to rebuild it.
+  // Present at /topic/:topic, absent at /.
   const { topic: openSlug } = useParams();
   const onOpenTopic = (topic: RoadmapTopic) => void navigate(`/topic/${topic.topic}`);
 
@@ -69,8 +52,7 @@ export function RoadmapPage({ signedIn, progress }: Props) {
   const [dragging, setDragging] = useState(false);
 
   const canvas = useRef<HTMLDivElement>(null);
-  /** Set while a press is turning into a drag, and read by the click handler so
-   * that letting go at the end of a pan does not also open a topic. */
+  /** Read by the click handler so releasing a pan does not open a topic. */
   const moved = useRef(false);
 
   useEffect(() => {
@@ -79,7 +61,6 @@ export function RoadmapPage({ signedIn, progress }: Props) {
       .catch(() => setError('The roadmap could not be loaded. Try refreshing the page.'));
   }, []);
 
-  /** Scale and centre so the whole tree is visible, whatever the window size. */
   const fit = useCallback(() => {
     const box = canvas.current?.getBoundingClientRect();
     if (!box || !topics) return;
@@ -103,11 +84,9 @@ export function RoadmapPage({ signedIn, progress }: Props) {
       event.preventDefault();
       const box = element.getBoundingClientRect();
 
-      // A trackpad pinch reaches the page as a wheel event with ctrlKey set,
-      // which is the only way a browser reports one. Both it and a plain
-      // scroll zoom, but they arrive at very different magnitudes, so each
-      // gets its own sensitivity: one shared constant makes a pinch move in
-      // leaps or a wheel barely move at all.
+      // A trackpad pinch arrives as a wheel event with ctrlKey set, at a
+      // very different magnitude from a scroll, so each gets its own
+      // sensitivity.
       const step = event.ctrlKey || event.metaKey ? 0.01 : 0.002;
 
       setView((v) =>
@@ -143,7 +122,7 @@ export function RoadmapPage({ signedIn, progress }: Props) {
       setDragging(false);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      // Cleared only after the click that follows this pointerup has been seen.
+      // Cleared after the click that follows this pointerup has been seen.
       setTimeout(() => {
         moved.current = false;
       }, 0);
@@ -164,7 +143,6 @@ export function RoadmapPage({ signedIn, progress }: Props) {
   const byName = new Map(topics.map((t) => [t.topic, t]));
   const open = openSlug ? byName.get(openSlug) : undefined;
 
-  /** How many of a topic's steps this reader has ticked. */
   const done = (topic: RoadmapTopic) =>
     doneCount(
       marks,
@@ -195,8 +173,6 @@ export function RoadmapPage({ signedIn, progress }: Props) {
           {topics.map((topic) => (
             <g
               key={topic.topic}
-              /* A finished topic is marked on the map itself, so the shape of
-                 what is left is readable without opening anything. */
               className={
                 topic.steps.length > 0 && done(topic) === topic.steps.length ? 'node done' : 'node'
               }
@@ -215,9 +191,8 @@ export function RoadmapPage({ signedIn, progress }: Props) {
                 {topic.title}
               </text>
 
-              {/* Locked topics are drawn, titled and clickable — the map is
-                  the sales page, so a paid topic shows what it is and the
-                  panel does the asking. Only the badge marks the difference. */}
+              {/* Locked topics stay titled and clickable; the badge is the
+                  only difference. The panel does the selling. */}
               {topic.access === 'paid' && !entitled && (
                 <text
                   className="node-lock"
@@ -229,10 +204,8 @@ export function RoadmapPage({ signedIn, progress }: Props) {
                 </text>
               )}
 
-              {/* The bar is drawn even at zero, so a topic with nothing done
-                  still reads as "0 of 3" rather than as a topic with no steps.
-                  Both rects, not one with a border: a zero-width fill would
-                  otherwise leave a visible rounded stub. */}
+              {/* Drawn even at zero, so "nothing done" reads as an empty
+                  track rather than a topic with no steps. */}
               <rect
                 className="node-track"
                 x={topic.gridX * CELL_X - BAR_W / 2}
@@ -268,8 +241,6 @@ export function RoadmapPage({ signedIn, progress }: Props) {
         </button>
       </div>
 
-      {/* Signed out there is nothing to total, and a "0 of 27" would read as a
-          score rather than as an invitation to sign in. */}
       {signedIn && <ProgressPanel topics={topics} marks={marks} />}
 
       {open && (

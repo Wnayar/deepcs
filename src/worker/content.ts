@@ -4,11 +4,9 @@ import { isEntitled } from './entitlement';
 import type { Env } from './env';
 
 /**
- * GET /content/paid/* — the paywall itself (DESIGN.md §6). These paths are
- * listed in run_worker_first, so the platform never serves them directly;
- * every request lands here, and the file moves only after a token check and
- * one entitlement row read. 401 and 402 carry no content bytes — the lock
- * icon in the UI is presentation, this is the gate.
+ * GET /content/paid/*: the paywall. These paths are in run_worker_first, so
+ * the platform never serves them directly; the file moves only after a
+ * token check and one entitlement read, and 401/402 carry no content bytes.
  */
 export async function servePaid(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'GET' && request.method !== 'HEAD')
@@ -17,8 +15,6 @@ export async function servePaid(request: Request, env: Env): Promise<Response> {
   const uid = await requireUid(request, env);
   if (!(await isEntitled(env, uid))) throw new HttpError(402, 'payment required');
 
-  // The assets binding serves run_worker_first paths happily when asked
-  // from inside the Worker; only the platform's direct route skips them.
   const asset = await env.ASSETS.fetch(request);
   if (!asset.ok) throw new HttpError(404, 'no such file');
 

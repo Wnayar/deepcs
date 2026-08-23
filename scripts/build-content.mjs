@@ -1,16 +1,10 @@
-// Splits the content by access tier into the Worker's asset directory.
-//
-// Free content lands on public paths; paid content lands under
-// content/paid/, which wrangler.toml lists in run_worker_first, so the
-// platform never serves it directly — every request runs the Worker's
-// entitlement check first (DESIGN.md §6).
-//
-// This is also the content validator: a content mistake should fail the
-// build here, not surface as a broken deploy. The same checks run as unit
-// tests against the fixtures.
+// Splits content by access tier into the Worker's asset directory: free on
+// public paths, paid under content/paid/ where only the Worker serves it.
+// Doubles as the content validator, so a content mistake fails the build
+// rather than the deploy.
 //
 //   node scripts/build-content.mjs            # fixtures in ./content
-//   CONTENT_DIR=../deepcs-content node ...    # the real thing, in CI
+//   CONTENT_DIR=../deepcs-content node ...    # real content, in CI
 
 import { cpSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -69,8 +63,8 @@ if (failed) process.exit(1);
 mkdirSync(path.join(out, 'lessons'), { recursive: true });
 mkdirSync(path.join(out, 'paid', 'lessons'), { recursive: true });
 
-// The map itself is public in full: locked topics are the sales page. Only
-// bodies (lessons, questions, answers) split by tier.
+// The map is public in full (locked topics are the sales page); only the
+// bodies split by tier.
 writeFileSync(path.join(out, 'roadmap.json'), JSON.stringify(roadmap, null, 2) + '\n');
 
 for (const access of ['free', 'paid']) {

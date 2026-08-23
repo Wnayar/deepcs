@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && node scripts/build-content.mjs",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.worker.json",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.worker.json && tsc -p test/integration/tsconfig.json",
     "test": "vitest run",
     "test:integration": "npm run build && vitest run -c vitest.workers.config.ts",
     "preview": "npm run build && wrangler dev"

@@ -1,9 +1,5 @@
-// Rebuild the entitlements table from Stripe's ledger (DESIGN.md §9).
-//
-// Stripe, not D1, is the authoritative record of who paid: this walks every
-// completed Checkout Session and emits idempotent SQL for the ones that
-// sold the lifetime unlock. Nothing is written directly — the output goes
-// through wrangler, so the same script serves a drill and a real recovery:
+// Rebuilds the entitlements table from Stripe's ledger, the authoritative
+// record of who paid. Emits idempotent SQL rather than writing directly:
 //
 //   STRIPE_SECRET_KEY=sk_... node scripts/reconcile.mjs > recover.sql
 //   npx wrangler d1 execute deepcs --remote --file recover.sql
@@ -43,8 +39,7 @@ do {
           sq(s.client_reference_id),
           "'lifetime'",
           sq(s.payment_intent),
-          // Reconciliation has no webhook event id; the session id is just
-          // as unique and just as traceable back to the ledger.
+          // No webhook event id here; the session id is just as unique.
           sq(`reconciled:${s.id}`),
           sq(new Date(s.created * 1000).toISOString()),
         ].join(', ') +

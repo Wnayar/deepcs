@@ -1,11 +1,6 @@
 <!doctype html>
-<!--
-  `data-theme` is set here rather than only by React, so the first paint is
-  already dark. Setting it in JavaScript alone shows a white page for one
-  frame on every load, which is the flash that makes a dark site feel
-  cheap. The theme hook overwrites this attribute if a light preference was
-  saved, and does so before anything is rendered.
--->
+<!-- data-theme is set here so the first paint is already dark; the theme
+     hook overwrites it before rendering if light was saved. -->
 <html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />

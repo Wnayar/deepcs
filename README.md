@@ -10,8 +10,8 @@ unlocks the rest. Live at **[deepcs.org](https://deepcs.org)**.
 
 **Stack:** one Cloudflare Worker (static assets + a six-route API) · D1 ·
 React + Vite · Firebase Auth (verified in-Worker with `jose`) · Stripe
-Managed Payments. The full design, with every decision and the alternatives
-it beat, is in [DESIGN.md](./DESIGN.md).
+Managed Payments. Every design decision, with the alternatives it beat, is
+in [DESIGN.md](./DESIGN.md).
 
 ---
 
@@ -41,17 +41,9 @@ whoever has that repo.
 ```bash
 pnpm test               # unit: pure logic, milliseconds, no I/O
 pnpm test:integration   # the real Worker in workerd, real local D1,
-                        # really-signed JWTs and webhooks (DESIGN.md §15)
+                        # really-signed JWTs and webhooks
 ```
 
 The trust boundary, the paywall, webhook forgery and replay, refund
 revocation, and the SPA deep-link promise are all asserted against the
 production runtime, offline.
-
-## History
-
-This is v2. Its predecessor was a six-service distributed system — Yjs
-collaborative editing, matchmaking, Redis streams, a local Kubernetes
-cluster, a k6 measurement harness — built, measured, and then simplified
-away when a user survey showed no demand for pair-solving. That repo is
-private (code and measurements intact); ask if you'd like a look.

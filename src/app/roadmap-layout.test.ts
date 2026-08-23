@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BOX_H, MIN_SCALE, edgePath, fitView, zoomAt } from './roadmap-layout';
 
-/** A tree the shape of the seeded roadmap: six rows, branching and rejoining.
+/** A tree the shape of the real roadmap: six rows, branching and rejoining.
  * Positions are representative rather than copied, because what is under test is
  * the geometry, not which topic sits where. */
 const TREE = [

@@ -7,14 +7,9 @@ import { servePaid } from './content';
 import type { Env } from './env';
 
 /**
- * The entire backend (DESIGN.md §3). The platform serves the SPA and free
- * content without ever invoking this; only /api/* and /content/paid/* run
- * it (run_worker_first in wrangler.toml). Six routes, so the router is a
- * chain of ifs rather than a framework.
- *
- * No route accepts a uid: /me is whoever the verified token says, which is
- * what removes the IDOR class by shape rather than by a check somebody
- * could forget (DESIGN.md §12).
+ * The entire backend. The platform serves the SPA and free content without
+ * invoking this; only /api/* and /content/paid/* run it. No route accepts a
+ * uid — /me is whoever the verified token says (DESIGN.md §12).
  */
 export default {
   async fetch(request, env): Promise<Response> {

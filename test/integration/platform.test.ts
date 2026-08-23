@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SELF, applyD1Migrations, env } from 'cloudflare:test';
 
 /** The platform promises the app leans on: the SPA deep-link rewrite, free
- * content bypassing the Worker entirely, and repeatable migrations
- * (DESIGN.md §15.2). */
+ * content bypassing the Worker, and repeatable migrations. */
 
 const base = 'https://deepcs.test';
 

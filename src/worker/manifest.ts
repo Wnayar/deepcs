@@ -1,12 +1,10 @@
 import type { Env } from './env';
 
 /**
- * The step manifest, read from the deployed roadmap.json through the assets
- * binding and cached at module scope. It answers two questions the API must
- * not take a caller's word for: does this step exist (an unknown id is a
- * 400 before any SQL — the write-quota guard, DESIGN.md §12), and which
- * tier does it belong to. A deploy replaces isolates, so the cache can
- * never outlive the content it describes.
+ * Step id -> access tier, read from the deployed roadmap.json and cached at
+ * module scope (a deploy replaces isolates, so the cache cannot outlive its
+ * content). Unknown step ids are rejected before any SQL, which is what
+ * keeps one user from writing unbounded rows.
  */
 
 interface RoadmapFile {
@@ -28,7 +26,7 @@ export function stepAccess(request: Request, env: Env): Promise<Map<string, 'fre
         ),
     )
     .catch((err: unknown) => {
-      // A failed read must not poison every later request in this isolate.
+      // Do not cache a rejection; the next request retries.
       manifest = null;
       throw err;
     });

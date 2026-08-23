@@ -1,5 +1,5 @@
-/** A response the router can throw from anywhere. 401 means "who are you",
- * 402 means "pay first" — the SPA turns each into its prompt. */
+/** A response the router can throw from anywhere: 401 means "who are you",
+ * 402 means "pay first". */
 export class HttpError extends Error {
   constructor(
     readonly status: number,

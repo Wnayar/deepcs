@@ -62,28 +62,23 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ---
 
-## Project context
+## The project
 
-**This is DeepCS v2: a deployed product.** One Cloudflare Worker serves the
-React SPA and free content as static assets and runs a six-route API
-(progress, entitlement, checkout, webhook, paid-content gate) against D1.
-Identity is Firebase Auth verified in-Worker; payments are Stripe Managed
-Payments (merchant of record). **DESIGN.md is the constitution** — every
-architectural decision, with the alternatives it beat, lives there. When a
-change contradicts DESIGN.md, update the document in the same change or
-don't make it.
+DeepCS: a deployed CS-fundamentals roadmap with a free tier and a one-time
+paid unlock. One Cloudflare Worker serves the React SPA and free content as
+static assets and runs a six-route API (progress, entitlement, checkout,
+webhook, paid-content gate) against D1. Firebase Auth is verified in-Worker;
+Stripe Managed Payments is the merchant of record. **DESIGN.md is the
+decision record**: when a change contradicts it, update the document in the
+same change or don't make the change.
 
-- **Real content never enters this repo.** It lives in the private
-  `deepcs-content` repo (all 10 topics, `access: free|paid` per topic) and
-  joins this code only at deploy time. This repo carries clearly-labeled
-  sample fixtures in `content/`, including one paid fixture topic so the
-  paywall is testable here. This rule is the paywall: treat any real lesson
-  text appearing in this repo as an incident, not a style issue.
-- The distributed v1 (six services, Yjs collab, matching, Redis, k8s) is
-  preserved in the private `deepcs-v1` repo. Don't rebuild what it proved;
-  don't describe this repo as if it still is that system.
+**Real content never enters this repo.** It lives in the private
+`deepcs-content` repo and joins this code at deploy time. This repo carries
+clearly-labeled sample fixtures in `content/`, one fixture topic paid so the
+paywall is testable here. This rule is the paywall: real lesson text in this
+repo is an incident, not a style issue.
 
-## Running it
+## Commands
 
 ```bash
 pnpm build && npx wrangler dev        # the whole stack on :8787
@@ -91,77 +86,61 @@ npx wrangler d1 migrations apply deepcs --local   # once per fresh checkout
 pnpm dev                              # Vite only: hot reload, ungated content
 CONTENT_DIR=../deepcs-content pnpm build          # build against real content
 pnpm test                             # unit
-pnpm test:integration                 # builds, then real Worker in workerd
+pnpm test:integration                 # builds, then the real Worker in workerd
 ```
 
-## Conventions
+## Invariants
 
-**Security shape (DESIGN.md §12) — preserve these by construction:**
+**Security is by shape; preserve the shapes:**
 
-- **No route ever accepts a uid.** The surface is `/api/me/*`; identity
-  comes only from the verified token's `sub`. Adding a route that names a
-  user re-opens the IDOR class the shape currently makes inexpressible.
-- **The paid gate is server-side only.** Paid bytes are served by the
-  Worker after a token + entitlement check; UI locks are presentation.
-  Paid paths live under `/content/paid/*`, which `run_worker_first` routes
-  to the Worker — a paid file on any other path is publicly served.
+- **No route accepts a uid.** The surface is `/api/me/*`; identity comes
+  only from the verified token's `sub`.
+- **The paid gate is server-side only.** Paid files live under
+  `/content/paid/*` (run_worker_first); UI locks are presentation. A paid
+  file on any other path is publicly served.
 - **Exactly two secrets** (Stripe secret key, webhook signing secret), set
-  with `wrangler secret put`, never in git, never in wrangler.toml. The
-  Firebase project id and API key are public identifiers.
-- **The webhook route's credential is its signature**, not a Firebase
-  token: HMAC verified over the raw body, timestamp-bounded, idempotent by
-  event id. Never trust a payload field the signature doesn't cover.
-- The Worker can only *verify* tokens (`jose` + Google's JWKS). Nothing
-  here can mint one; keep it that way — no `firebase-admin`.
+  with `wrangler secret put`, never in git or wrangler.toml.
+- **The webhook route's credential is its signature**: HMAC over the raw
+  body, timestamp-bounded, idempotent by event id. Never trust a field the
+  signature doesn't cover.
+- The Worker can only verify tokens, never mint them: no `firebase-admin`.
 
 **Data:**
 
-- D1 via numbered migrations in `migrations/`, applied by wrangler and
-  tracked by the platform — no hand-editing applied files.
-- D1 is a cache of Stripe's ledger for entitlements (DESIGN.md §9):
-  `scripts/reconcile.mjs` can rebuild the table. Progress and entitlements
-  are the only state anywhere.
-- Writes are idempotent: progress PUT replaces state, entitlement grant is
-  `INSERT OR IGNORE` on event id + primary key.
+- D1 through numbered migrations in `migrations/`, wrangler-tracked; never
+  edit an applied file.
+- Entitlements are a cache of Stripe's ledger; `scripts/reconcile.mjs`
+  rebuilds them. Writes are idempotent (PUT replaces, grant is INSERT OR
+  IGNORE).
 
 **Content:**
 
-- Fix content at the source: a typo is a commit in `deepcs-content` and a
+- Fix content at the source: a typo is a commit in `deepcs-content` plus a
   redeploy, never a render-time patch.
-- `scripts/build-content.mjs` is both the tier-splitter and the validator
-  (missing lessons, orphans, unknown steps, empty free tier, em/en dashes).
-  A content mistake should fail the build, not surface as a broken deploy.
-- **No em or en dashes in anything a reader sees** (lessons, questions,
-  answers, titles, UI strings). The validator asserts it. Code comments and
-  these docs are exempt.
+- `scripts/build-content.mjs` validates and splits content by tier; a
+  content mistake must fail the build.
+- **No em or en dashes in anything a reader sees.** The validator asserts
+  it. Code comments and these docs are exempt.
 
 **The browser:**
 
-- **Every screen is a URL**, no exceptions in v2, and a route refetches
-  rather than trusting handed state. The SPA fallback (unknown path →
-  index.html, 200) is asserted by an integration test.
-- **Every poll is bounded.** The only poll in the app is /upgrade/thanks
-  asking for the entitlement a few times after checkout. Anything new that
-  asks on a timer needs a reason to exist and a bound on three sides.
+- Every screen is a URL, and a route refetches rather than trusting handed
+  state. The SPA fallback is asserted by an integration test.
+- Every poll is bounded. The only one is the post-checkout entitlement poll.
 - Interactive elements do not nest; colours live in `:root` custom
-  properties; both inherited from v1 and still true.
+  properties only.
 
-**Testing (DESIGN.md §15):**
+**Testing:**
 
-- Pyramid, no coverage target: many unit tests (pure logic), ~24
-  integration tests (the real Worker in workerd with real local D1), e2e
-  thin. Every test pins a named failure.
-- **Never stub verification.** Integration tests mint real RS256 tokens
-  against the committed throwaway key pair (`test/fixtures/test-jwks.json`)
-  and really-sign webhook payloads; the Worker verifies both exactly as in
-  production. A mock here would happily approve the bug the test exists to
-  catch.
+- Pyramid, no coverage target: every test pins a named failure.
+- **Never stub verification.** Integration tests sign real tokens with the
+  committed throwaway key pair and really-sign webhook payloads; the Worker
+  verifies both exactly as in production.
 
-### Comment style (inherited from v1, still the rule)
+## Comment style
 
-- Plain sentences, not arrow-chain shorthand.
-- Non-obvious logic gets a short comment with a concrete example.
-- A citation names its document: `DESIGN.md §9`, never a bare `§9`.
-- One fact, one home: a comment carries the mechanism and the consequence,
-  then points at DESIGN.md; the copy nobody updates is the one in the
-  comment.
+Google-lean: every comment fights for its life. A comment states a
+constraint the code cannot show, in plain sentences; no narration of what
+the next line does. A citation names its document (`DESIGN.md §9`, never a
+bare `§9`). One fact, one home: mechanism in the comment, reasoning in
+DESIGN.md.

@@ -1,14 +1,10 @@
 /**
- * Where the roadmap's boxes and lines go.
- *
- * Separate from the component because it is arithmetic with no React in it,
- * which means it can be tested directly. That matters here: a mistake in
- * `fitView` does not throw or warn, it silently draws the whole tree at a
- * scale that makes it invisible, and the page looks empty rather than broken.
+ * Roadmap geometry: pure arithmetic, testable without React. A mistake in
+ * `fitView` does not throw; it silently draws the tree at an invisible
+ * scale, so this is tested directly.
  */
 
-/** Grid to pixels. `gridX` and `gridY` are the *centre* of a box, in small
- * whole numbers, so the migration reads as a shape rather than as pixels. */
+/** Grid to pixels. `gridX`/`gridY` name the centre of a box. */
 export const CELL_X = 122;
 export const CELL_Y = 112;
 export const BOX_W = 194;
@@ -20,8 +16,8 @@ export const MAX_SCALE = 2;
 /** Space left around the tree when fitting it to the canvas. */
 const PADDING = 64;
 
-/** Below this the canvas has not been laid out yet and any measurement of it
- * is meaningless. */
+/** Below this the canvas has not been laid out yet; measurements of it are
+ * meaningless. */
 const MIN_USABLE_PX = 80;
 
 export interface Placed {
@@ -45,15 +41,9 @@ export const boxTop = (node: Placed) => node.gridY * CELL_Y - BOX_H / 2;
 
 export const clampScale = (scale: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
 
-/**
- * A curve from the bottom of one box to the top of the next.
- *
- * Deliberately loose. These lines say "this is the order I would read them in",
- * not "this one is required by that one", so they only have to lead the eye
- * downward. The control points sit straight below the start and straight above
- * the end, which is what keeps a line reading as downward travel even when the
- * two topics are far apart sideways.
- */
+/** A curve from the bottom of one box to the top of the next. Control points
+ * sit straight below the start and above the end, so the line reads as
+ * downward travel even when the boxes are far apart sideways. */
 export function edgePath(from: Placed, to: Placed): string {
   const x1 = from.gridX * CELL_X;
   const y1 = from.gridY * CELL_Y + BOX_H / 2;
@@ -64,14 +54,10 @@ export function edgePath(from: Placed, to: Placed): string {
 }
 
 /**
- * The pan and zoom that shows the whole tree centred in `box`, or `null` when
- * the canvas is too small to have been laid out yet.
- *
- * The `null` is the whole point of this function existing. An unlaid-out canvas
- * measures zero, and fitting to it works out `(0 - padding) / treeHeight`,
- * which is negative: the tree is then drawn mirrored and shrunk to a speck, and
- * the page reads as empty. Refusing to answer is better than answering with a
- * number that renders nothing.
+ * The pan and zoom that shows the whole tree centred in `box`, or null when
+ * the canvas is too small to have been laid out yet. Fitting to a zero-size
+ * canvas computes a negative scale that renders nothing; refusing to answer
+ * is better.
  */
 export function fitView(box: Box, nodes: Placed[]): View | null {
   if (nodes.length === 0) return null;
@@ -99,9 +85,7 @@ export function fitView(box: Box, nodes: Placed[]): View | null {
   };
 }
 
-/** Scaling towards the origin makes the map slide away as it grows, which
- * feels like the zoom is fighting you. Scaling towards a point keeps whatever
- * is under that point where it is. */
+/** Zoom towards a point, keeping whatever is under it in place. */
 export function zoomAt(view: View, factor: number, px: number, py: number): View {
   const scale = clampScale(view.scale * factor);
   const ratio = scale / view.scale;

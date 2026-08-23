@@ -3,21 +3,18 @@ import { HttpError } from './http';
 import type { Env } from './env';
 
 /**
- * Firebase ID token verification, in-process. `jose` against Google's
- * published JWKS: no admin SDK, no service-account credential, so nothing
- * in this system can mint a token — only check one (DESIGN.md §11).
+ * Firebase ID token verification, in-process. Only Google's public keys are
+ * involved, so nothing here can mint a token.
  *
- * The audience check is the load-bearing line: Google signs every Firebase
- * project's tokens with the same key set, so a token minted by a stranger's
- * project passes signature, `exp` and `iss` shape. Only `audience` rejects
- * it.
+ * The audience check is load-bearing: Google signs every Firebase project's
+ * tokens with the same key set, so a token from a stranger's project passes
+ * signature, exp, and issuer shape. Only `audience` rejects it.
  */
 
 const GOOGLE_JWKS_URL =
   'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
 
-/** Held at module scope so the key fetch happens once per isolate, not once
- * per request (DESIGN.md §18.2). */
+/** Module scope: the key fetch happens once per isolate, not per request. */
 let jwks: ReturnType<typeof createRemoteJWKSet> | ReturnType<typeof createLocalJWKSet> | null =
   null;
 
@@ -28,8 +25,7 @@ function keySet(env: Env) {
   return jwks;
 }
 
-/** The verified caller's uid, or a thrown 401. There is no anonymous path
- * through here: every route that calls this requires an identity. */
+/** The verified caller's uid, or a thrown 401. */
 export async function requireUid(request: Request, env: Env): Promise<string> {
   const header = request.headers.get('authorization');
   if (!header?.startsWith('Bearer ')) throw new HttpError(401, 'sign in first');
