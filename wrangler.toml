@@ -20,14 +20,14 @@ binding = "DB"
 database_name = "deepcs"
 # Set by `wrangler d1 create deepcs` before the first deploy; local dev and
 # tests never read it.
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "74fcbe6f-5ae3-4284-8a4e-f08c8ef78fb3"
 migrations_dir = "migrations"
 
 [vars]
 # Public identifier; production overrides at deploy time. Secrets
 # (STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET) are set with `wrangler secret
 # put`, and STRIPE_PRICE_ID is a deploy-time var.
-FIREBASE_PROJECT_ID = "demo-deepcs"
+FIREBASE_PROJECT_ID = "deepcs"
 
 # Per-uid rate limits, keyed by uid inside the Worker so one account cannot
 # exhaust the shared quota or spam Stripe from many IPs. namespace_id is any
