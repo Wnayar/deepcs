@@ -4,25 +4,26 @@ import { Link } from 'react-router';
  * parts this site does not sell. Trust copy first, funnel second. */
 export function AdvicePage() {
   return (
-    <div className="upgrade">
+    <div className="upgrade centered">
       <p className="kicker">The honest playbook</p>
       <h2>How to actually prepare for SWE interviews</h2>
 
       <ul className="playbook">
         <li>
           <strong className="lead-neetcode">NeetCode 150.</strong> Data structures and
-          algorithms, on a schedule.
+          algorithms.
         </li>
         <li>
           <strong className="lead-deepcs">DeepCS.</strong> General technical rounds. Start with
-          the free Easy row.
+          Easy and work your way up.
         </li>
         <li>
-          <strong className="lead-projects">Reverse engineer postings you want.</strong> Build
-          one project you enjoy that covers what they keep asking for.
+          <strong className="lead-projects">Personal projects.</strong> Find your dream SWE job
+          at your ideal company, reverse its job description into project requirements on a
+          topic you like, and build it.
         </li>
         <li>
-          <strong className="lead-apply">Apply as early as possible.</strong> Deadlines roll.
+          <strong className="lead-apply">Apply as early as possible to internships and jobs.</strong>
         </li>
       </ul>
 

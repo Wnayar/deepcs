@@ -1317,11 +1317,15 @@ button:focus-visible {
 
 /* ── Sign in ───────────────────────────────────────────────────────────────── */
 
+/* Centred in the window, not hugging the left margin: two buttons do not
+   need a form's reading column. */
 .auth {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
   max-width: 20rem;
+  margin: 14vh auto 0;
+  text-align: center;
 }
 
 /* The two provider doors; base button styles carry the rest. */
@@ -1412,8 +1416,17 @@ button:focus-visible {
   gap: 0.4rem;
 }
 
+.avatar {
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 999px;
+  margin: 0 0.35rem;
+  border: 1px solid var(--line);
+}
+
 /* Four parallel tracks, so no numbers: numbering would claim an order the
-   advice does not have. */
+   advice does not have. The block centres with its page; the words stay
+   left-aligned, because centred multi-line prose is hard to scan. */
 .playbook {
   list-style: none;
   margin: 0;
@@ -1422,6 +1435,7 @@ button:focus-visible {
   flex-direction: column;
   gap: 0.9rem;
   max-width: var(--measure);
+  text-align: left;
 }
 
 .playbook strong {
@@ -1489,15 +1503,6 @@ button:focus-visible {
   padding-top: 1.5rem;
 }
 
-/* The origin note: a quiet plaque, not small print. */
-.origin {
-  margin: 0.4rem 0 0;
-  padding: 0.85rem 1.15rem;
-  max-width: 30rem;
-  background: var(--surface-2);
-  border-radius: var(--radius);
-  color: var(--fg-muted);
-}
 
 /* The one plan, as a card that is itself the buy button. Hover lifts it
    and rings it in accent, so the whole card reads as clickable. */

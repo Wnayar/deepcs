@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router';
 import { renderMarkdown } from '../markdown';
 import { ApiError, getStep, type StepDetail } from '../api';
 import { splitLesson, splitReference, type SplitReference } from '../lesson-sections';
@@ -121,26 +121,16 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
   if (denied === 401)
     return (
       <div className="gate">
-        <h2>This lesson is part of DeepCS Pro</h2>
-        <p className="muted">Sign in first, then one payment unlocks everything, forever.</p>
-        <Link className="navlink primary" to="/signin">
+        <h2>Part of DeepCS Pro</h2>
+        <p className="muted">Sign in to continue.</p>
+        <Link className="navlink primary" to="/signin" state={{ from: window.location.pathname }}>
           Sign in
         </Link>
       </div>
     );
-  if (denied === 402)
-    return (
-      <div className="gate">
-        <h2>This lesson is part of DeepCS Pro</h2>
-        <p className="muted">
-          One payment unlocks every topic, lesson, question and answer. No subscription, yours
-          for good.
-        </p>
-        <Link className="navlink primary" to="/upgrade">
-          See what's included
-        </Link>
-      </div>
-    );
+  // A signed-in reader who opened a Pro lesson has already shown intent:
+  // no interstitial, straight to the offer.
+  if (denied === 402) return <Navigate to="/upgrade" replace />;
 
   if (error && !step) return <p className="error">{error}</p>;
   if (!step || !lesson) return <p className="muted">Loading…</p>;

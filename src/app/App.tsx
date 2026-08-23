@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate, NavLink, Outlet, Route, Routes } from 'react-router';
+import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router';
 import { signOutUser, watchUser, type User } from './auth';
 import { useTheme } from './theme';
 import { useProgress } from './progress';
@@ -51,6 +51,10 @@ export function App() {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
   const [theme, toggleTheme] = useTheme();
+  const location = useLocation();
+  // Where sign-in returns to: whoever links to /signin says where they came
+  // from, so a purchase or a locked lesson resumes instead of resetting.
+  const from = (location.state as { from?: string } | null)?.from ?? '/';
 
   // Shared here because the header, the map, and the topic panel read it.
   const progress = useProgress(Boolean(user));
@@ -98,11 +102,25 @@ export function App() {
           )}
 
           {user ? (
-            <button className="quiet" onClick={() => void signOutUser()} title={user.email ?? ''}>
-              Sign out
-            </button>
+            <>
+              {user.photoURL && (
+                /* Provider avatar, straight from the session: nothing of it
+                   is stored on our side. Display only, deliberately not a
+                   control. no-referrer, or Google's CDN 403s. */
+                <img
+                  className="avatar"
+                  src={user.photoURL}
+                  alt=""
+                  title={user.displayName ?? user.email ?? ''}
+                  referrerPolicy="no-referrer"
+                />
+              )}
+              <button className="quiet" onClick={() => void signOutUser()}>
+                Sign out
+              </button>
+            </>
           ) : (
-            <NavLink className="navlink" to="/signin">
+            <NavLink className="navlink" to="/signin" state={{ from: location.pathname }}>
               Sign in
             </NavLink>
           )}
@@ -131,7 +149,7 @@ export function App() {
 
         <Route element={<Narrow />}>
           <Route path="/step/:id" element={<StepPage signedIn={Boolean(user)} />} />
-          <Route path="/signin" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
+          <Route path="/signin" element={user ? <Navigate to={from} replace /> : <LoginPage />} />
           <Route
             path="/upgrade"
             element={<UpgradePage signedIn={Boolean(user)} entitled={progress.entitled} />}

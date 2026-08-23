@@ -8,14 +8,21 @@ import react from '@vitejs/plugin-react';
  * The CSP for the built page, injected on build only: the dev server needs
  * inline scripts for hot reload. connect-src is one origin plus Firebase
  * Auth (the localhost entry is the emulator, inert in production);
+ * frame-src is the popup sign-in flow's hidden iframe on the authDomain;
  * 'unsafe-inline' on styles covers React's inline style attributes.
  */
 const CSP = [
   "default-src 'self'",
-  "connect-src 'self' http://localhost:9099 https://identitytoolkit.googleapis.com https://securetoken.googleapis.com",
-  "script-src 'self'",
+  "connect-src 'self' http://localhost:9099 https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://cloudflareinsights.com",
+  "frame-src https://deepcs.firebaseapp.com",
+  // apis.google.com is the popup sign-in helper; cloudflareinsights is the
+  // zone's auto-injected analytics beacon. Cloudflare's inline bootstrap
+  // stays blocked on purpose: 'unsafe-inline' would gut the policy.
+  "script-src 'self' https://apis.google.com https://static.cloudflareinsights.com",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
+  // The avatar hosts: Google and GitHub profile photos, straight from the
+  // signed-in session, never stored anywhere of ours.
+  "img-src 'self' data: https://*.googleusercontent.com https://avatars.githubusercontent.com",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'none'",

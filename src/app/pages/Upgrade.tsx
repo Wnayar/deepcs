@@ -77,7 +77,7 @@ export function UpgradePage({ signedIn, entitled }: { signedIn: boolean; entitle
         </button>
       ) : (
         <>
-          <NavLink className="plan" to="/signin">
+          <NavLink className="plan" to="/signin" state={{ from: '/upgrade' }}>
             <PlanInner busy={false} />
           </NavLink>
           <p className="muted">Sign in first; the purchase needs an account to live on.</p>
@@ -85,12 +85,6 @@ export function UpgradePage({ signedIn, entitled }: { signedIn: boolean; entitle
       )}
 
       <p className="trust">One-time payment · No subscription · Secure checkout by Stripe</p>
-
-      <p className="origin">
-        DeepCS started as a centralized resource used for my own interview revision and prep. After
-        enough requests from friends, I deployed it to help them and other aspiring software
-        engineers through the interview process.
-      </p>
 
       {error && <p className="error">{error}</p>}
 

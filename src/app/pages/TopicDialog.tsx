@@ -88,11 +88,8 @@ export function TopicDialog({ topic, signedIn, locked, markOf, onMark, onOpenSte
           {locked && (
             <div className="card upsell">
               <p className="upsell-title">Part of DeepCS Pro</p>
-              <p className="muted" style={{ margin: 0 }}>
-                One payment unlocks every Pro topic, forever. No subscription.
-              </p>
               <Link className="navlink primary" to="/upgrade">
-                See what's included
+                Unlock
               </Link>
             </div>
           )}

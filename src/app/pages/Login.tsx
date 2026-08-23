@@ -1,10 +1,27 @@
 import { useState } from 'react';
 import { signInWithGithub, signInWithGoogle } from '../auth';
 
+/* The official four-colour G; brand colours are content, not theme, so
+ * they live on the paths rather than in the stylesheet's tokens. */
 function GoogleGlyph() {
   return (
-    <svg className="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M12 10.2v3.9h5.5c-.26 1.45-1.68 4.1-5.5 4.1a6.2 6.2 0 1 1 0-12.4c1.77 0 2.96.75 3.64 1.4l2.66-2.56C16.6 3.05 14.5 2.1 12 2.1a9.9 9.9 0 1 0 0 19.8c5.71 0 9.5-4.02 9.5-9.68 0-.65-.07-1.15-.16-1.64Z" />
+    <svg className="icon" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+      <path
+        fill="#4285F4"
+        d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"
+      />
+      <path
+        fill="#34A853"
+        d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34C2.85 17.09 2 20.45 2 24c0 3.55.85 6.91 2.34 9.88l7.35-5.7z"
+      />
+      <path
+        fill="#EA4335"
+        d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 12.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z"
+      />
     </svg>
   );
 }
@@ -30,6 +47,8 @@ export function LoginPage() {
       await (which === 'google' ? signInWithGoogle() : signInWithGithub());
     } catch (err) {
       const code = (err as { code?: string }).code ?? 'unknown';
+      // Closing the popup is a decision, not a failure: no red text for it.
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return;
       // The same email on the other provider is the one predictable
       // failure; name the fix rather than showing the code.
       setError(

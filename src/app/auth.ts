@@ -30,7 +30,12 @@ export function watchUser(onChange: (user: User | null) => void): () => void {
  * door was used; it only verifies the token. */
 
 export async function signInWithGoogle(): Promise<void> {
-  await signInWithPopup(auth, new GoogleAuthProvider());
+  const provider = new GoogleAuthProvider();
+  // An explicit click always shows the account picker: signing out then
+  // back in must be able to choose a different account. Silent session
+  // restore is untouched; this only runs when the button is pressed.
+  provider.setCustomParameters({ prompt: 'select_account' });
+  await signInWithPopup(auth, provider);
 }
 
 export async function signInWithGithub(): Promise<void> {
