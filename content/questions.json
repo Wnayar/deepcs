@@ -1,0 +1,27 @@
+{
+  "steps": [
+    {
+      "id": "sample-processes-1",
+      "parts": [
+        "1. What is this repository's sample content for?",
+        "2. Where does the real content live?"
+      ],
+      "referenceMd": "### 1.\n\nIt makes the app fully runnable from the public repo: the map draws, lessons open, tests pass, with no real content present.\n\n### 2.\n\nIn a private content repo, joined with this code at deploy time. See DESIGN.md section 8."
+    },
+    {
+      "id": "sample-processes-2",
+      "parts": ["1. Why does this sample lesson have two sections?"],
+      "referenceMd": "### 1.\n\nSo the section pager, the dots and the menu all have something to page through."
+    },
+    {
+      "id": "sample-memory-1",
+      "parts": ["1. Why does a second free topic exist in the fixtures?"],
+      "referenceMd": "### 1.\n\nSo the roadmap has a dependency edge to draw and the progress ring has a denominator worth looking at."
+    },
+    {
+      "id": "sample-premium-1",
+      "parts": ["1. Why does a sample PAID topic exist in the fixtures?"],
+      "referenceMd": "### 1.\n\nSo the entitlement gate is exercised by the public test suite: this file is served only through the Worker, after a token and an entitlement check."
+    }
+  ]
+}

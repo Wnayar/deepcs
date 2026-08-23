@@ -1,0 +1,288 @@
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router';
+import { getRoadmap, type RoadmapTopic } from '../api';
+import { doneCount, type ProgressState } from '../progress';
+import { ProgressPanel } from './ProgressPanel';
+import { TopicDialog } from './TopicDialog';
+import {
+  BOX_H,
+  BOX_W,
+  CELL_X,
+  CELL_Y,
+  boxLeft,
+  boxTop,
+  edgePath,
+  fitView,
+  zoomAt,
+  type View,
+} from '../roadmap-layout';
+
+/** How far the pointer may move before a press counts as a drag rather than a
+ * click. Below this, a press that wobbles by a pixel still opens the topic. */
+const DRAG_THRESHOLD_PX = 4;
+
+/** The progress bar inside a node, inset from the box so it reads as part of
+ * the card rather than as its edge. */
+const BAR_W = BOX_W - 44;
+
+/**
+ * The roadmap: a tree read downward, one box per topic.
+ *
+ * Pan and zoom are hand-written because the boxes never move, so the whole
+ * interaction is one translate and one scale on a single SVG group. The
+ * arithmetic lives in `roadmap-layout.ts` where it can be tested; what is left
+ * here is the event handling, and three details in it are the difference
+ * between the map being smooth and being unusable:
+ *
+ *   1. The pointer is *not* captured when a press starts. Capturing on
+ *      pointerdown routes every later event to the canvas, so the click never
+ *      reaches the topic under the cursor and nothing opens. Movement is
+ *      tracked on `window` instead, and a press that never moves stays an
+ *      ordinary click on whatever it landed on.
+ *   2. The wheel listener is attached natively with `passive: false`, because
+ *      React's onWheel cannot call preventDefault. It depends on `topics`
+ *      because the canvas does not exist until they arrive.
+ *   3. Text selection is off in the stylesheet, or dragging across a label
+ *      turns into a highlight halfway through.
+ */
+interface Props {
+  /** Ticks and stars need a caller identity, so signed out the map is drawn
+   * without them rather than offering controls that would 401. */
+  signedIn: boolean;
+  /** Owned by the shell, because the header reads `entitled` too; the map
+   * and the topic panel just render from it. */
+  progress: ProgressState;
+}
+
+export function RoadmapPage({ signedIn, progress }: Props) {
+  const navigate = useNavigate();
+  // Present when the URL is /topic/:topic, absent at /. The panel is part of
+  // this screen rather than a separate one, so opening it does not unmount the
+  // map and closing it does not have to rebuild it.
+  const { topic: openSlug } = useParams();
+  const onOpenTopic = (topic: RoadmapTopic) => void navigate(`/topic/${topic.topic}`);
+
+  const { marks, markOf, mark, entitled } = progress;
+  const [topics, setTopics] = useState<RoadmapTopic[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 });
+  const [dragging, setDragging] = useState(false);
+
+  const canvas = useRef<HTMLDivElement>(null);
+  /** Set while a press is turning into a drag, and read by the click handler so
+   * that letting go at the end of a pan does not also open a topic. */
+  const moved = useRef(false);
+
+  useEffect(() => {
+    getRoadmap()
+      .then(setTopics)
+      .catch(() => setError('The roadmap could not be loaded. Try refreshing the page.'));
+  }, []);
+
+  /** Scale and centre so the whole tree is visible, whatever the window size. */
+  const fit = useCallback(() => {
+    const box = canvas.current?.getBoundingClientRect();
+    if (!box || !topics) return;
+    const next = fitView(box, topics);
+    if (next) setView(next);
+  }, [topics]);
+
+  // Before paint, so the tree is never briefly in the wrong place.
+  useLayoutEffect(fit, [fit]);
+
+  useEffect(() => {
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [fit]);
+
+  useEffect(() => {
+    const element = canvas.current;
+    if (!element) return;
+
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const box = element.getBoundingClientRect();
+
+      // A trackpad pinch reaches the page as a wheel event with ctrlKey set,
+      // which is the only way a browser reports one. Both it and a plain
+      // scroll zoom, but they arrive at very different magnitudes, so each
+      // gets its own sensitivity: one shared constant makes a pinch move in
+      // leaps or a wheel barely move at all.
+      const step = event.ctrlKey || event.metaKey ? 0.01 : 0.002;
+
+      setView((v) =>
+        zoomAt(
+          v,
+          Math.exp(-event.deltaY * step),
+          event.clientX - box.left,
+          event.clientY - box.top,
+        ),
+      );
+    };
+
+    element.addEventListener('wheel', onWheel, { passive: false });
+    return () => element.removeEventListener('wheel', onWheel);
+  }, [topics]);
+
+  const onPointerDown = (event: React.PointerEvent) => {
+    if (event.button !== 0) return;
+    const origin = { x: event.clientX, y: event.clientY };
+    const from = { x: view.x, y: view.y };
+    moved.current = false;
+
+    const onMove = (move: PointerEvent) => {
+      const dx = move.clientX - origin.x;
+      const dy = move.clientY - origin.y;
+      if (!moved.current && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+      moved.current = true;
+      setDragging(true);
+      setView((v) => ({ ...v, x: from.x + dx, y: from.y + dy }));
+    };
+
+    const onUp = () => {
+      setDragging(false);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      // Cleared only after the click that follows this pointerup has been seen.
+      setTimeout(() => {
+        moved.current = false;
+      }, 0);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  const zoomFromCentre = (factor: number) => {
+    const box = canvas.current?.getBoundingClientRect();
+    setView((v) => zoomAt(v, factor, (box?.width ?? 0) / 2, (box?.height ?? 0) / 2));
+  };
+
+  if (error) return <p className="error">{error}</p>;
+  if (!topics) return <p className="muted">Loading the roadmap…</p>;
+
+  const byName = new Map(topics.map((t) => [t.topic, t]));
+  const open = openSlug ? byName.get(openSlug) : undefined;
+
+  /** How many of a topic's steps this reader has ticked. */
+  const done = (topic: RoadmapTopic) =>
+    doneCount(
+      marks,
+      topic.steps.map((step) => step.id),
+    );
+
+  return (
+    <div
+      ref={canvas}
+      className={`canvas${dragging ? ' dragging' : ''}`}
+      onPointerDown={onPointerDown}
+    >
+      <svg role="presentation">
+        <g transform={`translate(${view.x} ${view.y}) scale(${view.scale})`}>
+          {topics.flatMap((topic) =>
+            topic.dependsOn
+              .map((name) => byName.get(name))
+              .filter((from): from is RoadmapTopic => from !== undefined)
+              .map((from) => (
+                <path
+                  key={`${from.topic}->${topic.topic}`}
+                  className="edge"
+                  d={edgePath(from, topic)}
+                />
+              )),
+          )}
+
+          {topics.map((topic) => (
+            <g
+              key={topic.topic}
+              /* A finished topic is marked on the map itself, so the shape of
+                 what is left is readable without opening anything. */
+              className={
+                topic.steps.length > 0 && done(topic) === topic.steps.length ? 'node done' : 'node'
+              }
+              role="button"
+              tabIndex={0}
+              aria-label={`${topic.title}, ${done(topic)} of ${topic.steps.length} lessons done`}
+              onClick={() => {
+                if (!moved.current) onOpenTopic(topic);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') onOpenTopic(topic);
+              }}
+            >
+              <rect x={boxLeft(topic)} y={boxTop(topic)} width={BOX_W} height={BOX_H} rx={9} />
+              <text x={topic.gridX * CELL_X} y={topic.gridY * CELL_Y - 4}>
+                {topic.title}
+              </text>
+
+              {/* Locked topics are drawn, titled and clickable — the map is
+                  the sales page, so a paid topic shows what it is and the
+                  panel does the asking. Only the badge marks the difference. */}
+              {topic.access === 'paid' && !entitled && (
+                <text
+                  className="node-lock"
+                  aria-hidden="true"
+                  x={boxLeft(topic) + BOX_W - 18}
+                  y={boxTop(topic) + 19}
+                >
+                  🔒
+                </text>
+              )}
+
+              {/* The bar is drawn even at zero, so a topic with nothing done
+                  still reads as "0 of 3" rather than as a topic with no steps.
+                  Both rects, not one with a border: a zero-width fill would
+                  otherwise leave a visible rounded stub. */}
+              <rect
+                className="node-track"
+                x={topic.gridX * CELL_X - BAR_W / 2}
+                y={topic.gridY * CELL_Y + 12}
+                width={BAR_W}
+                height={4}
+                rx={2}
+              />
+              {done(topic) > 0 && (
+                <rect
+                  className="node-fill"
+                  x={topic.gridX * CELL_X - BAR_W / 2}
+                  y={topic.gridY * CELL_Y + 12}
+                  width={(BAR_W * done(topic)) / Math.max(1, topic.steps.length)}
+                  height={4}
+                  rx={2}
+                />
+              )}
+            </g>
+          ))}
+        </g>
+      </svg>
+
+      <div className="canvas-controls">
+        <button className="quiet" aria-label="Zoom in" onClick={() => zoomFromCentre(1.25)}>
+          +
+        </button>
+        <button className="quiet" aria-label="Zoom out" onClick={() => zoomFromCentre(1 / 1.25)}>
+          −
+        </button>
+        <button className="quiet" aria-label="Fit the whole map on screen" onClick={fit}>
+          ⛶
+        </button>
+      </div>
+
+      {/* Signed out there is nothing to total, and a "0 of 27" would read as a
+          score rather than as an invitation to sign in. */}
+      {signedIn && <ProgressPanel topics={topics} marks={marks} />}
+
+      {open && (
+        <TopicDialog
+          topic={open}
+          signedIn={signedIn}
+          locked={open.access === 'paid' && !entitled}
+          markOf={markOf}
+          onMark={mark}
+          onOpenStep={(stepId) => void navigate(`/step/${stepId}`)}
+          onClose={() => void navigate('/')}
+        />
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,1350 @@
+/*
+ * One stylesheet, organised as: tokens, base, layout, then components.
+ *
+ * Everything visual is a custom property defined once in `:root` and
+ * overridden once for dark. No component hard-codes a colour, so a theme is a
+ * list of variables rather than a second copy of the stylesheet, and there is
+ * no rule that can be updated for one theme and forgotten for the other.
+ */
+
+/* ── Tokens ────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* Surfaces, from furthest back to nearest front. */
+  --bg: #fbfbfa;
+  --surface: #ffffff;
+  --surface-2: #f4f4f2;
+  --line: #e4e4e0;
+  --line-strong: #d0d0ca;
+
+  /* Text, in descending prominence. */
+  --fg: #26262a;
+  --fg-strong: #14141a;
+  --fg-muted: #6a6a64;
+  --fg-faint: #93938c;
+
+  --accent: #3b5bdb;
+  --accent-fg: #ffffff;
+  --accent-soft: #eaeeff;
+
+  --ok: #2f7d4f;
+  --ok-soft: #e8f4ec;
+  /* The progress bars and the star. Separate from --ok because "done" is a
+     state on the map, not a success message, and the two want different
+     weights in dark mode. */
+  /* Code tokens. Five roles, not one per Prism class: more colours in a
+     snippet is decoration, and the point is to separate what a line *does*
+     from what it says. Deliberately close in weight to the body text so a
+     block does not glare beside prose. */
+  --code-keyword: #8250df;
+  --code-string: #0a6b52;
+  --code-comment: #6a6a64;
+  --code-number: #b3261e;
+  --code-func: #1f4bb8;
+
+  --progress: #2f7d4f;
+  --progress-track: #e4e4e0;
+  --star: #c99a2e;
+  --warn: #9a6212;
+  --danger: #b3261e;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow-lg: 0 8px 40px rgb(0 0 0 / 14%);
+
+  /* One measure for running text everywhere, so a lesson and a summary
+     paragraph wrap at the same width and the page reads as one document.
+     Sized for 60-75 characters a line; longer and the eye loses the line
+     on the way back, which reads as "hard to read" without a nameable why. */
+  --measure: 36rem;
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  /* Lifted well off black with a cool cast, text a step off white. Near-black
+     grounds make bright text bloom, which reads as eye strain rather than as
+     a colour problem; every site measured (web.dev #202124, NeetCode #1d1c1e,
+     MDN #18191b) lifts the ground and softens the text the same way. */
+  --bg: #1f2126;
+  --surface: #26292f;
+  --surface-2: #2f3239;
+  --line: #3a3e46;
+  --line-strong: #4d525c;
+
+  /* Not near-white. #e7e9ee reads at 13:1 on this background, and that much
+     contrast on a dark ground makes text appear to glow and bleed at its
+     edges, which is tiring over a page of prose. #ccd2de is 10.6:1, still well
+     past AAA, and noticeably easier to sit with. The blockquote style was
+     already doing this by accident, which is why that one block was the
+     comfortable part of a lesson. */
+  --fg: #ccd2de;
+  /* Headings and anything that has to win against body text, since softening
+     the body would otherwise flatten the hierarchy with it. */
+  --fg-strong: #e9ecf3;
+  --fg-muted: #a8aeb9;
+  --fg-faint: #828894;
+
+  --accent: #8ba4ff;
+  --accent-fg: #14161a;
+  --accent-soft: #2b3150;
+
+  --ok: #6cc48d;
+  --ok-soft: #24332a;
+  --code-keyword: #c8a2f0;
+  --code-string: #86d2ae;
+  --code-comment: #828894;
+  --code-number: #e8a08c;
+  --code-func: #8fb8ff;
+
+  --progress: #57c98a;
+  --progress-track: #3a3e46;
+  --star: #e0b455;
+  --warn: #d6a35c;
+  --danger: #e8837c;
+
+  --shadow-lg: 0 8px 40px rgb(0 0 0 / 50%);
+
+  color-scheme: dark;
+}
+
+/* ── Base ──────────────────────────────────────────────────────────────────── */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    15px/1.6 'Inter Variable',
+    ui-sans-serif,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  line-height: 1.3;
+  font-weight: 650;
+  /* Brighter than body text, because the body was softened to stop it glowing
+     and a heading has to keep winning against it. */
+  color: var(--fg-strong);
+}
+
+h2 {
+  font-size: 1.5rem;
+  margin: 0 0 0.4rem;
+  letter-spacing: -0.01em;
+}
+
+h3 {
+  font-size: 1.05rem;
+  margin: 0 0 0.3rem;
+}
+
+p {
+  margin: 0 0 0.8rem;
+  max-width: var(--measure);
+}
+
+a {
+  color: var(--accent);
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+
+/* ── Layout ────────────────────────────────────────────────────────────────── */
+
+#root {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  height: 3.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 1.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+header h1 {
+  font-size: 0.95rem;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+nav {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+main {
+  flex: 1;
+  width: 100%;
+  max-width: 66rem;
+  margin: 0 auto;
+  padding: 1.75rem 1.25rem 4rem;
+}
+
+/* The roadmap is a canvas, not a document: it fills exactly what is left
+   below the header and never scrolls the page. Without a fixed height the
+   canvas grows with its content and the wheel scrolls the window instead of
+   zooming the map. */
+main.wide {
+  max-width: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  /* `main` is a flex item with `flex: 1`, so its basis is 0 and any `height`
+     set here is ignored for layout. A percentage height on the canvas then has
+     nothing definite to resolve against and measures zero. Filling with flex
+     instead is the only version that gives the canvas a real height.
+     `min-height: 0` stops a flex item refusing to shrink below its content. */
+  min-height: 0;
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* One visible focus ring for everything, drawn outside the element so it never
+   changes layout. `:focus-visible` rather than `:focus`, so a mouse click does
+   not leave a ring behind but tabbing always shows one. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Text helpers ──────────────────────────────────────────────────────────── */
+
+.muted {
+  color: var(--fg-muted);
+}
+
+.faint {
+  color: var(--fg-faint);
+  font-size: 0.85rem;
+}
+
+.error {
+  color: var(--danger);
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────────── */
+
+button {
+  font: inherit;
+  color: inherit;
+  padding: 0.42rem 0.85rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 550;
+}
+
+button.primary:hover:not(:disabled) {
+  color: var(--accent-fg);
+  filter: brightness(1.08);
+}
+
+button.quiet {
+  border-color: transparent;
+  background: none;
+}
+
+button.quiet:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: transparent;
+  color: var(--fg);
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* `currentColor` throughout, so the glyph is the accent beside the wordmark's
+   ink without either theme needing a second copy of it. */
+.mark {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: none;
+  fill: var(--accent);
+}
+
+/* Where you can go, and what is true about you. `margin-left: auto` on the
+   second group is what separates them; without it the header is one
+   undifferentiated row and "Sign out" reads as a destination. */
+.nav-primary,
+.nav-utility {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.nav-primary {
+  margin-left: 0.75rem;
+  padding-left: 0.85rem;
+  border-left: 1px solid var(--line);
+}
+
+.nav-utility {
+  margin-left: auto;
+}
+
+/* Two mutually exclusive choices sharing one control, so they read as one
+   thing with a selected half rather than as two buttons that both do
+   something. `aria-pressed` is what drives the fill, so the look and what a
+   screen reader is told come from the same attribute. */
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  margin-bottom: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.tabs button {
+  flex: 1;
+  border: 0;
+  background: none;
+  color: var(--fg-muted);
+  font-weight: 550;
+  padding: 0.45rem 0.6rem;
+}
+
+.tabs button:hover {
+  color: var(--fg);
+}
+
+.tabs button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+}
+
+/* The signed-in reader's own name. Quiet on purpose: it is there to answer
+   "am I signed in, and as who", not to be clicked. */
+.who {
+  padding: 0 0.15rem 0 0.4rem;
+  font-weight: 600;
+  color: var(--fg-muted);
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A navigation link wearing the same clothes as the buttons beside it.
+   NavLink sets aria-current itself, so the highlight is driven by the route
+   that is actually rendered rather than by a second copy of that knowledge. */
+.navlink {
+  display: inline-block;
+  font: inherit;
+  text-decoration: none;
+  color: var(--fg);
+  padding: 0.42rem 0.85rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  transition:
+    border-color 0.12s,
+    color 0.12s;
+}
+
+.navlink:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.navlink.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 550;
+}
+
+.navlink.primary:hover {
+  color: var(--accent-fg);
+  filter: brightness(1.08);
+}
+
+.navlink[aria-current='page'],
+nav button[aria-current='page'] {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* The header's links sit on a bar, not on a page, so they carry no border
+   until pointed at: a row of six outlined boxes reads as six controls
+   competing, and the wordmark stops being the first thing seen. */
+header .navlink,
+header .quiet {
+  border-color: transparent;
+  background: none;
+}
+
+header .navlink:hover,
+header .quiet:hover {
+  background: var(--surface-2);
+  border-color: transparent;
+  color: var(--fg);
+}
+
+header .navlink.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+input,
+select {
+  font: inherit;
+  color: inherit;
+  padding: 0.42rem 0.55rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+input:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ── Cards ─────────────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+}
+
+/* ── The roadmap canvas ────────────────────────────────────────────────────── */
+
+.canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background-image: radial-gradient(circle, var(--line) 1px, transparent 1px);
+  background-size: 26px 26px;
+  cursor: grab;
+  /* Both matter for dragging. `touch-action` stops the browser claiming the
+     gesture as a scroll on a trackpad or touchscreen, and `user-select` stops
+     a drag across a label turning into a text highlight halfway through. */
+  touch-action: none;
+  user-select: none;
+  overscroll-behavior: none;
+}
+
+.canvas.dragging {
+  cursor: grabbing;
+}
+
+/* The direct child, not any descendant: the progress panel sits inside the
+   canvas too, and a descendant selector stretched its ring across the whole
+   map behind the text. */
+.canvas > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.edge {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+}
+
+.node rect {
+  fill: var(--surface);
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+  transition:
+    stroke 0.12s,
+    fill 0.12s;
+}
+
+.node:hover rect {
+  stroke: var(--accent);
+  fill: var(--accent-soft);
+}
+
+/* Finished. A tinted fill and a coloured edge rather than a tick in the
+   corner: at map zoom a small glyph is unreadable, but a whole box changing
+   weight is legible at any scale. */
+.node.done rect {
+  stroke: var(--progress);
+  fill: var(--ok-soft);
+}
+
+.node.done:hover rect {
+  stroke: var(--accent);
+}
+
+.node text {
+  fill: var(--fg);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+/* The bar inside a topic box. Drawn even at zero, so an untouched topic reads
+   as "none of three" rather than as a topic with nothing in it. */
+/* Qualified with `.node rect`, because that rule sets `fill` too and a bare
+   class loses to it: the bars were being painted the same colour as the box
+   and looked like they never filled. */
+.node rect.node-track {
+  fill: var(--progress-track);
+}
+
+.node rect.node-fill {
+  fill: var(--progress);
+}
+
+/* Totals, opposite the zoom controls so neither covers the tree. */
+.progress-panel {
+  position: absolute;
+  right: 1rem;
+  top: 1rem;
+  z-index: 2;
+  width: 13.5rem;
+  padding: 1.1rem 1rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+/* The gauge: a ring with its own numbers stacked in the middle of it.
+
+   Both children are put in row 1, column 1 of the same one-cell grid, so they
+   occupy the same space and `place-items: center` centres each of them in it.
+   That is the whole trick, and it is why nothing here is positioned absolutely:
+   the grid cell is as tall as the ring, so the panel still sizes itself. */
+.gauge {
+  display: grid;
+  place-items: center;
+  padding: 0.35rem 0 0.15rem;
+}
+
+.gauge > * {
+  grid-area: 1 / 1;
+}
+
+.gauge-ring {
+  /* The one size to change. Everything inside the ring is drawn from the
+     viewBox, so it scales with this and nothing else needs touching. */
+  width: 9.5rem;
+  height: 9.5rem;
+}
+
+.gauge-track,
+.gauge-fill {
+  fill: none;
+  /* In viewBox units, not pixels: 7 of 100 across, so the band keeps its
+     proportion whatever width the ring is given above. */
+  stroke-width: 7;
+}
+
+.gauge-track {
+  stroke: var(--progress-track);
+}
+
+.gauge-fill {
+  stroke: var(--progress);
+  /* Rounded, so a single finished step reads as a deliberate mark rather than
+     as a hairline that could be a rendering artefact. */
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.gauge-count {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+}
+
+.gauge-count strong {
+  font-size: 2.6rem;
+  font-weight: 680;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The total, under a rule, so the pair reads as "2 out of 27" without the word
+   "of" taking up a line of its own. */
+.gauge-total {
+  margin-top: 0.28rem;
+  padding-top: 0.28rem;
+  border-top: 1px solid var(--line-strong);
+  min-width: 2.4rem;
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.gauge-unit {
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+/* The line worth wanting more of. Sits on its own under the ring rather than in
+   a list, because it is the only other number here. */
+.gauge-topics {
+  margin: 0.75rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--fg-muted);
+}
+
+.gauge-topics strong {
+  color: var(--fg);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Shared by the panel and anything else that needs a filled track. The span is
+   the fill, so the width can be set inline from a percentage. */
+.bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--progress-track);
+  overflow: hidden;
+}
+
+.bar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--progress);
+  transition: width 0.18s;
+}
+
+.canvas-controls {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.canvas-controls button {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  padding: 0.45rem 0.6rem;
+  line-height: 1;
+  color: var(--fg-muted);
+}
+
+.canvas-controls button + button {
+  border-top: 1px solid var(--line);
+}
+
+.canvas-controls button:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+/* ── Dialog ────────────────────────────────────────────────────────────────── */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  /* Light on purpose: the panel sits beside the map rather than over it, so
+     the map stays readable instead of going dark behind a centered modal. */
+  background: rgb(0 0 0 / 25%);
+}
+
+/* A sheet sliding in from the right edge, not a centered modal: the map stays
+   in view on the left, and closing (Escape, the button, or a click on the
+   map side) puts you straight back to it. */
+.dialog {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(42rem, 94vw);
+  height: 100%;
+  overflow-y: auto;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+  padding: 1.4rem 1.5rem;
+  animation: slide-in 0.22s ease-out;
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog {
+    animation: none;
+  }
+}
+
+/* One step inside the dialog: a tick, a star, and the step itself. Three
+   separate buttons in a row rather than one button containing them, because
+   nesting interactive elements is invalid markup and makes clicks land
+   unpredictably. */
+.step-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  background: var(--surface);
+}
+
+.step-item:hover {
+  background: var(--surface-2);
+}
+
+/* The step itself: everything that navigates, and all of the row's spare
+   width, so the click target is the whole line rather than the title. */
+.step-open {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* The tick and the star. Square targets rather than the glyph's own box, so
+   they are big enough to hit on a touch screen. */
+.mark-toggle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--fg-faint);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mark-toggle:hover {
+  background: var(--surface-2);
+  color: var(--fg-muted);
+}
+
+.mark-toggle.star[aria-pressed='true'] {
+  color: var(--star);
+}
+
+/* An outline that fills in, rather than a checkbox: the empty state has to
+   read as "not yet" rather than as a control nobody has noticed. */
+.ring {
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 999px;
+  border: 2px solid var(--line-strong);
+  transition:
+    border-color 0.12s,
+    background 0.12s;
+}
+
+.mark-toggle:hover .ring {
+  border-color: var(--progress);
+}
+
+.ring.done {
+  border-color: var(--progress);
+  background: radial-gradient(circle at center, var(--progress) 0 45%, transparent 46%);
+}
+
+.step-item .label {
+  flex: 1;
+  min-width: 0;
+}
+
+.step-item .label strong {
+  display: block;
+  font-weight: 600;
+}
+
+/* ── The step page ─────────────────────────────────────────────────────────── */
+
+/* One centred reading column, sized so prose wraps at the measure and a
+   78-character code line still fits. Everything else the page knows lives in
+   the step bar above it. */
+.step-content {
+  max-width: 46rem;
+  margin: 0 auto;
+}
+
+/* The slim bar carrying where you are: step title, section dots, and the
+   dropdown holding every jump. It hides while scrolling down and returns on
+   any scroll up, so reading gets the whole window. */
+.stepbar {
+  position: sticky;
+  top: 3.7rem;
+  z-index: 10;
+  max-width: 46rem;
+  margin: 0 auto 1.75rem;
+  padding: 0.4rem 0.6rem 0.4rem 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  transition:
+    transform 0.18s ease,
+    opacity 0.18s ease;
+}
+
+.stepbar.hidden {
+  transform: translateY(-200%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.stepbar-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dots {
+  display: flex;
+  gap: 0.3rem;
+  flex: none;
+}
+
+.dots .dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--line-strong);
+}
+
+.dots .dot.on {
+  background: var(--accent);
+}
+
+.menu {
+  position: relative;
+  flex: none;
+}
+
+.menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.45rem);
+  z-index: 30;
+  min-width: 17rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+
+.menu-list button {
+  text-align: left;
+  border-color: transparent;
+  background: none;
+  padding: 0.42rem 0.6rem;
+  font-size: 0.92rem;
+  line-height: 1.35;
+  border-radius: var(--radius-sm);
+}
+
+.menu-list button:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: transparent;
+  color: var(--fg);
+}
+
+.menu-list button[aria-current] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.menu-list /* The Key summary in the section list. It is the destination the lesson is
+   written towards, so it carries a mark and a little more weight than the
+   sections above it — enough to find without scanning. */
+.menu-key {
+  font-weight: 600;
+}
+
+.menu-key-mark {
+  color: var(--accent);
+  margin-right: 0.45rem;
+  font-size: 0.7em;
+  vertical-align: 0.15em;
+}
+
+.divider {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 0.25rem 0;
+}
+
+.pager {
+  justify-content: space-between;
+  margin-top: 2.5rem;
+}
+
+/* The buttons carry their destination's title, which can be long. */
+.pager button {
+  max-width: 48%;
+}
+
+/* One question, one answer, on the check screen. */
+.qa-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.7rem;
+}
+
+.qa-question {
+  font-weight: 550;
+}
+
+.qa .prose {
+  margin-top: 0.6rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.6rem;
+}
+
+/* ── Rendered markdown ─────────────────────────────────────────────────────── */
+
+.prose {
+  /* Reading size, not UI size: the 15px base is right for buttons and cards
+     and small for material read for minutes at a stretch. */
+  font-size: 1.05rem;
+  line-height: 1.75;
+}
+
+/* Lesson text fills its column rather than capping at the measure: the
+   column (.step-content, 46rem) is the reading width here, and text, code
+   and the step bar sharing the same two edges is what makes the page read
+   as one piece instead of ragged blocks. */
+.prose p {
+  max-width: none;
+  margin-bottom: 1rem;
+}
+
+.prose h2 {
+  margin: 2.4rem 0 0.6rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--line);
+  font-size: 1.35rem;
+}
+
+.prose > h2:first-child {
+  margin-top: 0.5rem;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.prose h3 {
+  margin: 2rem 0 0.5rem;
+  font-size: 1.2rem;
+  /* Subheaders share one colour so a scroll through a section reads as a
+     list of landmarks; the section title above them stays neutral, which
+     keeps the two levels apart without a size jump doing all the work. */
+  color: var(--accent);
+}
+
+.prose h4 {
+  margin: 1.1rem 0 0.3rem;
+  font-size: 1rem;
+  color: var(--fg-muted);
+}
+
+.prose ul,
+.prose ol {
+  padding-left: 1.3rem;
+}
+
+.prose li {
+  margin-bottom: 0.35rem;
+}
+
+.prose code {
+  background: var(--surface-2);
+  border-radius: 4px;
+  padding: 0.1rem 0.32rem;
+}
+
+.prose pre {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+  max-width: 100%;
+  line-height: 1.5;
+}
+
+.prose pre code {
+  background: none;
+  padding: 0;
+  /* Sized so a 78-character line fits the content column without horizontal
+     scroll on a laptop; lesson content keeps its code lines under that. */
+  font-size: 0.875rem;
+}
+
+.prose table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+  margin-bottom: 1rem;
+}
+
+.prose th,
+.prose td {
+  border: 1px solid var(--line);
+  padding: 0.4rem 0.7rem;
+  text-align: left;
+}
+
+.prose th {
+  background: var(--surface-2);
+}
+
+/* Prism's token classes, mapped onto the five roles above. No Prism theme is
+   imported: those are hard-coded hex stylesheets, and a colour named outside
+   `:root` is a colour light and dark have to define twice. */
+.prose .token.comment,
+.prose .token.prolog,
+.prose .token.doctype,
+.prose .token.cdata {
+  color: var(--code-comment);
+  font-style: italic;
+}
+
+.prose .token.keyword,
+.prose .token.boolean,
+.prose .token.operator,
+.prose .token.builtin,
+.prose .token.class-name {
+  color: var(--code-keyword);
+}
+
+.prose .token.string,
+.prose .token.char,
+.prose .token.attr-value,
+.prose .token.regex {
+  color: var(--code-string);
+}
+
+.prose .token.number {
+  color: var(--code-number);
+}
+
+.prose .token.function,
+.prose .token.decorator,
+.prose .token.annotation {
+  color: var(--code-func);
+}
+
+/* Everything Prism marks that is not one of the five reads as ordinary code,
+   which is the default and is deliberate: punctuation in five colours is the
+   thing that makes a highlighted block harder to read than a plain one. */
+.prose .token.punctuation {
+  color: inherit;
+  opacity: 0.75;
+}
+
+.prose blockquote {
+  margin: 1rem 0;
+  padding: 0.1rem 0 0.1rem 1rem;
+  border-left: 3px solid var(--line-strong);
+  color: var(--fg-muted);
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 2rem 0;
+}
+
+/* ── The session screen ────────────────────────────────────────────────────── */
+
+.editor {
+  /* A fixed height, not a fraction of the viewport. Revealing the answer adds
+     a panel below, and a vh-based editor shrinks as the page grows, so the
+     document you are writing in gets smaller the moment you ask for help. */
+  height: 32rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.reference {
+  border: 1px solid var(--ok);
+  background: var(--ok-soft);
+  border-radius: var(--radius);
+  padding: 0.4rem 1.1rem;
+  margin-top: 1rem;
+  max-height: 26rem;
+  overflow: auto;
+}
+
+.live {
+  font-size: 0.85rem;
+  color: var(--ok);
+  border: 1px solid var(--ok);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.65rem;
+}
+
+.status {
+  font-size: 0.87rem;
+  color: var(--fg-muted);
+}
+
+/* Two independent signals, each a coloured dot plus what it means. Colour is
+   never the only carrier: the text says the same thing, because a dot alone is
+   unreadable to anyone who cannot tell the hues apart. */
+.signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-right: 1rem;
+}
+
+.signal .dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.signal.ok {
+  color: var(--ok);
+}
+
+.signal.wait {
+  color: var(--warn);
+}
+
+.signal.bad {
+  color: var(--danger);
+}
+
+/* CodeMirror ships almost no chrome of its own, which is the point: this is a
+   shared prose document and should read like one. */
+.editor .cm-editor {
+  height: 100%;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.95rem;
+}
+
+.editor .cm-scroller {
+  font-family: inherit;
+  line-height: 1.7;
+  padding: 0.6rem 0.2rem;
+}
+
+/* The ring belongs on the bordered container, not the inner editor, or it is
+   drawn inside the box it is meant to surround. */
+.editor .cm-editor.cm-focused {
+  outline: none;
+}
+
+.editor:focus-within {
+  border-color: var(--accent);
+}
+
+.editor .cm-content {
+  caret-color: var(--fg);
+}
+
+.editor .cm-placeholder {
+  color: var(--fg-faint);
+}
+
+/* The other person's cursor and selection.
+ *
+ * The binding writes these colours inline from the awareness state, and what
+ * it writes is `var(--accent)`: inline styles resolve custom properties, so the
+ * palette stays in `:root` and follows a theme switch without the editor
+ * knowing themes exist. Left unset it falls back to a hard-coded blue.
+ *
+ * One colour, not one per client. A session has exactly two people in it: you
+ * are the native caret and the other one is this. A palette keyed by client id
+ * solved a crowd this room never has. */
+.cm-ySelectionCaret {
+  position: relative;
+  border-left: 2px solid;
+  border-right: none;
+  margin-left: -1px;
+  box-sizing: border-box;
+}
+
+/* The binding also draws a label carrying the peer's name. Awareness here
+   carries a colour and nothing else, on purpose, so there is no name to show
+   and the label would sit over the text reading "Anonymous". */
+.cm-ySelectionInfo {
+  display: none;
+}
+
+/* ── Sign in ───────────────────────────────────────────────────────────────── */
+
+form.auth {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-width: 20rem;
+}
+
+/* ── v2: the paid tier ────────────────────────────────────────────────────
+   Locks, the upgrade page, and the gate screens a refused paid step shows.
+   Presentation only: the real gate is the Worker's entitlement check. */
+
+.node-lock {
+  font-size: 13px;
+  user-select: none;
+}
+
+.lock-banner {
+  text-align: center;
+  margin: 0.9rem 0 0;
+}
+
+.gate {
+  text-align: center;
+  padding: 3rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.upgrade {
+  padding: 2rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  align-items: flex-start;
+}
+
+.upgrade-points {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}

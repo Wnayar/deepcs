@@ -1,0 +1,19 @@
+<!doctype html>
+<!--
+  `data-theme` is set here rather than only by React, so the first paint is
+  already dark. Setting it in JavaScript alone shows a white page for one
+  frame on every load, which is the flash that makes a dark site feel
+  cheap. The theme hook overwrites this attribute if a light preference was
+  saved, and does so before anything is rendered.
+-->
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>deepcs</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/app/main.tsx"></script>
+  </body>
+</html>
