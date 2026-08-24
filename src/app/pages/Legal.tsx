@@ -99,11 +99,39 @@ export function PrivacyPage() {
         the sale for as long as their rules require.
       </p>
 
+      <h3>Where it is held</h3>
+      <p>
+        Google, Stripe and Cloudflare all process data outside Singapore, so your account and
+        the record of a purchase leave the country. Each is bound by its own contract terms to
+        protect that data to a standard comparable with Singapore's Personal Data Protection
+        Act, which is what the Act asks of anyone sending data abroad.
+      </p>
+
+      <h3>How it is kept safe</h3>
+      <p>
+        There is no password here to steal, because Google and GitHub do the authenticating.
+        Everything travels over HTTPS. Paid lessons are gated on the server rather than hidden
+        in the page, so locked text is never sent to a browser that has not paid for it, and
+        the payment secrets sit in Cloudflare's secret store rather than in the code. If a
+        breach ever put you at real risk, the law requires the Personal Data Protection
+        Commission and you to be told, and you would be.
+      </p>
+
+      <h3>Consent, and taking it back</h3>
+      <p>
+        Signing in is the consent, and the purposes above are the whole of it. You can withdraw
+        it whenever you like by writing to <a href={`mailto:${CONTACT}`}>{CONTACT}</a>. The
+        consequence is plain rather than punitive: the account goes, the progress on it goes,
+        and any unlock bought with it goes too, so if a purchase still matters to you, ask about
+        a refund before asking for deletion.
+      </p>
+
       <h3>Getting your data, or deleting it</h3>
       <p>
         Email <a href={`mailto:${CONTACT}`}>{CONTACT}</a>. Your rows can be sent to you,
         corrected, or deleted on request, and the sign-in account deleted with them, which
-        removes the email address held against it. Deleting a purchase row also removes the
+        removes the email address held against it. Expect an answer within 30 days, and a note
+        saying when if it will take longer than that. Deleting a purchase row also removes the
         access it granted. Your Google or GitHub account is separate and is yours to close with
         them.
       </p>
