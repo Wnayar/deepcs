@@ -395,42 +395,8 @@ button.quiet:hover:not(:disabled) {
   margin-left: auto;
 }
 
-/* Two mutually exclusive choices sharing one control, so they read as one
-   thing with a selected half rather than as two buttons that both do
-   something. `aria-pressed` is what drives the fill, so the look and what a
-   screen reader is told come from the same attribute. */
-.tabs {
-  display: flex;
-  gap: 0.25rem;
-  padding: 0.25rem;
-  margin-bottom: 0.25rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-}
-
-.tabs button {
-  flex: 1;
-  border: 0;
-  background: none;
-  color: var(--fg-muted);
-  font-weight: 550;
-  padding: 0.45rem 0.6rem;
-}
-
-.tabs button:hover {
-  color: var(--fg);
-}
-
-.tabs button[aria-pressed='true'] {
-  background: var(--surface);
-  color: var(--fg);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
-}
-
-/* A navigation link wearing the same clothes as the buttons beside it.
-   NavLink sets aria-current itself, so the highlight is driven by the route
-   that is actually rendered rather than by a second copy of that knowledge. */
+/* NavLink sets aria-current itself, so the highlight is driven by the route
+   actually rendered rather than by a second copy of that knowledge. */
 .navlink {
   display: inline-block;
   font: inherit;

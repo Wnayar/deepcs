@@ -14,7 +14,7 @@ export const BOX_W = 216;
 export const BOX_H = 54;
 
 export const MIN_SCALE = 0.4;
-export const MAX_SCALE = 2;
+const MAX_SCALE = 2;
 
 /** Space left around the tree when fitting it to the canvas. */
 const PADDING = 64;
@@ -42,7 +42,7 @@ export interface View {
 export const boxLeft = (node: Placed) => node.gridX * CELL_X - BOX_W / 2;
 export const boxTop = (node: Placed) => node.gridY * CELL_Y - BOX_H / 2;
 
-export const clampScale = (scale: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
+const clampScale = (scale: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
 
 /** A circuit trace from the bottom of one box to the top of the next:
  * straight drops with one horizontal jog at the midpoint, corners rounded.
