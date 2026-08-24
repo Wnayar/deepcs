@@ -28,14 +28,13 @@ function PlanInner({ busy }: { busy: boolean }) {
         <span className="plan-price">{PRICE ?? 'One payment'}</span>
         {PRICE && ANCHOR && <s className="plan-anchor">{ANCHOR}</s>}
       </span>
-      {/* Only while the redirect is being fetched: the card otherwise has
-          nothing to say here that the ticks do not. */}
-      {busy && <span className="plan-sub">Opening checkout…</span>}
+      {/* Directly under the price, because the payment shape qualifies the
+          figure rather than adding to it; a tick in the list below would
+          read as one more feature. */}
+      <span className="plan-sub">{busy ? 'Opening checkout…' : 'one-time payment'}</span>
       <span className="plan-points">
-        <span className="plan-point">One-time payment</span>
         <span className="plan-point">The whole roadmap, forever</span>
         <span className="plan-point">Every future topic included</span>
-        <span className="plan-point">{REFUND_DAYS} day refund, no questions</span>
       </span>
     </>
   );
@@ -102,7 +101,7 @@ export function UpgradePage({ signedIn, entitled }: { signedIn: boolean; entitle
       )}
 
       <p className="trust">
-        Secure checkout by Stripe. <Link to="/terms">{REFUND_DAYS} day refund</Link>, no
+        Secure checkout by Stripe, in USD. <Link to="/terms">{REFUND_DAYS} day refund</Link>, no
         questions.
       </p>
 
