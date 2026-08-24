@@ -1,7 +1,7 @@
 # DeepCS — design
 
 A deployed CS-fundamentals roadmap: read the lessons in the order the map
-recommends, answer the questions, tick off what you can explain. Three topics
+recommends, answer the questions, tick off what you can explain. Two topics
 are free; a one-time purchase unlocks the rest.
 
 This document states **what the system is**. The reasoning behind each
