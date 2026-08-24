@@ -53,3 +53,20 @@ test('a signed-out reader is refused paid content, on the page and in the bytes'
   expect(raw.status()).toBe(401);
   expect(await raw.text()).not.toContain(PAID_BODY);
 });
+
+test('a footer link starts the next screen at its top', async ({ page }) => {
+  await page.goto('/privacy');
+  // The shell renders "Loading…" until Firebase reports a session either
+  // way, and an empty page has nothing to scroll.
+  await expect(page.getByRole('heading', { name: 'Privacy' })).toBeVisible();
+  // `body` is height:100%, so its scrollHeight is the viewport; the browser
+  // clamps this to whatever the real maximum is.
+  await page.evaluate(() => window.scrollTo(0, 100_000));
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+  // Followed from the foot of a long page, the next screen used to open
+  // already scrolled past its own heading.
+  await page.getByRole('link', { name: 'Terms' }).click();
+  await expect(page.getByRole('heading', { name: 'Terms', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+});

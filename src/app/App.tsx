@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from 'react-router';
+import {
+  Link,
+  Navigate,
+  NavLink,
+  Outlet,
+  Route,
+  Routes,
+  useLocation,
+  useNavigationType,
+} from 'react-router';
 import { signOutUser, watchUser, type User } from './auth';
 import { useTheme } from './theme';
 import { useProgress } from './progress';
@@ -47,6 +56,22 @@ function HeartIcon() {
   );
 }
 
+/** A new screen starts at its top. Router navigation leaves the scroll
+ * position where it was, so a footer link followed from the foot of a long
+ * page lands at the foot of the next one. Back and forward are excluded:
+ * the browser restores those itself, and returning to where you were is the
+ * whole point of pressing them. Steps do their own reset per section
+ * (`Step.tsx`), which this does not disturb because a section is a search
+ * param, not a path. */
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  const navigationType = useNavigationType();
+  useEffect(() => {
+    if (navigationType !== 'POP') window.scrollTo({ top: 0 });
+  }, [pathname, navigationType]);
+  return null;
+}
+
 /** The shell: the header, and which screen is on the page. Every route
  * refetches rather than trusting handed state, so any URL rebuilds. */
 export function App() {
@@ -74,6 +99,7 @@ export function App() {
 
   return (
     <>
+      <ScrollToTop />
       <header>
         <h1>
           <Link className="wordmark" to="/">
