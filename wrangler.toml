@@ -30,7 +30,7 @@ migrations_dir = "migrations"
 FIREBASE_PROJECT_ID = "deepcs"
 # The live price for the lifetime unlock. An identifier, not a secret:
 # useless without the secret key.
-STRIPE_PRICE_ID = "price_1U7pNwJSvoIdSZc6TBCTKxM2"
+STRIPE_PRICE_ID = "price_1U7pRQJSvoIdSZc6cbY6ZmXM"
 
 # Per-uid rate limits, keyed by uid inside the Worker so one account cannot
 # exhaust the shared quota or spam Stripe from many IPs. namespace_id is any
