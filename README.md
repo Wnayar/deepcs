@@ -5,8 +5,8 @@ recommends, answer the questions, tick off what you can explain.**
 
 Ten topics laid out by what makes what easier to read, each opening into
 steps: a lesson plus the questions it prepares you for, with self-serve
-reference answers. The first three topics are free; a one-time purchase
-unlocks the rest. Live at **[deepcs.org](https://deepcs.org)**.
+reference answers. Two topics are free; a one-time purchase unlocks the
+rest. Live at **[deepcs.org](https://deepcs.org)**.
 
 **Stack:** one Cloudflare Worker (static assets + a six-route API) · D1 ·
 React + Vite · Firebase Auth (verified in-Worker with `jose`) · Stripe
