@@ -90,6 +90,30 @@ pnpm test                             # unit
 pnpm test:integration                 # builds, then the real Worker in workerd
 ```
 
+## Deploying
+
+**This repo never deploys itself.** Its CI (`.github/workflows/ci.yml`) only
+typechecks and runs the three test layers, credential-free. The one deploy
+path is `deploy.yml` in the private `deepcs-content` repo: it holds the
+Cloudflare token, checks out both repos, builds with `CONTENT_DIR`, and runs
+`wrangler deploy`. It fires on a push to that repo's `main`, or on manual
+dispatch from its Actions tab.
+
+Shipping a code change is therefore two moves: merge to `main` here, then run
+that workflow. A content push does both at once, because the workflow always
+checks out this repo's `main`.
+
+**Never run `wrangler deploy` from a local tree.** It uploads whatever
+`dist/` holds, and a plain `pnpm build` puts the sample fixtures there.
+Deploying that replaces every real lesson with a fixture and locks paying
+customers out of what they bought. If a local deploy is genuinely needed,
+build with `CONTENT_DIR=../deepcs-content` first and read back the topic
+count the build prints.
+
+**Display prices live in `deploy.yml`**, not here. `.env.production` is
+gitignored and reaches local builds only, so editing it changes nothing a
+buyer sees; `VITE_PRICE_*` in that workflow is the live copy.
+
 ## Invariants
 
 **Security is by shape; preserve the shapes:**
@@ -115,7 +139,13 @@ pnpm test:integration                 # builds, then the real Worker in workerd
   edit an applied file.
 - Entitlements are a cache of Stripe's ledger; `scripts/reconcile.mjs`
   rebuilds them. Writes are idempotent (PUT replaces; a grant leaves a live
-  row, replaces a revoked one, so a rebuy after a refund unlocks).
+  row, replaces a revoked one, so a rebuy after a refund unlocks). Reconcile
+  does not walk refunds, so a rebuild re-grants anyone refunded.
+- **Refunds are always the whole price.** The webhook revokes on any
+  `charge.refunded`, and Stripe sends that for partial refunds too, so a
+  partial one would lock out a buyer who still paid most of it. `REFUND_DAYS`
+  in `src/app/pages/Legal.tsx` is the single source for the window: it renders
+  in the terms and on the sales card.
 
 **Content:**
 

@@ -241,7 +241,11 @@ deepcs/
 
 The entire database is two tables. They never join each other, and there is
 no user table: Firebase is the user table, and the verified `sub` claim is
-the only key that ever names a person. Every reference points outward, to
+the only key that ever names a person. Firebase Auth therefore holds what a
+user table would, including the email address and display name the provider
+passes on. Google runs the service but the project is ours, so those records
+are the operator's to answer for even though no line of this code reads them;
+the privacy policy says exactly that rather than claiming no email exists. Every reference points outward, to
 content or to Stripe, never sideways.
 
 ```
@@ -316,6 +320,11 @@ Google signs every Firebase project's tokens with the same key set, so
 without `audience` a token minted in a stranger's project would verify. Deploy
 note: the domain must be on Firebase's authorized-domains list.
 
+The GitHub OAuth application is owned by the `deepcs-org` GitHub organization
+rather than a personal account, so its consent screen names the product
+instead of the author, and org membership is private. This is presentation
+only: the token the Worker verifies is unchanged either way.
+
 ---
 
 ## 7. Content and the two repos
@@ -337,6 +346,18 @@ entirely by what `CONTENT_DIR` pointed at during the last deployed build.
 **The gate, mechanically:** a request for a paid file always runs the Worker,
 which verifies the token, reads one entitlement row, and either streams the
 file (`Cache-Control: private`) or answers **402** without moving a byte.
+
+**Deploy, mechanically:** `deepcs-content/.github/workflows/deploy.yml` is
+the only path to production. It fires on a push to that repo's `main` or on
+manual dispatch, checks out both repos, builds with
+`CONTENT_DIR=../deepcs-content`, and runs `wrangler deploy` with the
+Cloudflare token held there. It always takes this repo's `main`, so a content
+push ships whatever code has landed. The public client identifiers and the
+display prices are environment values in that workflow, not in this repo:
+`.env.production` here is gitignored and reaches local builds only, so editing
+it changes nothing a buyer sees. A `wrangler deploy` from a working tree would
+upload whatever `dist/` holds, which is the sample fixtures unless that build
+named `CONTENT_DIR`, so a local deploy is a hazard rather than a shortcut.
 
 **Two repos** (ADR-007): the public `deepcs` repo carries code and sample
 fixtures only — real content never enters it. The private `deepcs-content`
@@ -369,6 +390,17 @@ shape; Stripe Managed Payments fills in the details (ADR-006).
    beats the redirect, but not always.
 5. **Refunds.** The refund event sets `revoked_at`. Entitled means: a row
    exists and `revoked_at IS NULL`.
+
+Refunds are always the whole price. The webhook revokes on any
+`charge.refunded`, and Stripe sends that event for partial refunds too, so a
+partial one would revoke a buyer who still paid most of it. The stated window
+is 14 days, rendered from a single constant into both the terms and the sales
+card, so the promise and the code cannot drift apart. `/privacy` and `/terms`
+carry the binding versions and the footer links them from every reading
+screen; requests reach `support@deepcs.org`, a Cloudflare Email Routing alias
+forwarding to a personal inbox, so no mailbox is hosted. Because Stripe is
+merchant of record the statutory consumer-refund duty is theirs, which makes
+the stated window a floor rather than a ceiling.
 
 Stripe's ledger is the authoritative record of who paid; D1 is a cache of it,
 rebuildable by `scripts/reconcile.mjs`. Backstops: D1's 30-day
@@ -469,7 +501,7 @@ workerd. CI runs all three layers on the sample fixtures with zero secrets.
 | Worker (`/api/*` + gated reads) | $0 | ~6k requests | 100k requests/**day** | 429 on gated routes; free site stays up |
 | D1 | $0 | ~4k rows written | 5M reads/day · 100k writes/day · 5 GB | refused, not billed |
 | Firebase Auth | $0 | $0 | 3k DAU / 50k MAU | sign-in refused |
-| Stripe Managed Payments | $0 — no monthly fee | processing + 3.5% MoR fee **per sale** (≈ $7 on $99) | n/a | n/a |
+| Stripe Managed Payments | $0 — no monthly fee | processing + 3.5% MoR fee **per sale** (≈ $4 on $57) | n/a | n/a |
 | **Total** | **$0** | **$0 fixed; fees only as a % of revenue** | | **no path to a surprise bill** |
 
 *Realistic = 5,000 page views, 200 signed-in sessions, 4,000 ticks, a few
