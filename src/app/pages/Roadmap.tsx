@@ -54,6 +54,12 @@ export function RoadmapPage({ signedIn, progress }: Props) {
   const canvas = useRef<HTMLDivElement>(null);
   /** Read by the click handler so releasing a pan does not open a topic. */
   const moved = useRef(false);
+  /** Set while two fingers are down, so a pinch does not also pan. */
+  const pinching = useRef(false);
+  /** The view as of this render, for handlers that must not re-subscribe
+   * on every pan frame. */
+  const viewNow = useRef(view);
+  viewNow.current = view;
 
   useEffect(() => {
     getRoadmap()
@@ -103,6 +109,65 @@ export function RoadmapPage({ signedIn, progress }: Props) {
     return () => element.removeEventListener('wheel', onWheel);
   }, [topics]);
 
+  // Pinch to zoom. Touch events rather than pointer events: the gesture is
+  // the distance between two fingers, which pointers only expose by
+  // bookkeeping every contact by hand. A trackpad pinch is a ctrlKey wheel
+  // event and is handled above; a touchscreen sends neither.
+  useEffect(() => {
+    const element = canvas.current;
+    if (!element) return;
+
+    let startSpread = 0;
+    let startScale = 1;
+
+    /** The two contacts, or null unless exactly two fingers are down. */
+    const pair = (touches: TouchList) => {
+      const a = touches[0];
+      const b = touches[1];
+      return touches.length === 2 && a && b ? { a, b } : null;
+    };
+
+    const onStart = (event: TouchEvent) => {
+      const two = pair(event.touches);
+      if (!two) return;
+      pinching.current = true;
+      startSpread = Math.hypot(two.a.clientX - two.b.clientX, two.a.clientY - two.b.clientY);
+      startScale = viewNow.current.scale;
+    };
+
+    const onMove = (event: TouchEvent) => {
+      const two = pair(event.touches);
+      if (!two || startSpread === 0) return;
+      event.preventDefault();
+      const box = element.getBoundingClientRect();
+      const midX = (two.a.clientX + two.b.clientX) / 2 - box.left;
+      const midY = (two.a.clientY + two.b.clientY) / 2 - box.top;
+      const now = Math.hypot(two.a.clientX - two.b.clientX, two.a.clientY - two.b.clientY);
+      const wanted = startScale * (now / startSpread);
+      setView((v) => zoomAt(v, wanted / v.scale, midX, midY));
+    };
+
+    const onEnd = (event: TouchEvent) => {
+      if (event.touches.length >= 2) return;
+      startSpread = 0;
+      // Cleared after the pointerup that ends the pan has been seen.
+      setTimeout(() => {
+        pinching.current = false;
+      }, 0);
+    };
+
+    element.addEventListener('touchstart', onStart, { passive: false });
+    element.addEventListener('touchmove', onMove, { passive: false });
+    element.addEventListener('touchend', onEnd);
+    element.addEventListener('touchcancel', onEnd);
+    return () => {
+      element.removeEventListener('touchstart', onStart);
+      element.removeEventListener('touchmove', onMove);
+      element.removeEventListener('touchend', onEnd);
+      element.removeEventListener('touchcancel', onEnd);
+    };
+  }, [topics]);
+
   const onPointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return;
     const origin = { x: event.clientX, y: event.clientY };
@@ -110,6 +175,7 @@ export function RoadmapPage({ signedIn, progress }: Props) {
     moved.current = false;
 
     const onMove = (move: PointerEvent) => {
+      if (pinching.current) return;
       const dx = move.clientX - origin.x;
       const dy = move.clientY - origin.y;
       if (!moved.current && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;

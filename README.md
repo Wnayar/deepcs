@@ -42,8 +42,11 @@ whoever has that repo.
 pnpm test               # unit: pure logic, milliseconds, no I/O
 pnpm test:integration   # the real Worker in workerd, real local D1,
                         # really-signed JWTs and webhooks
+pnpm test:e2e           # a real browser against wrangler dev
+                        # (npx playwright install chromium, once)
 ```
 
 The trust boundary, the paywall, webhook forgery and replay, refund
 revocation, and the SPA deep-link promise are all asserted against the
-production runtime, offline.
+production runtime, offline. The browser flows are in
+[test/e2e](./test/e2e/README.md).

@@ -1,7 +1,10 @@
 import { SignJWT, importJWK, type JWK } from 'jose';
-import fixture from '../fixtures/test-jwks.json';
+// The attribute is required by the e2e runner, which loads this file as
+// plain Node ESM rather than through a bundler.
+import fixture from '../fixtures/test-jwks.json' with { type: 'json' };
 
-/** Matches FIREBASE_PROJECT_ID in vitest.workers.config.ts. */
+/** Matches FIREBASE_PROJECT_ID in vitest.workers.config.ts and in
+ * playwright.config.ts. */
 export const PROJECT = 'test-project';
 const ISSUER = `https://securetoken.google.com/${PROJECT}`;
 

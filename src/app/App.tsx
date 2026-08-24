@@ -76,7 +76,8 @@ export function App() {
         <h1>
           <Link className="wordmark" to="/">
             <Mark />
-            deepcs
+            {/* Wrapped so a phone can drop the name and keep the mark. */}
+            <span className="wordmark-text">deepcs</span>
           </Link>
         </h1>
 

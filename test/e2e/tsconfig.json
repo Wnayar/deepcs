@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "resolveJsonModule": true,
+    "types": ["node"]
+  },
+  "include": [
+    "./**/*",
+    "../integration/helpers.ts",
+    "../fixtures/*.json",
+    "../../playwright.config.ts"
+  ]
+}

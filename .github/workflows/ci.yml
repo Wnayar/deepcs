@@ -1,7 +1,7 @@
-# The public repo's CI: typecheck, unit, build, and the workerd integration
-# suite, all on the sample fixtures — fully green with zero secrets
-# (DESIGN.md §15). Deploys happen from the private content repo's workflow,
-# which is where the Cloudflare token lives.
+# The public repo's CI: typecheck, unit, build, the workerd integration
+# suite, and the browser flows, all on the sample fixtures — fully green
+# with zero secrets (DESIGN.md §15). Deploys happen from the private content
+# repo's workflow, which is where the Cloudflare token lives.
 name: ci
 on:
   push:
@@ -24,3 +24,8 @@ jobs:
       # Builds first, then runs the real Worker in workerd with a real local
       # D1 — hermetic, so it needs no services and no credentials.
       - run: pnpm test:integration
+      # One browser: the flows pin whole-stack behaviour, not rendering.
+      - run: npx playwright install --with-deps chromium
+      # Starts its own `wrangler dev` and signs its own tokens and webhook
+      # payloads, so this stays offline and credential-free too.
+      - run: pnpm test:e2e

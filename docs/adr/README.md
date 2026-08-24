@@ -17,3 +17,4 @@ not by editing history.
 | [008](008-rate-limiting.md) | Rate limiting: per-uid binding plus edge rule |
 | [009](009-frontend-react-vite.md) | Frontend: React + Vite SPA |
 | [010](010-testing-strategy.md) | Testing: the pyramid and its tooling |
+| [011](011-e2e-sign-in.md) | Signing in inside the e2e browser |

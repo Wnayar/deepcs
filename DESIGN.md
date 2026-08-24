@@ -162,9 +162,10 @@ deepcs/
 │                          run_worker_first, D1 binding, vars, rate limits
 ├── package.json           one package
 ├── pnpm-workspace.yaml    install-script policy + the single esbuild pin
-├── tsconfig*.json         three: app (DOM), worker, integration tests
+├── tsconfig*.json         four: app (DOM), worker, integration, e2e
 ├── vite.config.ts         SPA build + the CSP + dev-only content server
 ├── vitest.workers.config.ts   the workerd integration pool
+├── playwright.config.ts   the browser flows; starts its own wrangler dev
 ├── index.html
 │
 ├── docs/adr/             one record per decision (the "why")
@@ -209,7 +210,13 @@ deepcs/
 │   ├── helpers.ts         mint real JWTs · sign real webhooks
 │   └── setup.ts · env.d.ts · tsconfig.json
 │
-└── .github/workflows/ci.yml   typecheck · unit · integration, on fixtures
+├── test/e2e/            a real browser against wrangler dev
+│   ├── reader.spec.ts · progress.spec.ts · purchase.spec.ts
+│   ├── degraded.spec.ts
+│   ├── session.ts         seed a signed-in session with a real token
+│   └── README.md · tsconfig.json
+│
+└── .github/workflows/ci.yml   typecheck · unit · integration · e2e
 ```
 
 ---
@@ -423,7 +430,7 @@ denial-of-service and Stripe abuse. Two layers (ADR-008):
 A pyramid where every test pins a real failure; no coverage target (ADR-010).
 
 ```
-        ▲  E2E (Playwright)        real browser · wrangler dev + Firebase emulator
+        ▲  E2E (Playwright)        real browser · wrangler dev · real local D1
        ▲▲▲  Integration            the real Worker in workerd · real local D1
      ▲▲▲▲▲▲  Unit (Vitest)         pure logic · no I/O · milliseconds
 ```
@@ -437,14 +444,18 @@ A pyramid where every test pins a real failure; no coverage target (ADR-010).
   (401/402/200 with no leaked bytes), webhook double-delivery granting once,
   refund revocation, checkout requiring a token, the SPA deep-link rewrite,
   and migrations applying twice cleanly.
-- **End-to-end** — a few whole-stack flows: the anonymous reader, progress
-  across a session boundary, the purchase journey (test-signed webhook), and
-  the degraded-write-path promise that the free site survives backend failure.
+- **End-to-end** — a real browser against `wrangler dev`, four whole-stack
+  flows: the anonymous reader, progress across a session boundary, the
+  purchase journey (test-signed webhook), and the degraded-write-path promise
+  that the free site survives backend failure. Sign-in is Google and GitHub
+  popups, which no offline browser can complete, so a test seeds the session
+  a returning reader would have restored (ADR-011); Stripe's hosted checkout
+  is likewise out of reach, so the purchase journey resumes at the webhook.
 
 **Verification is never stubbed:** tests mint real RS256 tokens against a
 committed throwaway key pair and really-sign webhook payloads, so the Worker
-verifies both exactly as in production. CI runs unit + integration on the
-sample fixtures with zero secrets.
+verifies both exactly as in production, in the browser as much as in
+workerd. CI runs all three layers on the sample fixtures with zero secrets.
 
 ---
 
