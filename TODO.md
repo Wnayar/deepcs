@@ -6,7 +6,7 @@ price, the live webhook and both secrets, the legal pages published, CI
 deploying on every content push, and the edge protections on. Pricing stays
 in USD; Adaptive Pricing was more trouble than it was worth.
 
-Four things remain, none of them code.
+Three things remain, none of them code.
 
 1. **A qualified read of `/privacy` and `/terms`.** They describe this system
    rather than a template, and the load-bearing facts are right: Stripe is
