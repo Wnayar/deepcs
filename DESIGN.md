@@ -200,6 +200,7 @@ deepcs/
 │       ├── *.test.ts       unit tests, beside the pure logic they cover
 │       └── pages/          Home · Roadmap · Step · TopicDialog
 │                           · ProgressPanel · Login · Upgrade · Advice
+│                           · Legal (privacy, terms)
 │
 ├── scripts/
 │   ├── build-content.mjs   validate + split content by tier into dist/

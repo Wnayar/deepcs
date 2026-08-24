@@ -9,6 +9,7 @@ import { LoginPage } from './pages/Login';
 import { UpgradePage, UpgradeThanksPage } from './pages/Upgrade';
 import { AdvicePage } from './pages/Advice';
 import { HomePage } from './pages/Home';
+import { CONTACT, PrivacyPage, TermsPage } from './pages/Legal';
 
 /** The wordmark glyph: a three-node path, the roadmap in miniature. Inline
  * SVG so it takes the theme's accent and follows theme switches. */
@@ -164,6 +165,8 @@ export function App() {
           />
           <Route path="/upgrade/thanks" element={<UpgradeThanksPage />} />
           <Route path="/advice" element={<AdvicePage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
@@ -180,10 +183,29 @@ function Wide() {
   );
 }
 
+/** Outside `main`, so it sits under the reading column rather than inside
+ * its measure. Absent from the map layout, whose canvas is sized to fill
+ * exactly what the header leaves. */
+function SiteFooter() {
+  return (
+    <footer className="site-footer">
+      <nav className="footer-links">
+        <Link to="/privacy">Privacy</Link>
+        <Link to="/terms">Terms</Link>
+        <a href={`mailto:${CONTACT}`}>Contact</a>
+      </nav>
+      <p className="faint">© 2026 deepcs.org</p>
+    </footer>
+  );
+}
+
 function Narrow() {
   return (
-    <main>
-      <Outlet />
-    </main>
+    <>
+      <main>
+        <Outlet />
+      </main>
+      <SiteFooter />
+    </>
   );
 }

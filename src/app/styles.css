@@ -1863,6 +1863,57 @@ button:focus-visible {
    Everything above is written wide-first; this section only takes space
    back, so a rule here always has a desktop rule it is narrowing. */
 
+/* ── Footer and the legal documents ────────────────────────────────────────── */
+
+/* Aligned to `main`'s column so the links sit under the text rather than at
+   the window edge. The map layout leaves it out: that canvas is sized to
+   exactly what the header leaves, and a footer would push its bottom edge
+   off screen. */
+.site-footer {
+  width: 100%;
+  max-width: 66rem;
+  margin: 0 auto;
+  padding: 1.25rem;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  font-size: 0.85rem;
+}
+
+.site-footer p {
+  margin: 0;
+}
+
+.footer-links {
+  gap: 1.1rem;
+}
+
+/* Muted until hovered: these are the links a reader wants only when they
+   are looking for them, and accent-blue in the footer competes with the
+   page's own calls to action. */
+.footer-links a {
+  color: var(--fg-muted);
+  text-decoration: none;
+}
+
+.footer-links a:hover {
+  color: var(--fg);
+  text-decoration: underline;
+}
+
+/* A document rather than a screen: headings carry the section list, so they
+   need more air above them than a page of prose gives by default. */
+.legal {
+  padding: 1rem 0 2rem;
+}
+
+.legal h3 {
+  margin: 1.75rem 0 0.5rem;
+}
+
 @media (max-width: 40rem) {
   /* The bar has six controls and a phone has no room for their labels plus
      the wordmark, so the mark stands in for the name and the avatar goes:
