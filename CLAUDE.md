@@ -125,6 +125,14 @@ pnpm test:integration                 # builds, then the real Worker in workerd
   content mistake must fail the build.
 - **No em or en dashes in anything a reader sees.** The validator asserts
   it. Code comments and these docs are exempt.
+- **`deepcs-content/STYLE.md` is the authority on lesson shape**, and the
+  `oop` topic is its worked reference. Remaining conversions are tracked in
+  `deepcs-content/TODO-LESSONS.md`.
+- **Four marks are a contract between the lessons and the renderer**:
+  `> **TLDR:**`, `> **Example:**`, `> **Interview phrasing:**`, and
+  `**term** [gloss]`. `src/app/markdown.ts` turns them into the coloured
+  asides and the italic gloss; renaming a label silently un-styles every
+  lesson that uses it, so the tests in `markdown.test.ts` pin them.
 
 **The browser:**
 

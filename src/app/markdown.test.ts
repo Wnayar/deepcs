@@ -51,4 +51,37 @@ describe('rendering lesson markdown', () => {
   it('still renders ordinary prose', () => {
     expect(renderMarkdown('**bold** and `code`')).toContain('<strong>bold</strong>');
   });
+
+  it('tags each labelled aside, and leaves an unlabelled quote plain', () => {
+    const html = renderMarkdown(
+      '> **TLDR:** short.\n\n> **Example:** like so.\n\n> **Interview phrasing:** say this.\n\n> just a quote.',
+    );
+
+    expect(html).toContain('<blockquote class="tldr">');
+    expect(html).toContain('<blockquote class="example">');
+    expect(html).toContain('<blockquote class="phrasing">');
+    expect(html).toContain('<blockquote>\n<p>just a quote.</p>');
+  });
+
+  it('renders a definition as a parenthesised gloss, code and all', () => {
+    const html = renderMarkdown('A **global** [a variable `any` function can write] is shared.');
+
+    expect(html).toContain('<span class="define">(a variable <code>any</code> function can write)');
+    // Brackets read as punctuation to skip; the parens are the whole point.
+    expect(html).not.toContain('[a variable');
+  });
+
+  it('still glosses a definition with no term in front of it', () => {
+    const html = renderMarkdown('it uses a [conflict-free replicated data type] here');
+
+    expect(html).toContain('<span class="define">(conflict-free replicated data type)</span>');
+  });
+
+  it('leaves link syntax and code brackets alone', () => {
+    // The definition pattern and a markdown link differ only by what follows
+    // the closing bracket, and array syntax is everywhere in the code blocks.
+    expect(renderMarkdown('see [the docs](https://example.com)')).not.toContain('define');
+    expect(renderMarkdown('```python\nxs = [1, 2]\n```')).not.toContain('define');
+    expect(renderMarkdown('the value `xs[0]` is first')).not.toContain('define');
+  });
 });

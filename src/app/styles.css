@@ -32,6 +32,13 @@
   --accent-fg: #ffffff;
   --accent-soft: #eaeeff;
 
+  /* The TLDR line that opens a lesson section, and the glosses that define a
+     word mid-sentence. Both exist to read as a different kind of text from
+     the paragraph around them, so both get their own ink. */
+  --tldr-fg: #2f7d4f;
+  --phrasing-fg: #12726a;
+  --example-fg: #6b3fa0;
+
   --ok: #2f7d4f;
   --ok-soft: #e8f4ec;
   /* The progress bars and the star. Separate from --ok because "done" is a
@@ -100,6 +107,10 @@
   --accent: #8ba4ff;
   --accent-fg: #14161a;
   --accent-soft: #2b3150;
+
+  --tldr-fg: #6cc48d;
+  --phrasing-fg: #6fd8cc;
+  --example-fg: #c6b0f0;
 
   --ok: #6cc48d;
   --ok-soft: #243329;
@@ -1180,11 +1191,12 @@ button:focus-visible {
   padding-top: 0.6rem;
 }
 
-/* The answer in one line. A rule and a colour rather than bold, so it does
-   not compete with the bolded term labels underneath it. */
+/* The answer in one line, shaped like the TLDR that opens a lesson section
+   and sharing its green, because it makes the same promise: this sentence is
+   the answer, and everything below it exists to explain this sentence. */
 .qa .prose > p:first-child {
-  border-left: 3px solid var(--accent);
-  padding-left: 0.8rem;
+  border-left: 3px solid var(--tldr-fg);
+  padding: 0.1rem 0 0.1rem 1rem;
   color: var(--fg-strong);
   font-weight: 550;
 }
@@ -1245,6 +1257,37 @@ button:focus-visible {
 
 .prose li {
   margin-bottom: 0.35rem;
+}
+
+/* The two labelled asides that bracket every section. Only the label is
+   coloured, so the eye finds the word without reading a tinted paragraph,
+   and the two greens read as the same kind of help rather than as a warning
+   the way a red or amber would. */
+.prose blockquote.tldr strong {
+  color: var(--tldr-fg);
+}
+
+.prose blockquote.phrasing strong {
+  color: var(--phrasing-fg);
+}
+
+/* The worked case that closes an answer. Violet rather than a third green:
+   the greens mean "this is the answer", and an example is a different kind of
+   help, so it must not read as more of the answer. */
+.prose blockquote.example {
+  border-left-color: var(--example-fg);
+}
+
+.prose blockquote.example strong {
+  color: var(--example-fg);
+}
+
+/* A word defined where it is first used. No colour: the parentheses and the
+   lean already say "aside", and a third ink in the middle of a sentence
+   competes with the two that mean something. */
+.prose .define {
+  font-style: italic;
+  font-size: 0.94em;
 }
 
 /* Emphasis has to win against body text in both themes: dark deliberately

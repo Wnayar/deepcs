@@ -31,8 +31,42 @@ marked.use({
       const html = Prism.highlight(text, grammar, name);
       return `<pre class="language-${name}"><code>${html}</code></pre>`;
     },
+    // Labelled asides, all the same shape: a lesson section opens on TLDR and
+    // closes on interview phrasing, and an answer card ends on Example. Each
+    // is tagged by its label so the stylesheet can colour the label alone.
+    blockquote({ tokens }) {
+      const body = this.parser.parse(tokens);
+      const label = /^<p><strong>(TLDR|Example|Interview phrasing):<\/strong>/.exec(body.trim());
+      const kind = { TLDR: 'tldr', Example: 'example', 'Interview phrasing': 'phrasing' }[
+        label?.[1] ?? ''
+      ];
+      return `<blockquote${kind ? ` class="${kind}"` : ''}>\n${body}</blockquote>\n`;
+    },
   },
 });
+
+/**
+ * Bracketed glossing, `**term** [what it means]`, is how the lessons define a
+ * word in place. The term and the gloss are marked separately so the styling
+ * can carry which is which: brackets read as punctuation to skip, where a
+ * parenthesised aside reads as one. Marking it here rather than in the
+ * content keeps the source plain and lets the styling change in one place.
+ * Link syntax is left alone, and inline code is lifted out first so a
+ * definition may contain it.
+ */
+function markDefinitions(md: string): string {
+  return md
+    .split(/(```[\s\S]*?```)/g)
+    .map((chunk, index) => {
+      if (index % 2) return chunk;
+      const code: string[] = [];
+      const stashed = chunk.replace(/`[^`\n]*`/g, (span) => `\u0000${code.push(span) - 1}\u0000`);
+      return stashed
+        .replace(/\[([^\][]+?)\](?!\()/g, '<span class="define">($1)</span>')
+        .replace(/\u0000(\d+)\u0000/g, (whole, n: string) => code[Number(n)] ?? whole);
+    })
+    .join('');
+}
 
 function escapeHtml(text: string): string {
   return text
@@ -43,5 +77,5 @@ function escapeHtml(text: string): string {
 }
 
 export function renderMarkdown(md: string): string {
-  return marked.parse(md) as string;
+  return marked.parse(markDefinitions(md)) as string;
 }
