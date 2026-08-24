@@ -8,11 +8,16 @@ in USD; Adaptive Pricing was more trouble than it was worth.
 
 Two things remain, neither of them code.
 
-1. **A qualified read of `/privacy` and `/terms`.** They describe this system
-   rather than a template, and the load-bearing facts are right: Stripe is
-   merchant of record, the email lives in Firebase Auth where the operator can
-   see it, PDPA is the regime, the window is 14 days, no personal name or
-   address is published. Nobody with a licence has read them.
+1. **A qualified read of `/privacy` and `/terms`.** Not blocking, and it can
+   wait for a free one. Both were checked against PDPC's published list of the
+   eleven obligations and the gaps closed: overseas transfer, protection,
+   consent and its withdrawal, and the thirty-day answer on access requests.
+   The load-bearing facts are right too: Stripe is merchant of record, the
+   email lives in Firebase Auth where the operator can see it, the window is
+   14 days, no personal name or address is published. What is missing is a
+   licensed pair of eyes, not a known defect. NUS Enterprise or the law
+   faculty's pro bono office are the free routes; a fixed-fee review from an
+   SME firm is the paid one, worth it once sales justify it.
 2. **Soft launch.** A few real people through sign-up and purchase, plus one
    real refund to prove the revoke path, before any public post. This is also
    where real provider sign-in and Stripe's hosted checkout get exercised: the
