@@ -35,3 +35,31 @@ test('a paid webhook unlocks the buyer, and only from the offer onward', async (
   await expect(page.getByRole('heading', { name: 'A sample locked lesson' })).toBeVisible();
   await expect(page.getByText('the entitlement check passed')).toBeVisible();
 });
+
+/**
+ * Backing out of Stripe with the browser's back button, which restores this
+ * page from the back/forward cache rather than reloading it. Stripe's own
+ * back control is unaffected: it navigates to `cancel_url`, a fresh load.
+ */
+test('a back/forward cache restore leaves the buy button usable', async ({ page }) => {
+  await signIn(page, freshUid('backout'));
+
+  // A fragment, so the redirect leaves the page mounted with the state the
+  // real one leaves behind. Stripe is unreachable offline (DESIGN.md §11).
+  await page.route('**/api/checkout', (route) => route.fulfill({ json: { url: '#stripe' } }));
+
+  await page.goto('/upgrade');
+  const buy = page.getByRole('button', { name: /Lifetime/ });
+  await buy.click();
+  await expect(buy).toBeDisabled();
+
+  // Dispatched rather than driven: headless Chromium under Playwright never
+  // serves a history navigation from the cache, so a real back button here
+  // would reload the page and prove nothing.
+  await page.evaluate(() =>
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })),
+  );
+
+  await expect(buy).toBeEnabled();
+  await expect(page.getByText('Opening checkout')).toHaveCount(0);
+});

@@ -45,6 +45,18 @@ export function UpgradePage({ signedIn, entitled }: { signedIn: boolean; entitle
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // buy() leaves `busy` set once the redirect is underway, because the tab
+  // is on its way to Stripe. The back/forward cache restores this page with
+  // that state intact, so without this the button stays disabled until a
+  // reload. Stripe's own back control lands on cancel_url and reloads.
+  useEffect(() => {
+    const restored = (event: PageTransitionEvent) => {
+      if (event.persisted) setBusy(false);
+    };
+    window.addEventListener('pageshow', restored);
+    return () => window.removeEventListener('pageshow', restored);
+  }, []);
+
   const buy = async () => {
     setBusy(true);
     setError(null);
