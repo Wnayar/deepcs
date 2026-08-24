@@ -149,7 +149,7 @@ export function HomePage() {
         <p className="backing-label">Why this is public</p>
         <p className="backing-line">
           These were private notes until friends kept asking for copies. Thank you for the
-          push{' '}
+          push and support{' '}
           <span className="support-heart" aria-hidden="true">
             ♥
           </span>
