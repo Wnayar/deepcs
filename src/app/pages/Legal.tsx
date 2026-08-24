@@ -1,14 +1,16 @@
-/** The two documents live money requires. Both describe this system
- * specifically: what a template would get wrong here is that Stripe, not
- * the operator, is the seller, and that the database holds no email
- * address. DESIGN.md §5 and §8 are the facts these pages restate. */
+/**
+ * The two documents live payments require. They restate DESIGN.md §5, §6 and
+ * §8 in a reader's words, so a change to one of those sections is half a
+ * change until this file follows.
+ *
+ * Three facts here are load-bearing and easy to state wrongly: Stripe is the
+ * seller and not the operator; the reader's email sits in Firebase Auth, not
+ * in D1, and the operator can see it; and no personal name is published,
+ * which PDPA allows because the contact address reaches whoever answers for
+ * data protection.
+ */
 
-/** Published identity: PDPA asks for the business contact information of
- * whoever is responsible for data protection, which a role address
- * satisfies. No personal name is published, and none is owed while Stripe
- * is merchant of record and carries the seller's contact duty. */
-
-/** Shared with the sales page, where the promise actually reaches a buyer. */
+/** Shared with the sales page, where the promise reaches a buyer. */
 export const REFUND_DAYS = 14;
 
 export const CONTACT = 'support@deepcs.org';
@@ -36,21 +38,34 @@ export function PrivacyPage() {
         and event references for that payment, and the dates it was bought and, if it ever is,
         refunded.
       </p>
-      <p>That is the whole database.</p>
+      <p>That is the whole of this site's own database.</p>
 
-      <h3>What DeepCS never stores</h3>
+      <h3>Your account, and the email on it</h3>
       <p>
-        No name, no email address, no postal address, no password, and nothing card shaped.
-        None of it reaches this site. Your profile picture is fetched from Google or GitHub as
-        the page draws it and is never copied here.
+        Signing in also creates an account in Firebase Authentication, a Google service that
+        DeepCS runs. That account holds the email address and display name your provider passes
+        on, and whoever operates DeepCS can see them in its console. They are there to tell one
+        account from another and to answer you if you write in. They are never sold, never
+        shared with anyone else, and never used to market anything at you.
+      </p>
+      <p>
+        The site itself does not read them. The pages and the API work from the account id
+        alone, which is why the database above holds no email.
+      </p>
+
+      <h3>What DeepCS never holds</h3>
+      <p>
+        No postal address, no password, and nothing card shaped. Card details go to Stripe and
+        never touch this site. Your profile picture is fetched from Google or GitHub as the page
+        draws it and is never copied here.
       </p>
 
       <h3>Who else handles your data</h3>
       <p>
-        <strong>Sign-in: Firebase Authentication, by Google.</strong> Your account lives with
-        them, including the email address and name your provider shares. DeepCS receives a
-        signed token proving the account is yours and reads only the account id from it.
-        Nothing here can create or alter that account.
+        <strong>Sign-in: Firebase Authentication, by Google.</strong> Google runs the service
+        and holds the account described above on this site's behalf. DeepCS receives a signed
+        token proving the account is yours and reads only the account id from it. Passwords do
+        not exist here: Google and GitHub do the authenticating.
       </p>
       <p>
         <strong>Payment: Stripe.</strong> Stripe is the seller of record for Pro, so they take
@@ -87,8 +102,10 @@ export function PrivacyPage() {
       <h3>Getting your data, or deleting it</h3>
       <p>
         Email <a href={`mailto:${CONTACT}`}>{CONTACT}</a>. Your rows can be sent to you,
-        corrected, or deleted on request. The account itself is deleted with Google or GitHub, since it is
-        theirs rather than ours. Deleting a purchase row also removes the access it granted.
+        corrected, or deleted on request, and the sign-in account deleted with them, which
+        removes the email address held against it. Deleting a purchase row also removes the
+        access it granted. Your Google or GitHub account is separate and is yours to close with
+        them.
       </p>
 
       <h3>Who runs DeepCS, and who to contact</h3>
