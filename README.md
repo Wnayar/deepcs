@@ -1,52 +1,86 @@
 # deepcs
 
-**A CS-fundamentals roadmap: read the lessons in the order the map
-recommends, answer the questions, tick off what you can explain.**
+**A computer-science revision site with a paid tier. Live at
+[deepcs.org](https://deepcs.org), taking real payments.**
 
-Ten topics laid out by what makes what easier to read, each opening into
-steps: a lesson plus the questions it prepares you for, with self-serve
-reference answers. Two topics are free; a one-time purchase unlocks the
-rest. Live at **[deepcs.org](https://deepcs.org)**.
+Ten topics arranged by what makes what easier to read. Each opens into steps:
+a lesson, then the interview questions it prepares you for, with self-serve
+reference answers. Two topics are free; one payment unlocks the rest, for
+good.
 
-**Stack:** one Cloudflare Worker (static assets + a six-route API) · D1 ·
-React + Vite · Firebase Auth (verified in-Worker with `jose`) · Stripe
-Managed Payments. Every design decision, with the alternatives it beat, is
-in [DESIGN.md](./DESIGN.md).
+One person: the architecture, the payments integration, the writing, and the
+deploy.
 
 ---
 
-## This repo runs on sample content
+## How it is built
 
-The real lessons live in a private content repo and meet this code only at
-deploy time (DESIGN.md §7). What ships here is a small set of clearly
-labeled fixtures — including one *paid* fixture topic, so the paywall is
-runnable and testable from this repo alone. Everything below works with no
-accounts, no secrets, and no network beyond `pnpm install`.
+One Cloudflare Worker is the entire deployment. The platform serves the React
+SPA and free content straight from the edge cache without invoking it; the
+Worker runs only for `/api/*` and paid content.
+
+| | |
+|---|---|
+| **Backend** | one Worker, 489 lines, six routes |
+| **Database** | D1 (SQLite), two tables, no user table |
+| **Identity** | Firebase Auth, verified in-Worker with `jose` |
+| **Payments** | Stripe Managed Payments, merchant of record |
+| **Frontend** | React + Vite, no server rendering |
+| **Cost** | $0 idle, $0 busy; fees only as a share of revenue |
+
+Reading is a file fetch from the edge. Writing is a token plus one upsert.
+Buying is a redirect plus one signed webhook. That is the whole system.
+
+## Three decisions worth the click
+
+**[Security is by shape](./DESIGN.md#9-security), not by checking.** No route
+accepts a user id. The surface is `/api/me/*` and identity comes only from the
+verified token's `sub`, so the entire IDOR class is not defended against, it is
+unrepresentable. The paid gate is server-side only: locked bytes never reach an
+unentitled browser, and the lock in the UI is presentation.
+
+**[Stripe is the seller, not me](./docs/adr/006-monetization-stripe-lifetime.md).**
+Managed Payments makes Stripe merchant of record, so VAT in every buyer's
+jurisdiction, chargebacks, and disputes are theirs. An individual with no
+registered company cannot own global tax compliance; the fee is the price of
+never having to.
+
+**[Idle months cost nothing](./DESIGN.md#12-cost).** No meter here runs on
+wall-clock: compute is per-request, the database per-row, payments per-sale.
+Every ceiling fails by refusing service rather than by charging, so there is no
+path to a surprise bill. That is what makes a lifetime unlock safe to promise.
+
+## The reasoning is written down
+
+[DESIGN.md](./DESIGN.md) states what the system is. [`docs/adr/`](./docs/adr/)
+records why: eleven records, each naming the options it rejected and the
+tradeoff it accepted. A decision that weighed alternatives belongs in an ADR,
+not in a comment.
+
+## Why there are no lessons in this repo
+
+The content is the product, so it lives in a private repo and meets this code
+only at deploy time. What ships here is a small set of clearly labelled sample
+fixtures, including one *paid* fixture topic, so the paywall stays runnable and
+testable from the public repo alone.
+
+## Tests
+
+Sixty-five across three layers, every one of them offline and credential-free
+in CI. Verification is never stubbed: the tests mint real RS256 tokens against
+a committed throwaway key pair and really sign webhook payloads, so the Worker
+verifies both exactly as it does in production. The middle layer runs the real
+Worker inside `workerd` against a real local D1, which is where the trust
+boundary, the paywall, webhook forgery and replay, and refund revocation are
+each pinned to a named failure.
 
 ## Running it
 
 ```bash
-pnpm install
-pnpm build                                  # SPA + content split into dist/client
+pnpm install && pnpm build
 npx wrangler d1 migrations apply deepcs --local
-npx wrangler dev                            # the whole stack on :8787
+npx wrangler dev     # whole stack on :8787, on the sample fixtures
 ```
 
-`pnpm dev` runs Vite alone with hot reload (content served ungated, no API).
-`CONTENT_DIR=../deepcs-content pnpm build` builds against real content, for
-whoever has that repo.
-
-## Testing
-
-```bash
-pnpm test               # unit: pure logic, milliseconds, no I/O
-pnpm test:integration   # the real Worker in workerd, real local D1,
-                        # really-signed JWTs and webhooks
-pnpm test:e2e           # a real browser against wrangler dev
-                        # (npx playwright install chromium, once)
-```
-
-The trust boundary, the paywall, webhook forgery and replay, refund
-revocation, and the SPA deep-link promise are all asserted against the
-production runtime, offline. The browser flows are in
-[test/e2e](./test/e2e/README.md).
+Then `pnpm test`, `pnpm test:integration`, `pnpm test:e2e`. No accounts, no
+secrets, no network beyond the install.
