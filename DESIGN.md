@@ -66,7 +66,7 @@ flowchart TD
     subgraph CF["Cloudflare — one origin, one deploy (wrangler deploy)"]
         EDGE["Static assets at the edge<br/>index.html · app.js · css<br/>content/roadmap.json (all topics, lock flags)<br/>free lessons + free questions<br/><i>free, unlimited, Worker never invoked;<br/>unknown paths fall back to index.html with 200</i>"]
         RL["Per-IP edge rate-limit rule + Bot Fight Mode<br/>on /api/* and /content/paid/*<br/><i>a blocked request never becomes<br/>a billable Worker invocation</i>"]
-        W["Worker — the entire backend (~480 lines)<br/>verify Firebase ID token (jose · issuer · audience · RS256)<br/>check entitlement (D1) · zod-validate · manifest-validate<br/>per-uid rate limit · create checkouts · consume webhooks"]
+        W["Worker — the entire backend (~490 lines)<br/>verify Firebase ID token (jose · issuer · audience · RS256)<br/>check entitlement (D1) · zod-validate · manifest-validate<br/>per-uid rate limit · create checkouts · consume webhooks"]
         D1[("D1 (SQLite)<br/>progress(uid, step_id, …)<br/>entitlements(uid, product, …)")]
         PAID["Paid content files<br/>(assets on run_worker_first paths —<br/>only reachable through the Worker)"]
     end
@@ -180,7 +180,7 @@ deepcs/
 │   └── 0002_entitlements.sql
 │
 ├── src/
-│   ├── worker/           the entire backend (~480 lines)
+│   ├── worker/           the entire backend (~490 lines)
 │   │   ├── index.ts        the router
 │   │   ├── auth.ts         Firebase token verification (jose)
 │   │   ├── manifest.ts     step id → tier, from roadmap.json
@@ -218,6 +218,8 @@ deepcs/
 │   └── README.md · tsconfig.json
 │
 └── .github/workflows/ci.yml   typecheck · unit · integration · e2e
+                              tests only, zero secrets; the deploy
+                              workflow lives in deepcs-content (§7)
 ```
 
 ---
@@ -234,6 +236,7 @@ deepcs/
 | Frontend | React + Vite SPA | the build output is the asset directory; SPA fallback is one line | ADR-009 |
 | Rate limiting | per-uid Worker binding + per-IP edge rule | a bought account cannot exhaust the quota or spam Stripe | ADR-008 |
 | Tests | Vitest · vitest-pool-workers · Playwright | the real Worker in the real runtime; verification never stubbed | ADR-010 |
+| Deploy | one workflow in the private content repo | it holds the token and the content, so nothing public can reach production | ADR-007, §7 |
 
 ---
 
@@ -347,6 +350,14 @@ entirely by what `CONTENT_DIR` pointed at during the last deployed build.
 which verifies the token, reads one entitlement row, and either streams the
 file (`Cache-Control: private`) or answers **402** without moving a byte.
 
+**Two repos** (ADR-007): the public `deepcs` repo carries code and
+sample fixtures only — real content never enters it. The private
+`deepcs-content` repo holds all real content plus the workflow that joins the
+two at deploy time. The Cloudflare token lives there, so nothing in the public
+repo can reach production. Local preview of real content is
+`CONTENT_DIR=../deepcs-content wrangler dev`; without it, dev runs on
+fixtures.
+
 **Deploy, mechanically:** `deepcs-content/.github/workflows/deploy.yml` is
 the only path to production. It fires on a push to that repo's `main` or on
 manual dispatch, checks out both repos, builds with
@@ -358,13 +369,6 @@ display prices are environment values in that workflow, not in this repo:
 it changes nothing a buyer sees. A `wrangler deploy` from a working tree would
 upload whatever `dist/` holds, which is the sample fixtures unless that build
 named `CONTENT_DIR`, so a local deploy is a hazard rather than a shortcut.
-
-**Two repos** (ADR-007): the public `deepcs` repo carries code and sample
-fixtures only — real content never enters it. The private `deepcs-content`
-repo holds all real content and the deploy workflow, which checks out both
-repos, validates and builds the content, and runs `wrangler deploy`. The
-Cloudflare token lives in the private repo. Local preview of real content is
-`CONTENT_DIR=../deepcs-content wrangler dev`; without it, dev runs on fixtures.
 
 ---
 
