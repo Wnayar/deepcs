@@ -27,8 +27,11 @@ function PlanInner({ busy }: { busy: boolean }) {
         <span className="plan-price">{PRICE ?? 'One payment'}</span>
         {PRICE && ANCHOR && <s className="plan-anchor">{ANCHOR}</s>}
       </span>
-      <span className="plan-sub">{busy ? 'Opening checkout…' : 'one-time payment'}</span>
+      {/* Only while the redirect is being fetched: the card otherwise has
+          nothing to say here that the ticks do not. */}
+      {busy && <span className="plan-sub">Opening checkout…</span>}
       <span className="plan-points">
+        <span className="plan-point">One-time payment</span>
         <span className="plan-point">The whole roadmap, forever</span>
         <span className="plan-point">Every future topic included</span>
       </span>
@@ -60,7 +63,7 @@ export function UpgradePage({ signedIn, entitled }: { signedIn: boolean; entitle
       <div className="gate">
         <h2>You already have everything</h2>
         <p className="muted">Every topic, lesson, question and answer is unlocked. Enjoy.</p>
-        <Link className="navlink primary" to="/">
+        <Link className="navlink primary" to="/roadmap">
           Back to the roadmap
         </Link>
       </div>
@@ -80,11 +83,11 @@ export function UpgradePage({ signedIn, entitled }: { signedIn: boolean; entitle
           <NavLink className="plan" to="/signin" state={{ from: '/upgrade' }}>
             <PlanInner busy={false} />
           </NavLink>
-          <p className="muted">Sign in first; the purchase needs an account to live on.</p>
+          <p className="muted">Sign in first.</p>
         </>
       )}
 
-      <p className="trust">One-time payment · No subscription · Secure checkout by Stripe</p>
+      <p className="trust">Secure checkout by Stripe</p>
 
       {error && <p className="error">{error}</p>}
 
@@ -153,7 +156,7 @@ export function UpgradeThanksPage() {
             </span>
             Thank you for the support.
           </p>
-          <Link className="navlink primary" to="/">
+          <Link className="navlink primary" to="/roadmap">
             Back to the roadmap
           </Link>
         </>
@@ -165,7 +168,7 @@ export function UpgradeThanksPage() {
             The confirmation is taking longer than usual. It lands on its own; refresh in a minute
             and the lock will be gone. Nothing is lost either way.
           </p>
-          <Link className="navlink" to="/">
+          <Link className="navlink" to="/roadmap">
             Back to the roadmap
           </Link>
         </>

@@ -8,6 +8,7 @@ import { StepPage } from './pages/Step';
 import { LoginPage } from './pages/Login';
 import { UpgradePage, UpgradeThanksPage } from './pages/Upgrade';
 import { AdvicePage } from './pages/Advice';
+import { HomePage } from './pages/Home';
 
 /** The wordmark glyph: a three-node path, the roadmap in miniature. Inline
  * SVG so it takes the theme's accent and follows theme switches. */
@@ -82,7 +83,7 @@ export function App() {
         </h1>
 
         <nav className="nav-primary">
-          <NavLink className="navlink with-icon" to="/">
+          <NavLink className="navlink with-icon" to="/roadmap">
             <PinIcon />
             Roadmap
           </NavLink>
@@ -140,15 +141,21 @@ export function App() {
       <Routes>
         {/* An open topic is the same screen as the map; its own URL makes
             Back close the panel rather than leave the site. */}
-        <Route path="/" element={<Wide />}>
-          <Route index element={<RoadmapPage signedIn={Boolean(user)} progress={progress} />} />
+        <Route element={<Wide />}>
           <Route
-            path="topic/:topic"
+            path="/roadmap"
+            element={<RoadmapPage signedIn={Boolean(user)} progress={progress} />}
+          />
+          <Route
+            path="/topic/:topic"
             element={<RoadmapPage signedIn={Boolean(user)} progress={progress} />}
           />
         </Route>
 
         <Route element={<Narrow />}>
+          {/* The wordmark points here, so it stays the homepage for everyone:
+              a logo that lands somewhere other than home is a broken habit. */}
+          <Route path="/" element={<HomePage />} />
           <Route path="/step/:id" element={<StepPage signedIn={Boolean(user)} />} />
           <Route path="/signin" element={user ? <Navigate to={from} replace /> : <LoginPage />} />
           <Route

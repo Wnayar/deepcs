@@ -27,8 +27,8 @@ export function AdvicePage() {
         </li>
       </ul>
 
-      <Link className="navlink primary" to="/">
-        Start the free Easy row
+      <Link className="navlink primary" to="/roadmap">
+        Start your roadmap journey
       </Link>
     </div>
   );

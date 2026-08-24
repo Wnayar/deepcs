@@ -6,7 +6,7 @@ import { expect, test } from '@playwright/test';
 const PAID_BODY = 'the entitlement check passed';
 
 test('a free lesson reads from the map through to its key summary', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/roadmap');
   await page.getByRole('button', { name: /^Sample: Processes,/ }).click();
   await expect(page).toHaveURL(/\/topic\/sample-processes$/);
 

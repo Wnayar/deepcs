@@ -86,10 +86,10 @@ export function TopicDialog({ topic, signedIn, locked, markOf, onMark, onOpenSte
               fully readable, because hiding titles is what makes a paywall
               read as a trick. */}
           {locked && (
-            <div className="card upsell">
+            <div className="upsell">
               <p className="upsell-title">Part of DeepCS Pro</p>
-              <Link className="navlink primary" to="/upgrade">
-                Unlock
+              <Link className="upsell-link" to="/upgrade">
+                What's included
               </Link>
             </div>
           )}

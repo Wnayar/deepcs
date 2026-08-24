@@ -341,7 +341,7 @@ export function RoadmapPage({ signedIn, progress }: Props) {
           markOf={markOf}
           onMark={mark}
           onOpenStep={(stepId) => void navigate(`/step/${stepId}`)}
-          onClose={() => void navigate('/')}
+          onClose={() => void navigate('/roadmap')}
         />
       )}
     </div>

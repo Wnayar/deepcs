@@ -53,6 +53,16 @@
   --warn: #9a6212;
   --danger: #b3261e;
 
+  /* The playbook's four tracks. A palette of its own rather than borrowed
+     semantics: these say "four parallel routes", not "good, brand, warning".
+     Hues are evenly spaced and the lightness is matched, so the four read as
+     one family at one volume. DeepCS holds the brand blue, the same one the
+     nav and the buttons wear, so ours is the track a reader recognises. */
+  --track-a: #0f766e;
+  --track-b: #3b5bdb;
+  --track-c: #a16207;
+  --track-d: #7e22ce;
+
   --radius: 10px;
   --radius-sm: 6px;
   --shadow-lg: 0 8px 40px rgb(0 0 0 / 14%);
@@ -104,6 +114,11 @@
   --star: #e0b455;
   --warn: #d6a35c;
   --danger: #e8837c;
+
+  --track-a: #5ec9a7;
+  --track-b: #8ba4ff;
+  --track-c: #e0b455;
+  --track-d: #c4a2f0;
 
   --shadow-lg: 0 8px 40px rgb(0 0 0 / 50%);
 
@@ -1028,12 +1043,22 @@ button:focus-visible {
   pointer-events: none;
 }
 
+/* Three columns, not space-between: the outer two share the spare width
+   equally so the dots sit dead centre whatever the title's length. */
 .stepbar-title {
+  flex: 1;
+  min-width: 0;
   font-weight: 600;
   font-size: 0.92rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.stepbar .menu {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .dots {
@@ -1127,21 +1152,41 @@ button:focus-visible {
 }
 
 /* One question, one answer, on the check screen. */
+/* The control sits in the same place on every card: the question takes the
+   spare width, and the button is sized for its longest label so toggling it
+   cannot reflow the row. */
 .qa-head {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  gap: 0.7rem;
+  align-items: flex-start;
+  gap: 0.9rem;
 }
 
 .qa-question {
+  flex: 1;
+  min-width: 0;
   font-weight: 550;
+}
+
+.qa-head button {
+  flex: none;
+  min-width: 7.5rem;
+  white-space: nowrap;
 }
 
 .qa .prose {
   margin-top: 0.6rem;
   border-top: 1px solid var(--line);
   padding-top: 0.6rem;
+}
+
+/* The answer in one line. A rule and a colour rather than bold, so it does
+   not compete with the bolded term labels underneath it. */
+.qa .prose > p:first-child {
+  border-left: 3px solid var(--accent);
+  padding-left: 0.8rem;
+  color: var(--fg-strong);
+  font-weight: 550;
 }
 
 /* ── Rendered markdown ─────────────────────────────────────────────────────── */
@@ -1373,21 +1418,28 @@ button:focus-visible {
 /* The sell inside a locked topic. One card; the step list below it stays
    fully readable, because hiding titles is what makes a paywall read as a
    trick. */
+/* A locked topic states the fact and offers the door. No tinted panel and
+   no filled button: the step list below is what the reader came for, and a
+   block that interrupts it reads as pressure however politely it is worded. */
 .upsell {
-  margin-top: 1rem;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  text-align: center;
-  background: var(--accent-soft);
-  border-color: transparent;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.9rem;
+  margin: 0.9rem 0 0.2rem;
 }
 
 .upsell-title {
   margin: 0;
-  font-weight: 650;
-  color: var(--fg-strong);
+  color: var(--fg-muted);
+  font-size: 0.92rem;
+}
+
+.upsell-link {
+  flex: none;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--accent);
 }
 
 .kicker {
@@ -1447,24 +1499,27 @@ button:focus-visible {
   color: var(--fg-strong);
 }
 
-/* One colour per track: green is go (the grind), brand blue is trust
-   (ours), gold is the prize (the job you reverse engineer), purple is
-   ambition (apply early), borrowed from the palette's keyword purple so
-   nothing here reads as alarm. */
+/* One colour per track, from the track palette. The colour carries one
+   fact: these run in parallel, so they are not steps one to four. */
 .playbook .lead-neetcode {
-  color: var(--ok);
+  color: var(--track-a);
 }
 
 .playbook .lead-deepcs {
-  color: var(--accent);
+  color: var(--track-b);
 }
 
 .playbook .lead-projects {
-  color: var(--star);
+  color: var(--track-c);
 }
 
 .playbook .lead-apply {
-  color: var(--code-keyword);
+  color: var(--track-d);
+}
+
+/* The four tracks want a beat before the call to action. */
+.playbook + .navlink {
+  margin-top: 1.5rem;
 }
 
 /* The backing line on the upgrade page; the heart matches the nav pill. */
@@ -1501,6 +1556,12 @@ button:focus-visible {
   align-items: center;
   text-align: center;
   min-height: calc(100dvh - 12rem);
+}
+
+/* The headline is the argument and the card is the decision; they want a
+   beat between them rather than the list's default gap. */
+.upgrade.centered .plan {
+  margin-top: 1.6rem;
 }
 
 .upgrade.centered .support {
@@ -1589,6 +1650,165 @@ button:focus-visible {
   color: var(--ok);
   font-weight: 700;
   margin-right: 0.55rem;
+}
+
+/* ── The homepage ───────────────────────────────────────────────────────────
+   Only strangers see this: a signed-in reader is sent straight to the map. */
+
+.home {
+  display: flex;
+  flex-direction: column;
+  gap: 3.5rem;
+  padding-bottom: 2rem;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: 2.5rem;
+  align-items: center;
+  padding-top: 1.5rem;
+}
+
+/* Two lines, one voice: a quiet lead-in and the phrase that carries the
+   page. Block spans rather than a break, so the size change is the break. */
+.hero-title {
+  display: flex;
+  flex-direction: column;
+  margin: 0.7rem 0 1rem;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+.hero-lead {
+  font-size: 1.9rem;
+  font-weight: 600;
+  color: var(--fg-muted);
+  letter-spacing: -0.01em;
+}
+
+.hero-big {
+  font-size: 3.4rem;
+  font-weight: 750;
+  text-wrap: balance;
+}
+
+.hero-copy p {
+  max-width: 30rem;
+}
+
+/* What the site has, where a bigger site would claim a crowd. */
+.badge {
+  display: inline-block;
+  margin: 0;
+  padding: 0.25rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-actions {
+  margin-top: 1.4rem;
+}
+
+/* The page's closing note, in the slot a bigger site fills with logos. */
+.backing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+
+.backing-label {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.backing-line {
+  margin: 0;
+  max-width: 34rem;
+  color: var(--fg-muted);
+}
+
+.hero-proof {
+  margin: 1.1rem 0 0;
+  font-size: 0.85rem;
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The whole drawing is one link into the map. */
+.hero-map {
+  display: block;
+  border-radius: var(--radius);
+  transition: transform 0.15s ease;
+}
+
+.hero-map:hover {
+  transform: translateY(-2px);
+}
+
+.mock-tree {
+  width: 100%;
+  height: auto;
+}
+
+.mock-node rect {
+  fill: var(--surface);
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+}
+
+.mock-node text {
+  fill: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.mock-edge {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 2;
+}
+
+/* Qualified past the box rule above, which sets fill and stroke on every
+   rect inside a node. */
+.mock-node rect.mock-tier,
+.mock-node rect.mock-track,
+.mock-node rect.mock-fill {
+  stroke: none;
+}
+
+.mock-node rect.tier-easy {
+  fill: var(--ok);
+}
+
+.mock-node rect.tier-medium {
+  fill: var(--warn);
+}
+
+.mock-node rect.tier-hard {
+  fill: var(--danger);
+}
+
+.mock-node rect.mock-track {
+  fill: var(--progress-track);
+}
+
+.mock-node rect.mock-fill {
+  fill: var(--progress);
 }
 
 /* ── Small screens ─────────────────────────────────────────────────────────
@@ -1689,4 +1909,23 @@ button:focus-visible {
     min-width: 0;
     width: min(17rem, calc(100vw - 2rem));
   }
+
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 1.75rem;
+    padding-top: 0.5rem;
+  }
+
+  .hero-lead {
+    font-size: 1.35rem;
+  }
+
+  .hero-big {
+    font-size: 2.3rem;
+  }
+
+  .home {
+    gap: 2.5rem;
+  }
+
 }

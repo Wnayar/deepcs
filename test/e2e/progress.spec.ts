@@ -20,6 +20,6 @@ test('a mark survives the page it was made on', async ({ page }) => {
   await page.reload();
   await expect(tick).toHaveAttribute('aria-pressed', 'true');
 
-  await page.goto('/');
+  await page.goto('/roadmap');
   await expect(page.getByRole('button', { name: 'Sample: Processes, 1 of 2 lessons done' })).toBeVisible();
 });

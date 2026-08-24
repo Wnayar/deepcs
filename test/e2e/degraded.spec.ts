@@ -10,7 +10,7 @@ test('the free site still reads with every API call failing', async ({ page }) =
   await signIn(page, freshUid('degraded'));
   await page.route('**/api/**', (route) => route.fulfill(OUT));
 
-  await page.goto('/');
+  await page.goto('/roadmap');
   await expect(page.getByRole('button', { name: /^Sample: Processes,/ })).toBeVisible();
   await expect(page.getByText('The roadmap could not be loaded')).toHaveCount(0);
 
