@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, NavLink } from 'react-router';
 import { getEntitlement, startCheckout } from '../api';
+import { REFUND_DAYS } from './Legal';
 
 /** Display prices only, set at build time beside the Firebase values. The
  * charge is whatever the Stripe price says, and Stripe shows that again
@@ -34,6 +35,7 @@ function PlanInner({ busy }: { busy: boolean }) {
         <span className="plan-point">One-time payment</span>
         <span className="plan-point">The whole roadmap, forever</span>
         <span className="plan-point">Every future topic included</span>
+        <span className="plan-point">{REFUND_DAYS} day refund, no questions</span>
       </span>
     </>
   );
@@ -99,7 +101,10 @@ export function UpgradePage({ signedIn, entitled }: { signedIn: boolean; entitle
         </>
       )}
 
-      <p className="trust">Secure checkout by Stripe</p>
+      <p className="trust">
+        Secure checkout by Stripe. <Link to="/terms">{REFUND_DAYS} day refund</Link>, no
+        questions.
+      </p>
 
       {error && <p className="error">{error}</p>}
 

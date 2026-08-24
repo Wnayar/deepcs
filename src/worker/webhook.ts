@@ -94,6 +94,9 @@ export async function webhook(request: Request, env: Env): Promise<Response> {
       });
     }
   } else if (event.type === 'charge.refunded') {
+    // Stripe sends this for partial refunds too. Revoking on the event alone
+    // is correct only because refunds here are always the whole price; a
+    // partial one would lock out a buyer who still paid most of it.
     if (typeof obj.payment_intent === 'string') await revoke(env, obj.payment_intent);
   }
   // Other event types are acknowledged: 200 is what stops Stripe retrying.
