@@ -126,8 +126,8 @@ pnpm test:integration                 # builds, then the real Worker in workerd
 - **No em or en dashes in anything a reader sees.** The validator asserts
   it. Code comments and these docs are exempt.
 - **`deepcs-content/STYLE.md` is the authority on lesson shape**, and the
-  `oop` topic is its worked reference. Remaining conversions are tracked in
-  `deepcs-content/TODO-LESSONS.md`.
+  `oop` topic is its worked reference. Every topic meets it now, so a new
+  or edited lesson matches `oop` or it is not done.
 - **Four marks are a contract between the lessons and the renderer**:
   `> **TLDR:**`, `> **Example:**`, `> **Interview phrasing:**`, and
   `**term** [gloss]`. `src/app/markdown.ts` turns them into the coloured

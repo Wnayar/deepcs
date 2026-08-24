@@ -40,7 +40,7 @@ Everything downstream derives from this.
 
 | Property | Value | Consequence |
 |---|---|---|
-| Content | ~420 KB of prose: 10 topics, ~30 lessons, the question bank. Identical for every reader of a tier; changes only when the author writes more. | Content is code, not data: it ships as files (ADR-003). |
+| Content | ~800 KB of prose: 10 topics, 30 lessons, the question bank. Identical for every reader of a tier; changes only when the author writes more. | Content is code, not data: it ships as files (ADR-003). |
 | Free reads | Anonymous browsing of the free tier — the overwhelming majority of traffic. | The free read path costs zero compute and zero database. |
 | Paid reads | Only from entitled users. | Gated reads cost one Worker request: token plus one entitlement read. |
 | Writes | One upsert when a signed-in user ticks or stars a step; ~30 rows per user, ever. | The database is tiny and write-rare. |
@@ -198,8 +198,8 @@ deepcs/
 │       ├── api.ts · auth.ts · config.ts · progress.ts · theme.ts
 │       ├── roadmap-layout.ts · lesson-sections.ts · markdown.ts
 │       ├── *.test.ts       unit tests, beside the pure logic they cover
-│       └── pages/          Roadmap · Step · TopicDialog · ProgressPanel
-│                           · Login · Upgrade
+│       └── pages/          Home · Roadmap · Step · TopicDialog
+│                           · ProgressPanel · Login · Upgrade · Advice
 │
 ├── scripts/
 │   ├── build-content.mjs   validate + split content by tier into dist/
