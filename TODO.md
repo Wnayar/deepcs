@@ -14,18 +14,20 @@ Four things remain, none of them code.
    see it, PDPA is the regime, the window is 14 days, no personal name or
    address is published. Nobody with a licence has read them.
 2. **The terms and privacy URLs in Stripe's public details**, so the hosted
-   checkout carries the policies and not only the sales page. The privacy URL
-   is also the prerequisite for Google consent-screen branding, whose logo
-   upload triggers brand verification.
-3. **`scripts/reconcile.mjs` against the live ledger.** Sandbox-era test
-   unlocks vanish with it. It does not walk refunds, so anyone refunded is
-   re-granted and has to be revoked by hand afterwards.
-4. **Soft launch.** A few real people through sign-up and purchase, plus one
+   checkout carries the policies and not only the sales page. A buyer who
+   clicks through to pay has left this site, and right now nothing on Stripe's
+   page links back to either document.
+3. **Soft launch.** A few real people through sign-up and purchase, plus one
    real refund to prove the revoke path, before any public post. This is also
    where real provider sign-in and Stripe's hosted checkout get exercised: the
    e2e flows cannot reach either offline (ADR-011). Expect the first payout
    about seven days after the first sale, which is Stripe's hold on the seller
    and nothing the buyer sees.
 
-Delete this file once 4 is done. DESIGN.md describes the system; this only
+Reconcile has been run against the live ledger; it is not repeated here
+because it is a recovery tool, not a launch step. Optional whenever: upload a
+logo to the Google consent screen, which triggers brand verification and wants
+the privacy URL that now exists.
+
+Delete this file once 3 is done. DESIGN.md describes the system; this only
 describes the gap between built and launched.
