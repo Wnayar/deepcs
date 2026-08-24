@@ -7,6 +7,11 @@ import { Link } from 'react-router';
  * The tree below is a drawing, not the live map: it never fetches, never
  * pans, and its bars are illustrative. The titles are the real topics,
  * because the point is to show what is inside.
+ *
+ * Nothing keeps this in step with roadmap.json, which lives in the content
+ * repo and is not built into this bundle, so adding a topic there means
+ * editing the two arrays below by hand. The tell is the hero claiming a
+ * topic count the drawing does not show.
  */
 
 interface Node {
@@ -15,7 +20,7 @@ interface Node {
   /** Grid centre, in the viewBox's units. */
   x: number;
   y: number;
-  tier: 'easy' | 'medium' | 'hard';
+  tier: 'easy' | 'medium' | 'hard' | 'skills';
   /** Fraction of the bar filled, for illustration only. */
   filled: number;
 }
@@ -25,21 +30,26 @@ const H = 44;
 
 const NODES: Node[] = [
   { id: 'oop', title: 'OOP', x: 90, y: 34, tier: 'easy', filled: 1 },
-  { id: 'net', title: 'Networking', x: 268, y: 34, tier: 'easy', filled: 0.6 },
-  { id: 'db', title: 'Databases', x: 446, y: 34, tier: 'easy', filled: 0.3 },
-  { id: 'patterns', title: 'Design Patterns', x: 90, y: 144, tier: 'medium', filled: 0 },
-  { id: 'security', title: 'Security', x: 268, y: 144, tier: 'medium', filled: 0 },
-  { id: 'system', title: 'System Design', x: 268, y: 254, tier: 'medium', filled: 0 },
-  { id: 'os', title: 'Operating Systems', x: 268, y: 364, tier: 'hard', filled: 0 },
+  { id: 'databases', title: 'Databases', x: 446, y: 34, tier: 'easy', filled: 0.6 },
+  { id: 'design-patterns', title: 'Design Patterns', x: 90, y: 144, tier: 'medium', filled: 0.3 },
+  { id: 'networking', title: 'Networking', x: 268, y: 144, tier: 'medium', filled: 0 },
+  { id: 'security', title: 'Security', x: 268, y: 254, tier: 'medium', filled: 0 },
+  { id: 'system-design', title: 'System Design', x: 268, y: 364, tier: 'medium', filled: 0 },
+  { id: 'os', title: 'Operating Systems', x: 268, y: 474, tier: 'hard', filled: 0 },
+  /* The skills topics depend on nothing, so they carry no edges and sit in
+     the column the spine leaves free, as they do on the real map. */
+  { id: 'debugging', title: 'Debugging', x: 446, y: 254, tier: 'skills', filled: 0 },
+  { id: 'ai-tooling', title: 'AI Tooling', x: 446, y: 364, tier: 'skills', filled: 0 },
+  { id: 'behavioural', title: 'Behavioural', x: 446, y: 474, tier: 'skills', filled: 0 },
 ];
 
 const EDGES: [string, string][] = [
-  ['oop', 'patterns'],
-  ['net', 'security'],
-  ['patterns', 'system'],
-  ['security', 'system'],
-  ['db', 'system'],
-  ['system', 'os'],
+  ['oop', 'design-patterns'],
+  ['networking', 'security'],
+  ['design-patterns', 'system-design'],
+  ['security', 'system-design'],
+  ['databases', 'system-design'],
+  ['system-design', 'os'],
 ];
 
 const byId = new Map(NODES.map((n) => [n.id, n]));
@@ -60,7 +70,7 @@ function trace(from: Node, to: Node): string {
 
 function MockTree() {
   return (
-    <svg className="mock-tree" viewBox="0 0 536 400" role="img" aria-label="The DeepCS roadmap">
+    <svg className="mock-tree" viewBox="0 0 536 520" role="img" aria-label="The DeepCS roadmap">
       {EDGES.map(([a, b]) => {
         const from = byId.get(a);
         const to = byId.get(b);

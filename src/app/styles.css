@@ -1846,6 +1846,10 @@ button:focus-visible {
   fill: var(--danger);
 }
 
+.mock-node rect.tier-skills {
+  fill: var(--accent);
+}
+
 .mock-node rect.mock-track {
   fill: var(--progress-track);
 }
