@@ -19,18 +19,28 @@ export async function entitlement(request: Request, env: Env): Promise<Response>
 }
 
 /**
- * Grant from a verified webhook. INSERT OR IGNORE covers both idempotency
- * cases: a redelivered event hits the UNIQUE event id, a second purchase by
- * the same uid hits the primary key.
+ * Grant from a verified webhook. A row that is still live is left untouched,
+ * which is the idempotency: a redelivered event changes nothing. A revoked
+ * row is replaced, because a refund leaves the row in place and the next
+ * purchase by that uid is a real one that has to unlock again. The event id
+ * must differ for that, or redelivering the refunded purchase's own event
+ * would undo the refund.
  */
 export async function grant(
   env: Env,
   args: { uid: string; orderId: string; eventId: string; purchasedAt: string },
 ): Promise<void> {
   await env.DB.prepare(
-    `INSERT OR IGNORE INTO entitlements
+    `INSERT INTO entitlements
        (uid, product, provider_order_id, provider_event_id, purchased_at)
-     VALUES (?, 'lifetime', ?, ?, ?)`,
+     VALUES (?, 'lifetime', ?, ?, ?)
+     ON CONFLICT (uid, product) DO UPDATE SET
+       provider_order_id = excluded.provider_order_id,
+       provider_event_id = excluded.provider_event_id,
+       purchased_at      = excluded.purchased_at,
+       revoked_at        = NULL
+     WHERE entitlements.revoked_at IS NOT NULL
+       AND entitlements.provider_event_id <> excluded.provider_event_id`,
   )
     .bind(args.uid, args.orderId, args.eventId, args.purchasedAt)
     .run();

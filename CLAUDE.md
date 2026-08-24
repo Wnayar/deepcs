@@ -114,8 +114,8 @@ pnpm test:integration                 # builds, then the real Worker in workerd
 - D1 through numbered migrations in `migrations/`, wrangler-tracked; never
   edit an applied file.
 - Entitlements are a cache of Stripe's ledger; `scripts/reconcile.mjs`
-  rebuilds them. Writes are idempotent (PUT replaces, grant is INSERT OR
-  IGNORE).
+  rebuilds them. Writes are idempotent (PUT replaces; a grant leaves a live
+  row, replaces a revoked one, so a rebuy after a refund unlocks).
 
 **Content:**
 

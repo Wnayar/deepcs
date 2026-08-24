@@ -98,6 +98,31 @@ describe('the webhook', () => {
     });
     expect(((await flag.json()) as { entitled: boolean }).entitled).toBe(false);
   });
+
+  it('a purchase after a refund unlocks again', async () => {
+    await deliver(completedEvent('user-a', { paymentIntent: 'pi_first', eventId: 'evt_first' }));
+    await deliver(refundEvent('pi_first'));
+    expect((await gated(await mintToken('user-a'))).status).toBe(402);
+
+    // The refund left the row on the primary key, so the buyer would stay
+    // locked out of a purchase Stripe has already taken the money for.
+    await deliver(completedEvent('user-a', { paymentIntent: 'pi_second', eventId: 'evt_second' }));
+    expect((await gated(await mintToken('user-a'))).status).toBe(200);
+
+    // A later refund has to name the payment that is actually live now.
+    const row = await env.DB.prepare(
+      "SELECT provider_order_id AS id FROM entitlements WHERE uid = 'user-a'",
+    ).first<{ id: string }>();
+    expect(row?.id).toBe('pi_second');
+  });
+
+  it('redelivering the refunded purchase does not undo the refund', async () => {
+    await deliver(completedEvent('user-a', { paymentIntent: 'pi_first', eventId: 'evt_first' }));
+    await deliver(refundEvent('pi_first'));
+
+    await deliver(completedEvent('user-a', { paymentIntent: 'pi_first', eventId: 'evt_first' }));
+    expect((await gated(await mintToken('user-a'))).status).toBe(402);
+  });
 });
 
 describe('checkout', () => {

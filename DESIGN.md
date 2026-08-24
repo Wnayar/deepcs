@@ -281,8 +281,9 @@ CREATE TABLE entitlements (
 ```
 
 Migrations are numbered `.sql` files in `migrations/`, applied and tracked by
-`wrangler d1 migrations`. Writes are idempotent: progress replaces state,
-entitlement grants are `INSERT OR IGNORE` on the event id and primary key.
+`wrangler d1 migrations`. Writes are idempotent: progress replaces state, and
+an entitlement grant leaves a live row untouched but replaces a revoked one,
+so a purchase made after a refund unlocks again.
 Entitlements are a cache of Stripe's ledger — `scripts/reconcile.mjs` rebuilds
 them, so losing the table is an inconvenience, not a broken promise.
 
