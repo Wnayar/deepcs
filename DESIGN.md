@@ -14,8 +14,8 @@ choice — the alternatives it beat and the tradeoff accepted — lives in
 
 **Goals, in priority order:**
 
-1. **Deployed and durable.** Sits at a URL, works the day a recruiter clicks
-   the link, including after a month of silence.
+1. **Deployed and durable.** Sits at a URL, works the day a reader opens the
+   link, including after a month of silence.
 2. **Lowest possible cost.** Idle and busy months both cost $0. Every ceiling
    fails by refusing service, never by charging.
 3. **Simple.** One deployable, one deploy command, two data tables. The whole
