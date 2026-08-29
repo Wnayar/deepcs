@@ -79,7 +79,10 @@ interface RoadmapFile {
 }
 
 /** One in-flight promise serves every caller, so navigation never refetches
- * the map within a page. */
+ * the map within a page.
+ *
+ * GET /content/roadmap.json -> {topics: [...]}, a static file the Worker
+ * never sees, so locked topics are public and there is nothing to sign. */
 let roadmapOnce: Promise<RoadmapTopic[]> | null = null;
 
 export function getRoadmap(): Promise<RoadmapTopic[]> {
@@ -119,6 +122,9 @@ interface QuestionsFile {
   steps: { id: string; parts: string[]; referenceMd: string }[];
 }
 
+/** GET /content/questions.json, or /content/paid/questions.json -> {steps: [...]}
+ * The paid path runs the Worker, so it answers 401 or 402 to a caller who
+ * may not have it. */
 const questionsOnce = new Map<Access, Promise<Map<string, StepQuestions>>>();
 
 function getQuestions(access: Access): Promise<Map<string, StepQuestions>> {
