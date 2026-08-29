@@ -162,7 +162,9 @@ deepcs/
 │                          run_worker_first, D1 binding, vars, rate limits
 ├── package.json           one package
 ├── pnpm-workspace.yaml    install-script policy + the single esbuild pin
-├── tsconfig*.json         four: app (DOM), worker, integration, e2e
+├── tsconfig.json          the SPA (DOM). The worker and both test layers
+│                          carry their own, so an editor finds each by
+│                          walking up from the file it is showing
 ├── vite.config.ts         SPA build + the CSP + dev-only content server
 ├── vitest.workers.config.ts   the workerd integration pool
 ├── playwright.config.ts   the browser flows; starts its own wrangler dev
@@ -191,7 +193,8 @@ deepcs/
 │   │   ├── content.ts      the paid-content gate
 │   │   ├── rate-limit.ts   per-uid limiter
 │   │   ├── http.ts         HttpError + json()
-│   │   └── env.ts          bindings and vars
+│   │   ├── env.ts          bindings and vars
+│   │   └── tsconfig.json   worker types; test/integration extends it
 │   │
 │   └── app/              the React SPA
 │       ├── main.tsx · App.tsx · styles.css

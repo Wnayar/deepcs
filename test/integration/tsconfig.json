@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.worker.json",
+  "extends": "../../src/worker/tsconfig.json",
   "compilerOptions": {
     "resolveJsonModule": true,
     "types": ["@cloudflare/workers-types", "@cloudflare/vitest-pool-workers"]

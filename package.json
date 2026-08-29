@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && node scripts/build-content.mjs",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.worker.json && tsc -p test/integration/tsconfig.json && tsc -p test/e2e/tsconfig.json",
+    "typecheck": "tsc --noEmit && tsc -p src/worker/tsconfig.json && tsc -p test/integration/tsconfig.json && tsc -p test/e2e/tsconfig.json",
     "test": "vitest run",
     "test:integration": "pnpm build && vitest run -c vitest.workers.config.ts",
     "test:e2e": "pnpm build && wrangler d1 migrations apply deepcs --local && playwright test",
