@@ -26,6 +26,7 @@ function GoogleGlyph() {
   );
 }
 
+/** GitHub's Octocat mark, single-colour so it takes the button's text colour. */
 function GithubGlyph() {
   return (
     <svg className="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -40,22 +41,36 @@ export function LoginPage() {
   const [busy, setBusy] = useState<'google' | 'github' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  /** Opens one provider's popup, and turns whatever comes back into a
+   * message the reader can act on. */
   const start = async (which: 'google' | 'github') => {
     setBusy(which);
     setError(null);
+
     try {
-      await (which === 'google' ? signInWithGoogle() : signInWithGithub());
+      if (which === 'google') {
+        await signInWithGoogle();
+      } else {
+        await signInWithGithub();
+      }
     } catch (err) {
       const code = (err as { code?: string }).code ?? 'unknown';
+
       // Closing the popup is a decision, not a failure: no red text for it.
-      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return;
+      const cancelled =
+        code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request';
+
+      if (cancelled) {
+        return;
+      }
+
       // The same email on the other provider is the one predictable
       // failure; name the fix rather than showing the code.
-      setError(
-        code === 'auth/account-exists-with-different-credential'
-          ? 'This email already signed in with the other provider. Use that button instead.'
-          : code.replace(/^auth\//, '').replace(/-/g, ' '),
-      );
+      if (code === 'auth/account-exists-with-different-credential') {
+        setError('This email already signed in with the other provider. Use that button instead.');
+      } else {
+        setError(code.replace(/^auth\//, '').replace(/-/g, ' '));
+      }
     } finally {
       setBusy(null);
     }

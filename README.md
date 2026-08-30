@@ -21,7 +21,7 @@ Worker runs only for `/api/*` and paid content.
 
 | | |
 |---|---|
-| **Backend** | one Worker, 489 lines, six routes |
+| **Backend** | one Worker, 697 lines, six routes |
 | **Database** | D1 (SQLite), two tables, no user table |
 | **Identity** | Firebase Auth, verified in-Worker with `jose` |
 | **Payments** | Stripe Managed Payments, merchant of record |

@@ -60,6 +60,39 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. Explicit Over Clever
+
+**The reader is meeting this code for the first time. Density costs them more than length does.**
+
+- One step per statement, each with a name. Prefer a named `const` to an
+  expression nested inside a call argument.
+- `if`/`else` over a ternary when it picks between two statements; a ternary
+  is fine for a single value. Never nest them.
+- Braces on every `if`, including a one-line body.
+- An explicit `if (x === null) return` over `?.` chained through a decision.
+  `?.` and `??` stay for a plain default (`name ?? 'unnamed'`), where they
+  read as one thing.
+- A `for` loop over `reduce`; `map` and `filter` are fine when the step is
+  one expression.
+- A `try` wraps only the call that throws, so its `catch` needs no
+  `instanceof` to work out what it caught.
+
+The test: if a line does two things and names neither, split it.
+
+## 6. Comment Style
+
+**Every function opens with one sentence. Every other comment fights for its life.**
+
+The opening line says what the function does, at the level of intent rather
+than mechanism: what a caller would want to know. Not a restatement of the
+body, and not a paraphrase of the name.
+
+Past that line:
+- A comment states a constraint the code cannot show, in plain sentences.
+- No narration of what the next line does.
+- A citation names its document (`DESIGN.md §9`, never a bare `§9`).
+- One fact, one home: mechanism in the comment, reasoning in the design doc.
+
 ---
 
 ## The project
@@ -178,11 +211,3 @@ buyer sees; `VITE_PRICE_*` in that workflow is the live copy.
 - **Never stub verification.** Integration tests sign real tokens with the
   committed throwaway key pair and really-sign webhook payloads; the Worker
   verifies both exactly as in production.
-
-## Comment style
-
-Google-lean: every comment fights for its life. A comment states a
-constraint the code cannot show, in plain sentences; no narration of what
-the next line does. A citation names its document (`DESIGN.md §9`, never a
-bare `§9`). One fact, one home: mechanism in the comment, reasoning in
-DESIGN.md.

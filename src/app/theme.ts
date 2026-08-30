@@ -7,14 +7,29 @@ const KEY = 'deepcs.theme.v2';
 /** Dark by default: the site is designed dark-first. A saved choice wins. */
 const DEFAULT: Theme = 'dark';
 
+/** The saved choice, or null when there is no usable one. */
 function stored(): Theme | null {
   try {
     const value = localStorage.getItem(KEY);
-    return value === 'light' || value === 'dark' ? value : null;
+
+    if (value === 'light' || value === 'dark') {
+      return value;
+    }
+
+    return null;
   } catch {
     // Private browsing can refuse localStorage; losing the preference beats
     // failing to render.
     return null;
+  }
+}
+
+/** Writes the choice back, if the browser will accept it. */
+function save(theme: Theme): void {
+  try {
+    localStorage.setItem(KEY, theme);
+  } catch {
+    // The choice still applies for the rest of this visit.
   }
 }
 
@@ -30,11 +45,7 @@ export function useTheme(): [Theme, () => void] {
   const toggle = () => {
     setTheme((current) => {
       const next = current === 'dark' ? 'light' : 'dark';
-      try {
-        localStorage.setItem(KEY, next);
-      } catch {
-        /* the choice still applies for this visit */
-      }
+      save(next);
       return next;
     });
   };

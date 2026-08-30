@@ -16,6 +16,7 @@ export const REFUND_DAYS = 14;
 export const CONTACT = 'support@deepcs.org';
 const UPDATED = '24 August 2026';
 
+/** What is stored, where it lives, and who can see it. */
 export function PrivacyPage() {
   return (
     <div className="legal">
@@ -150,6 +151,7 @@ export function PrivacyPage() {
   );
 }
 
+/** What is being sold, by whom, and the refund window. */
 export function TermsPage() {
   return (
     <div className="legal">

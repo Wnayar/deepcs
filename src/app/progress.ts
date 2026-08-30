@@ -38,17 +38,27 @@ export function useProgress(signedIn: boolean): ProgressState {
     }
 
     let live = true;
-    getMe()
-      .then((res) => {
-        if (!live) return;
-        setMarks(
-          new Map(res.progress.map((p) => [p.stepId, { done: p.done, starred: p.starred }])),
-        );
-        setEntitled(res.entitled);
-      })
-      .catch(() => {
-        // Offline or signed out mid-flight; an empty map is the honest state.
-      });
+
+    async function load(): Promise<void> {
+      const me = await getMe();
+
+      if (!live) {
+        return;
+      }
+
+      const loaded = new Map<string, Mark>();
+
+      for (const entry of me.progress) {
+        loaded.set(entry.stepId, { done: entry.done, starred: entry.starred });
+      }
+
+      setMarks(loaded);
+      setEntitled(me.entitled);
+    }
+
+    void load().catch(() => {
+      // Offline or signed out mid-flight; an empty map is the honest state.
+    });
 
     return () => {
       live = false;
@@ -61,6 +71,7 @@ export function useProgress(signedIn: boolean): ProgressState {
   const mark = useCallback(
     (stepId: string, next: Mark) => {
       const before = marks.get(stepId) ?? UNMARKED;
+
       setMarks((prev) => new Map(prev).set(stepId, next));
 
       void setProgress(stepId, next.done, next.starred).catch(() => {
@@ -70,7 +81,13 @@ export function useProgress(signedIn: boolean): ProgressState {
     [marks],
   );
 
-  const markOf = useCallback((stepId: string) => marks.get(stepId) ?? UNMARKED, [marks]);
+  /** This step's mark, or the unmarked default. */
+  const markOf = useCallback(
+    (stepId: string) => {
+      return marks.get(stepId) ?? UNMARKED;
+    },
+    [marks],
+  );
 
   return { marks, mark, markOf, entitled };
 }
@@ -78,5 +95,15 @@ export function useProgress(signedIn: boolean): ProgressState {
 /** How many of these steps are done; shared by the node bars, the topic
  * panel, and the totals. */
 export function doneCount(marks: Map<string, Mark>, stepIds: string[]): number {
-  return stepIds.reduce((n, id) => n + (marks.get(id)?.done ? 1 : 0), 0);
+  let count = 0;
+
+  for (const stepId of stepIds) {
+    const mark = marks.get(stepId);
+
+    if (mark !== undefined && mark.done) {
+      count++;
+    }
+  }
+
+  return count;
 }

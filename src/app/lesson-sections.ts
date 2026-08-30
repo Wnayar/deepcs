@@ -15,19 +15,41 @@ export interface SplitLesson {
   sections: LessonSection[];
 }
 
+interface Chunk {
+  title: string | null;
+  lines: string[];
+}
+
+/**
+ * Joins a chunk's lines back into markdown.
+ *
+ * Lessons may end a section with a horizontal rule before the next heading;
+ * on separate screens it is a stray line. The blank-line requirement keeps a
+ * setext heading's underline ("Title\n---") intact.
+ */
+function chunkText(chunk: Chunk): string {
+  return chunk.lines
+    .join('\n')
+    .replace(/\n\s*\n-{3,}\s*$/, '')
+    .trim();
+}
+
 /**
  * Splits a lesson on its top-level `##` headings, one section per screen.
  * "intro\n## A\na body" becomes
  * { preamble: "intro", sections: [{ title: "A", body: "a body" }] }.
  */
 export function splitLesson(md: string): SplitLesson {
-  let inFence = false;
-  const head: { title: string | null; lines: string[] } = { title: null, lines: [] };
+  const head: Chunk = { title: null, lines: [] };
+  const chunks: Chunk[] = [head];
   let current = head;
-  const chunks = [head];
+  let inFence = false;
 
   for (const line of md.split('\n')) {
-    if (/^\s*```/.test(line)) inFence = !inFence;
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+    }
+
     if (!inFence && line.startsWith('## ')) {
       current = { title: line.slice(3).trim(), lines: [] };
       chunks.push(current);
@@ -36,19 +58,13 @@ export function splitLesson(md: string): SplitLesson {
     }
   }
 
-  // Lessons may end a section with a horizontal rule before the next
-  // heading; on separate screens it is a stray line. The blank-line
-  // requirement keeps a setext heading's underline ("Title\n---") intact.
-  const text = (chunk: { lines: string[] }) =>
-    chunk.lines
-      .join('\n')
-      .replace(/\n\s*\n-{3,}\s*$/, '')
-      .trim();
+  const sections: LessonSection[] = [];
 
-  return {
-    preamble: text(head),
-    sections: chunks.slice(1).map((chunk) => ({ title: chunk.title as string, body: text(chunk) })),
-  };
+  for (const chunk of chunks.slice(1)) {
+    sections.push({ title: chunk.title ?? '', body: chunkText(chunk) });
+  }
+
+  return { preamble: chunkText(head), sections };
 }
 
 export interface SplitReference {
@@ -65,28 +81,46 @@ export interface SplitReference {
  * caller can show the key whole.
  */
 export function splitReference(md: string): SplitReference | null {
-  let inFence = false;
-  const answers: string[][] = [];
+  // Sparse: a key that skips a number leaves a hole, read back as empty.
+  const answers: (string[] | undefined)[] = [];
   const extra: string[] = [];
   let target = extra;
+  let inFence = false;
   let found = false;
 
   for (const line of md.split('\n')) {
-    if (/^\s*```/.test(line)) inFence = !inFence;
-    const numbered = inFence ? null : /^### (\d+)\./.exec(line);
-    if (numbered) {
-      found = true;
-      target = [];
-      answers[Number(numbered[1]) - 1] = target;
-      continue;
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
     }
-    if (!inFence && line.startsWith('### ')) target = extra;
+
+    if (!inFence) {
+      const numbered = /^### (\d+)\./.exec(line);
+
+      if (numbered !== null) {
+        found = true;
+        target = [];
+        answers[Number(numbered[1]) - 1] = target;
+        continue;
+      }
+
+      if (line.startsWith('### ')) {
+        target = extra;
+      }
+    }
+
     target.push(line);
   }
 
-  if (!found) return null;
-  return {
-    answers: Array.from(answers, (lines) => (lines ?? []).join('\n').trim()),
-    extra: extra.join('\n').trim(),
-  };
+  if (!found) {
+    return null;
+  }
+
+  const joined: string[] = [];
+
+  for (const lines of answers) {
+    const body = lines ?? [];
+    joined.push(body.join('\n').trim());
+  }
+
+  return { answers: joined, extra: extra.join('\n').trim() };
 }

@@ -52,17 +52,24 @@ export function UpgradePage({ signedIn, entitled }: { signedIn: boolean; entitle
   // reload. Stripe's own back control lands on cancel_url and reloads.
   useEffect(() => {
     const restored = (event: PageTransitionEvent) => {
-      if (event.persisted) setBusy(false);
+      if (event.persisted) {
+        setBusy(false);
+      }
     };
+
     window.addEventListener('pageshow', restored);
+
     return () => window.removeEventListener('pageshow', restored);
   }, []);
 
+  /** Asks the Worker for a checkout URL and hands the tab to Stripe. */
   const buy = async () => {
     setBusy(true);
     setError(null);
+
     try {
       const { url } = await startCheckout();
+
       // Full navigation; Stripe returns to /upgrade/thanks when done.
       window.location.href = url;
     } catch {
@@ -71,7 +78,7 @@ export function UpgradePage({ signedIn, entitled }: { signedIn: boolean; entitle
     }
   };
 
-  if (entitled)
+  if (entitled) {
     return (
       <div className="gate">
         <h2>You already have everything</h2>
@@ -81,6 +88,7 @@ export function UpgradePage({ signedIn, entitled }: { signedIn: boolean; entitle
         </Link>
       </div>
     );
+  }
 
   return (
     <div className="upgrade centered">
@@ -133,17 +141,34 @@ export function UpgradeThanksPage() {
     let tries = 0;
     let timer: ReturnType<typeof setTimeout>;
 
+    /** One check, which either settles the page or schedules the next try. */
     const ask = async () => {
-      if (stopped) return;
+      if (stopped) {
+        return;
+      }
+
       tries += 1;
+
       try {
         const { entitled } = await getEntitlement();
-        if (stopped) return;
-        if (entitled) return setState('unlocked');
+
+        if (stopped) {
+          return;
+        }
+
+        if (entitled) {
+          setState('unlocked');
+          return;
+        }
       } catch {
         // A failed check is not a failed purchase; the next try is soon.
       }
-      if (tries >= POLL_TRIES) return setState('pending');
+
+      if (tries >= POLL_TRIES) {
+        setState('pending');
+        return;
+      }
+
       timer = setTimeout(() => void ask(), POLL_MS);
     };
 

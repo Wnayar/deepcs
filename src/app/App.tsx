@@ -64,11 +64,18 @@ function HeartIcon() {
  * (`Step.tsx`), which this does not disturb because a section is a search
  * param, not a path. */
 function ScrollToTop() {
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const pathname = location.pathname;
   const navigationType = useNavigationType();
+
   useEffect(() => {
-    if (navigationType !== 'POP') window.scrollTo({ top: 0 });
+    const wentBackOrForward = navigationType === 'POP';
+
+    if (!wentBackOrForward) {
+      window.scrollTo({ top: 0 });
+    }
   }, [pathname, navigationType]);
+
   return null;
 }
 
@@ -81,10 +88,13 @@ export function App() {
   const location = useLocation();
   // Where sign-in returns to: whoever links to /signin says where they came
   // from, so a purchase or a locked lesson resumes instead of resetting.
-  const from = (location.state as { from?: string } | null)?.from ?? '/';
+  const state = location.state as { from?: string } | null;
+  const from = state?.from ?? '/';
+
+  const signedIn = user !== null;
 
   // Shared here because the header, the map, and the topic panel read it.
-  const progress = useProgress(Boolean(user));
+  const progress = useProgress(signedIn);
 
   useEffect(
     () =>
@@ -95,7 +105,11 @@ export function App() {
     [],
   );
 
-  if (!ready) return <main className="muted">Loading…</main>;
+  if (!ready) {
+    return <main className="muted">Loading…</main>;
+  }
+
+  const otherTheme = theme === 'dark' ? 'light' : 'dark';
 
   return (
     <>
@@ -157,8 +171,8 @@ export function App() {
           <button
             className="quiet"
             onClick={toggleTheme}
-            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
-            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+            aria-label={`Switch to ${otherTheme} theme`}
+            title={`Switch to ${otherTheme} theme`}
           >
             {theme === 'dark' ? '☀' : '☾'}
           </button>
@@ -171,11 +185,11 @@ export function App() {
         <Route element={<Wide />}>
           <Route
             path="/roadmap"
-            element={<RoadmapPage signedIn={Boolean(user)} progress={progress} />}
+            element={<RoadmapPage signedIn={signedIn} progress={progress} />}
           />
           <Route
             path="/topic/:topic"
-            element={<RoadmapPage signedIn={Boolean(user)} progress={progress} />}
+            element={<RoadmapPage signedIn={signedIn} progress={progress} />}
           />
         </Route>
 
@@ -183,11 +197,11 @@ export function App() {
           {/* The wordmark points here, so it stays the homepage for everyone:
               a logo that lands somewhere other than home is a broken habit. */}
           <Route path="/" element={<HomePage />} />
-          <Route path="/step/:id" element={<StepPage signedIn={Boolean(user)} />} />
+          <Route path="/step/:id" element={<StepPage signedIn={signedIn} />} />
           <Route path="/signin" element={user ? <Navigate to={from} replace /> : <LoginPage />} />
           <Route
             path="/upgrade"
-            element={<UpgradePage signedIn={Boolean(user)} entitled={progress.entitled} />}
+            element={<UpgradePage signedIn={signedIn} entitled={progress.entitled} />}
           />
           <Route path="/upgrade/thanks" element={<UpgradeThanksPage />} />
           <Route path="/advice" element={<AdvicePage />} />
@@ -225,6 +239,7 @@ function SiteFooter() {
   );
 }
 
+/** The reading layout: a measured column, with the footer beneath it. */
 function Narrow() {
   return (
     <>

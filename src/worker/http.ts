@@ -9,8 +9,12 @@ export class HttpError extends Error {
   }
 }
 
+/** Wraps any value as a JSON response. Every route answers through here, so
+ * the content-type is set in exactly one place. */
 export function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
+  const text = JSON.stringify(body);
+
+  return new Response(text, {
     status,
     headers: { 'content-type': 'application/json' },
   });

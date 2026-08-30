@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router';
 import { renderMarkdown } from '../markdown';
+import { ApiError, getStep, type StepDetail } from '../api';
+import { splitLesson, splitReference, type SplitReference } from '../lesson-sections';
 
 /** Rendered lesson markdown; content comes from the build, never users. */
 function Prose({
@@ -13,11 +15,13 @@ function Prose({
   style?: React.CSSProperties;
 }) {
   return (
-    <div className={className} style={style} dangerouslySetInnerHTML={{ __html: renderMarkdown(md) }} />
+    <div
+      className={className}
+      style={style}
+      dangerouslySetInnerHTML={{ __html: renderMarkdown(md) }}
+    />
   );
 }
-import { ApiError, getStep, type StepDetail } from '../api';
-import { splitLesson, splitReference, type SplitReference } from '../lesson-sections';
 
 /**
  * One step as a focused read: one lesson section per screen, then a closing
@@ -44,6 +48,7 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
     setOpen(new Set());
     setError(null);
     setDenied(null);
+
     getStep(stepId)
       .then(setStep)
       .catch((err: unknown) => {
@@ -57,30 +62,61 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
   }, [stepId, signedIn]);
 
   const lesson = useMemo(() => {
-    if (!step) return null;
+    if (!step) {
+      return null;
+    }
+
     const split = splitLesson(step.lessonMd);
+
     // A short lesson with no headings still gets a screen of its own.
-    if (split.sections.length === 0)
+    if (split.sections.length === 0) {
       return { preamble: '', sections: [{ title: step.title, body: split.preamble }] };
+    }
+
     return split;
   }, [step]);
 
   /** The answer key, split per question; unsplittable keys are kept whole
    * and every card shows all of it rather than nothing. */
   const reference = useMemo<SplitReference | { blob: string } | null>(() => {
-    if (!step || !step.referenceMd) return null;
-    return splitReference(step.referenceMd) ?? { blob: step.referenceMd };
+    if (!step || !step.referenceMd) {
+      return null;
+    }
+
+    const split = splitReference(step.referenceMd);
+
+    if (split === null) {
+      return { blob: step.referenceMd };
+    }
+
+    return split;
   }, [step]);
 
-  // Out-of-range section numbers clamp instead of erroring.
   const count = lesson?.sections.length ?? 1;
   const raw = params.get('s');
   const checking = raw === 'check';
-  const section = checking ? count : Math.min(Math.max(Number(raw) || 1, 1), count);
 
+  // Out-of-range section numbers clamp instead of erroring.
+  const requested = Number(raw) || 1;
+  const clamped = Math.min(Math.max(requested, 1), count);
+  const section = checking ? count : clamped;
+
+  /** Moves to a section, or to the key summary. Section 1 drops the param,
+   * so a step's plain URL is its first screen. */
   const goTo = (next: number | 'check') => {
     setMenuOpen(false);
-    setParams(next === 'check' ? { s: 'check' } : next > 1 ? { s: String(next) } : {});
+
+    if (next === 'check') {
+      setParams({ s: 'check' });
+      return;
+    }
+
+    if (next > 1) {
+      setParams({ s: String(next) });
+      return;
+    }
+
+    setParams({});
   };
 
   // A new screen starts at its top with the bar in view.
@@ -93,47 +129,72 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
   // threshold ignores rubber-band jitter.
   useEffect(() => {
     let last = window.scrollY;
+
     const onScroll = () => {
       const y = window.scrollY;
-      if (y > last + 4 && y > 120) {
+      const wentDown = y > last + 4 && y > 120;
+      const wentUp = y < last - 4;
+
+      if (wentDown) {
         setBarHidden(true);
         setMenuOpen(false);
-      } else if (y < last - 4) {
+      } else if (wentUp) {
         setBarHidden(false);
       }
+
       last = y;
     };
+
     window.addEventListener('scroll', onScroll, { passive: true });
+
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
   // The dropdown closes on Escape or any press outside it.
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!menuOpen) {
+      return;
+    }
+
     const onPress = (event: PointerEvent) => {
-      if (!menu.current?.contains(event.target as Node)) setMenuOpen(false);
+      const inside = menu.current?.contains(event.target as Node) ?? false;
+
+      if (!inside) {
+        setMenuOpen(false);
+      }
     };
+
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMenuOpen(false);
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+      }
     };
+
     document.addEventListener('pointerdown', onPress);
     document.addEventListener('keydown', onKey);
+
     return () => {
       document.removeEventListener('pointerdown', onPress);
       document.removeEventListener('keydown', onKey);
     };
   }, [menuOpen]);
 
+  /** Reveals or re-hides one question's answer. */
   const toggleAnswer = (index: number) => {
     const next = new Set(open);
-    if (next.has(index)) next.delete(index);
-    else next.add(index);
+
+    if (next.has(index)) {
+      next.delete(index);
+    } else {
+      next.add(index);
+    }
+
     setOpen(next);
   };
 
   // A refused paid step gets the one action that fixes it, not an error
   // tone: the reader did nothing wrong.
-  if (denied === 401)
+  if (denied === 401) {
     return (
       <div className="gate">
         <h2>Part of DeepCS Pro</h2>
@@ -143,15 +204,35 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
         </Link>
       </div>
     );
+  }
+
   // A signed-in reader who opened a Pro lesson has already shown intent:
   // no interstitial, straight to the offer.
-  if (denied === 402) return <Navigate to="/upgrade" replace />;
+  if (denied === 402) {
+    return <Navigate to="/upgrade" replace />;
+  }
 
-  if (error && !step) return <p className="error">{error}</p>;
-  if (!step || !lesson) return <p className="muted">Loading…</p>;
+  if (error && !step) {
+    return <p className="error">{error}</p>;
+  }
 
-  const answers = reference && 'answers' in reference ? reference : null;
-  const blob = reference && 'blob' in reference ? reference.blob : null;
+  if (!step || !lesson) {
+    return <p className="muted">Loading…</p>;
+  }
+
+  // A key that split into numbered answers feeds the cards one at a time; an
+  // unsplittable one is shown whole under every card.
+  let answers: SplitReference | null = null;
+  let blob: string | null = null;
+
+  if (reference !== null) {
+    if ('answers' in reference) {
+      answers = reference;
+    } else {
+      blob = reference.blob;
+    }
+  }
+
   // section is clamped above, so the fallback only satisfies the types.
   const current = lesson.sections[section - 1] ?? { title: step.title, body: '' };
   const prev = lesson.sections[section - 2];
@@ -166,9 +247,11 @@ export function StepPage({ signedIn }: { signedIn: boolean }) {
           className="dots"
           aria-label={checking ? 'Key summary' : `Section ${section} of ${count}`}
         >
-          {lesson.sections.map((entry, index) => (
-            <span key={entry.title} className={checking || index < section ? 'dot on' : 'dot'} />
-          ))}
+          {lesson.sections.map((entry, index) => {
+            const reached = checking || index < section;
+
+            return <span key={entry.title} className={reached ? 'dot on' : 'dot'} />;
+          })}
         </span>
 
         <div className="menu" ref={menu}>

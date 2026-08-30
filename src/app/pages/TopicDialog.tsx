@@ -31,10 +31,17 @@ export function TopicDialog({ topic, signedIn, locked, markOf, onMark, onOpenSte
   useEffect(() => {
     // Focus enters the dialog so Escape works without a click first.
     panel.current?.focus();
+
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        onClose();
+      }
     };
+
+    // On window rather than the panel: Escape must close it even after focus
+    // has moved to a button inside.
     window.addEventListener('keydown', onKey);
+
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 

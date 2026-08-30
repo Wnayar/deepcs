@@ -20,6 +20,8 @@ if (AUTH_EMULATOR_URL) {
 
 export type { User };
 
+/** Calls back on every sign-in and sign-out, including the silent session
+ * restore on first load. Returns the unsubscribe. */
 export function watchUser(onChange: (user: User | null) => void): () => void {
   return onAuthStateChanged(auth, onChange);
 }
@@ -29,28 +31,42 @@ export function watchUser(onChange: (user: User | null) => void): () => void {
  * fake user, which prices out mass signup. The Worker never knows which
  * door was used; it only verifies the token. */
 
+/** Opens the Google popup and signs in with whatever account is chosen. */
 export async function signInWithGoogle(): Promise<void> {
   const provider = new GoogleAuthProvider();
+
   // An explicit click always shows the account picker: signing out then
   // back in must be able to choose a different account. Silent session
   // restore is untouched; this only runs when the button is pressed.
   provider.setCustomParameters({ prompt: 'select_account' });
+
   await signInWithPopup(auth, provider);
 }
 
+/** Opens the GitHub popup and signs in. */
 export async function signInWithGithub(): Promise<void> {
-  await signInWithPopup(auth, new GithubAuthProvider());
+  const provider = new GithubAuthProvider();
+
+  await signInWithPopup(auth, provider);
 }
 
+/** Ends the session in this browser. The server holds nothing to clear. */
 export function signOutUser(): Promise<void> {
   return signOut(auth);
 }
 
 /**
- * The current ID token. Fetched per request rather than cached: tokens last
- * an hour and the SDK refreshes them, so a cached copy silently turns into
- * 401s.
+ * The current ID token, or null when signed out.
+ *
+ * Fetched per request rather than cached: tokens last an hour and the SDK
+ * refreshes them, so a cached copy silently turns into 401s.
  */
 export async function idToken(): Promise<string | null> {
-  return (await auth.currentUser?.getIdToken()) ?? null;
+  const user = auth.currentUser;
+
+  if (user === null) {
+    return null;
+  }
+
+  return await user.getIdToken();
 }

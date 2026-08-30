@@ -66,7 +66,7 @@ flowchart TD
     subgraph CF["Cloudflare — one origin, one deploy (wrangler deploy)"]
         EDGE["Static assets at the edge<br/>index.html · app.js · css<br/>content/roadmap.json (all topics, lock flags)<br/>free lessons + free questions<br/><i>free, unlimited, Worker never invoked;<br/>unknown paths fall back to index.html with 200</i>"]
         RL["Per-IP edge rate-limit rule + Bot Fight Mode<br/>on /api/* and /content/paid/*<br/><i>a blocked request never becomes<br/>a billable Worker invocation</i>"]
-        W["Worker — the entire backend (~490 lines)<br/>verify Firebase ID token (jose · issuer · audience · RS256)<br/>check entitlement (D1) · zod-validate · manifest-validate<br/>per-uid rate limit · create checkouts · consume webhooks"]
+        W["Worker — the entire backend (~700 lines)<br/>verify Firebase ID token (jose · issuer · audience · RS256)<br/>check entitlement (D1) · zod-validate · manifest-validate<br/>per-uid rate limit · create checkouts · consume webhooks"]
         D1[("D1 (SQLite)<br/>progress(uid, step_id, …)<br/>entitlements(uid, product, …)")]
         PAID["Paid content files<br/>(assets on run_worker_first paths —<br/>only reachable through the Worker)"]
     end
@@ -182,7 +182,7 @@ deepcs/
 │   └── 0002_entitlements.sql
 │
 ├── src/
-│   ├── worker/           the entire backend (~490 lines)
+│   ├── worker/           the entire backend (~700 lines)
 │   │   ├── index.ts        the router
 │   │   ├── auth.ts         Firebase token verification (jose)
 │   │   ├── manifest.ts     step id → tier, from roadmap.json

@@ -58,7 +58,12 @@ const byId = new Map(NODES.map((n) => [n.id, n]));
 function trace(from: Node, to: Node): string {
   const y1 = from.y + H / 2 + 6;
   const y2 = to.y - H / 2;
-  if (from.x === to.x) return `M ${from.x} ${y1} L ${to.x} ${y2}`;
+
+  // Directly below: no jog, so no corners to round.
+  if (from.x === to.x) {
+    return `M ${from.x} ${y1} L ${to.x} ${y2}`;
+  }
+
   const midY = (y1 + y2) / 2;
   const dir = Math.sign(to.x - from.x);
   const r = 10;
@@ -68,13 +73,21 @@ function trace(from: Node, to: Node): string {
   );
 }
 
+/** The illustrative tree: the same shapes the real map draws, at fixed
+ * coordinates, with no data behind it. */
 function MockTree() {
   return (
     <svg className="mock-tree" viewBox="0 0 536 520" role="img" aria-label="The DeepCS roadmap">
-      {EDGES.map(([a, b]) => {
-        const from = byId.get(a);
-        const to = byId.get(b);
-        return from && to ? <path key={`${a}${b}`} className="mock-edge" d={trace(from, to)} /> : null;
+      {EDGES.map(([fromId, toId]) => {
+        const from = byId.get(fromId);
+        const to = byId.get(toId);
+
+        // An edge naming a node that is not in NODES is simply not drawn.
+        if (from === undefined || to === undefined) {
+          return null;
+        }
+
+        return <path key={`${fromId}${toId}`} className="mock-edge" d={trace(from, to)} />;
       })}
 
       {NODES.map((n) => (
@@ -108,6 +121,7 @@ function MockTree() {
   );
 }
 
+/** The landing page: what this is, who wrote it, and the way in. */
 export function HomePage() {
   return (
     <div className="home">

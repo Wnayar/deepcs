@@ -15,6 +15,9 @@ const CIRCUMFERENCE = 2 * Math.PI * R;
  * so the sequence has a visible start (Easy, seven o'clock) and end. */
 const SWEEP = 300 / 360;
 
+/** Blank arc between neighbouring sectors, so the tiers read as separate. */
+const GAP = 3;
+
 /** Row order matches the map's flow: the difficulty ladder, then Skills. */
 const TIERS: { tier: Tier; label: string }[] = [
   { tier: 'easy', label: 'Easy' },
@@ -23,30 +26,75 @@ const TIERS: { tier: Tier; label: string }[] = [
   { tier: 'skills', label: 'Skills' },
 ];
 
+interface Row {
+  tier: Tier;
+  label: string;
+  done: number;
+  total: number;
+}
+
+interface Sector extends Row {
+  /** Where this tier's arc begins, in stroke units around the ring. */
+  start: number;
+  span: number;
+}
+
+/** Every step id in one tier, across all of its topics. */
+function stepIdsInTier(topics: RoadmapTopic[], tier: Tier): string[] {
+  const ids: string[] = [];
+
+  for (const topic of topics) {
+    if (topic.tier !== tier) {
+      continue;
+    }
+
+    for (const step of topic.steps) {
+      ids.push(step.id);
+    }
+  }
+
+  return ids;
+}
+
 /** The reader's totals, drawn over the map: a count per tier beside a ring
  * that fills in each tier's colour, in row order around the circle. */
 export function ProgressPanel({ topics, marks }: Props) {
-  const rows = TIERS.map(({ tier, label }) => {
-    const ids = topics.filter((t) => t.tier === tier).flatMap((t) => t.steps.map((s) => s.id));
+  const rows: Row[] = TIERS.map(({ tier, label }) => {
+    const ids = stepIdsInTier(topics, tier);
+
     return { tier, label, done: doneCount(marks, ids), total: ids.length };
   });
 
-  const done = rows.reduce((sum, row) => sum + row.done, 0);
-  const total = rows.reduce((sum, row) => sum + row.total, 0);
+  let done = 0;
+  let total = 0;
 
-  // An empty roadmap would divide by zero; a NaN dash offset draws nothing.
-  const arc = (count: number) => (total === 0 ? 0 : (CIRCUMFERENCE * SWEEP * count) / total);
+  for (const row of rows) {
+    done += row.done;
+    total += row.total;
+  }
+
+  /** This many steps as a length of arc. An empty roadmap would divide by
+   * zero, and a NaN dash offset draws nothing. */
+  function arc(count: number): number {
+    if (total === 0) {
+      return 0;
+    }
+
+    return (CIRCUMFERENCE * SWEEP * count) / total;
+  }
 
   /* The ring is partitioned: each tier owns a sector sized by its share of
      all lessons, and its progress fills within that sector only, so "how
      much of Medium is done" can be read straight off the circle. */
-  const GAP = 3;
+  const sectors: Sector[] = [];
   let start = 0;
-  const sectors = rows.map((row) => {
-    const sector = { ...row, start, span: arc(row.total) };
-    start += sector.span;
-    return sector;
-  });
+
+  for (const row of rows) {
+    const span = arc(row.total);
+
+    sectors.push({ ...row, start, span });
+    start += span;
+  }
 
   return (
     <aside className="progress-panel" aria-label="Your progress">
@@ -78,25 +126,34 @@ export function ProgressPanel({ topics, marks }: Props) {
               {/* Each sector's track in a faint wash of its own colour, so
                   the empty ring already maps where every tier begins and
                   ends; progress paints over it at full strength. */}
-              {sectors.map((sector) =>
-                sector.total === 0 ? null : (
+              {sectors.map((sector) => {
+                if (sector.total === 0) {
+                  return null;
+                }
+
+                const track = Math.max(sector.span - GAP, 0.5);
+
+                return (
                   <circle
                     key={`${sector.tier}-track`}
                     className={`gauge-track gauge-${sector.tier}`}
                     cx="50"
                     cy="50"
                     r={R}
-                    strokeDasharray={`${Math.max(sector.span - GAP, 0.5)} ${CIRCUMFERENCE}`}
+                    strokeDasharray={`${track} ${CIRCUMFERENCE}`}
                     strokeDashoffset={-(sector.start + GAP / 2)}
                   />
-                ),
-              )}
-              {sectors.map((sector) => {
-                if (sector.done === 0 || sector.total === 0) return null;
-                const fill = Math.max(
-                  (sector.span - GAP) * (sector.done / sector.total),
-                  0.5,
                 );
+              })}
+
+              {sectors.map((sector) => {
+                if (sector.done === 0 || sector.total === 0) {
+                  return null;
+                }
+
+                const share = sector.done / sector.total;
+                const fill = Math.max((sector.span - GAP) * share, 0.5);
+
                 return (
                   <circle
                     key={sector.tier}
