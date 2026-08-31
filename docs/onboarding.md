@@ -1,4 +1,4 @@
-# Five hours to own DeepCS
+# Six hours to own DeepCS
 
 Personal interview prep, not project documentation. DESIGN.md states what the
 system is and `docs/adr/` records why; this file only says what to read, in
@@ -228,13 +228,13 @@ euro, no threshold), and the 3.5% fee is the price of never having to.
 > the re-architecture, security by shape, and payments end to end. Resume
 > below.
 
-## Block 5 (3:40 to 4:20) Bullet 5: tests and CI
+## Block 5 (3:40 to 4:15) Bullet 5: the three test layers
 
 **Read:** `DESIGN.md:466-499` (section 11), `docs/adr/010-testing-strategy.md`,
 the header comment in `test/fixtures/test-jwks.json`, then
 `test/integration/helpers.ts` (all 79 lines) beside the bindings block in
-`vitest.workers.config.ts:24-31`, then skim `test/integration/paywall.test.ts`,
-then `.github/workflows/ci.yml`.
+`vitest.workers.config.ts:24-31`, then skim `test/integration/paywall.test.ts`.
+CI moved to Block 6.
 
 **Numbers:** 66 tests. 31 unit, 26 integration, 9 e2e. All offline and
 credential-free.
@@ -327,12 +327,6 @@ have restored (`test/e2e/session.ts`, ADR-011), and the purchase journey
 resumes at the webhook. **What is skipped is Google's login screen, not the
 trust boundary**: that seeded token is real and the Worker really verifies it.
 
-**CI** runs typecheck, unit, integration, then Chromium e2e, on every push to
-main and every PR, with **zero secrets**. That is deliberate: this repo has no
-deploy path. The only deploy is a workflow in the private `deepcs-content`
-repo, where the Cloudflare token lives, so nothing public can reach
-production.
-
 **Run all three, then break one thing:**
 
 ```bash
@@ -360,7 +354,79 @@ ends up accepted by the same code that accepts one from Google.
 
 ---
 
-## Block 6 (4:20 to 4:40) Run it and break it
+## Block 6 (4:15 to 4:35) CI, CD, and why they live in different repos
+
+**Read:** `.github/workflows/ci.yml` (all of it, it is short),
+`DESIGN.md:336-377` (section 7, the two repos and the deploy),
+`docs/adr/007-free-paid-line-two-repos.md`, and the **Deploying** section of
+`CLAUDE.md`.
+
+This is the part that sounds wrong until you say why. **The repo you are
+looking at has no deploy path at all**, on purpose.
+
+```
+  deepcs (public)                       deepcs-content (private)
+  code, sample fixtures                 real lessons, deploy.yml, CF token
+        |                                             |
+        | ci.yml                                      | deploy.yml
+        | typecheck + 3 test layers                   | checks out BOTH repos
+        | zero secrets                                | builds CONTENT_DIR=../deepcs-content
+        | never deploys                               | wrangler deploy
+        |                                             |
+        +---------------> dist/ <---------------------+
+                  the only place code and
+                  content ever meet
+```
+
+**a) CI here cannot reach production, and that is the design.** No Cloudflare
+token exists in this repo or its Actions secrets. `ci.yml` runs typecheck,
+unit, integration and Chromium e2e on every push to `main` and every PR, and
+stops. It can afford to be credential-free because the tests are: they sign
+their own tokens and webhook payloads (Block 5b), so nothing needs an account.
+
+**b) The only deploy is `deploy.yml` in the private content repo.** It holds
+the Cloudflare token, checks out both repos, builds with
+`CONTENT_DIR=../deepcs-content`, and runs `wrangler deploy`. It fires on a
+push to that repo's `main`, or on manual dispatch from its Actions tab. It
+always checks out **this** repo's `main`.
+
+**c) So shipping a code change is two moves:** merge to `main` here, then run
+that workflow there. A content change does both at once, because the workflow
+always takes this repo's `main` along with it.
+
+**d) Why split at all** (ADR-007): the content is the product. Real lesson
+text in a public repo is not a style problem, it is the paywall failing. The
+split enforces that in git rather than in review, and the deploy credential
+sits with the content because that is the side that must not leak.
+
+**e) The hazard to name before they ask.** `wrangler deploy` from a local tree
+uploads whatever `dist/` holds, and a plain `pnpm build` fills `dist/` with
+the sample fixtures. Running it locally would replace every real lesson with a
+fixture and lock paying customers out of what they bought. The guard is a
+habit rather than a mechanism: build with `CONTENT_DIR` and read back the
+topic count `scripts/build-content.mjs` prints.
+
+**f) Display prices live in `deploy.yml`, not here.** `.env.production` is
+gitignored and reaches local builds only, so editing it changes nothing a
+buyer sees. Worth knowing before you go looking for the price in this repo
+and conclude it is wrong.
+
+**The line that lands:** *my CI cannot deploy, because the deploy credential
+belongs with the content, not with the code.*
+
+**Weak spots to own.** There is **no staging environment**: the workflow's
+only target is production, and the sole pre-flight check is a printed topic
+count. The deploy workflow is also not visible from this repo, so you cannot
+show it in an interview, only describe it. And nothing here fails a build that
+was made against the wrong `CONTENT_DIR`; it only prints a number a human is
+supposed to read.
+
+**Self-test:** you fix a typo in a lesson and a bug in the Worker on the same
+afternoon. What do you push, where, and in what order?
+
+---
+
+## Block 7 (4:35 to 4:55) Run it and break it
 
 ```bash
 pnpm install && pnpm build
@@ -384,7 +450,92 @@ is also the check that catches a build against the wrong `CONTENT_DIR`.
 
 ---
 
-## Block 7 (4:40 to 5:00) Rehearse out loud
+## Block 8 (4:55 to 5:40) The frontend, end to end
+
+**No resume bullet claims this**, which is exactly why it earns 45 minutes: it
+is the first thing an interviewer opens, and every claim in Blocks 1 and 3 has
+a visible consequence here.
+
+**Read:** `docs/adr/009-frontend-react-vite.md`, then `src/app/App.tsx` (all
+252 lines, it is the whole route table), `src/app/auth.ts` (72),
+`src/app/api.ts:1-60`, `src/app/progress.ts` (109), then skim
+`src/app/pages/Step.tsx` and `src/app/pages/Roadmap.tsx`.
+
+**The shape:** a React + Vite SPA, about 3,600 lines across eight pages. No
+SSR, no state library, no component framework, one stylesheet. ADR-009's
+reason is the one to give: **the build output *is* the asset directory**, and
+any SSR framework reintroduces compute on the read path that static assets had
+just made free.
+
+**a) Every screen is a URL, and every route refetches.** `App.tsx:182-212` is
+the entire route table; read it once and you have the app. An open topic panel
+gets its own URL (`/topic/:topic`) so **Back closes the panel instead of
+leaving the site**. No route trusts state handed to it by the previous screen,
+so any link rebuilds its screen from scratch. The SPA fallback that makes deep
+links survive a refresh is one line of `wrangler.toml`, pinned by an
+integration test.
+
+**b) Identity is the SDK's, never ours.** Google and GitHub popups only, no
+passwords: nothing to brute force, no verification emails to run, and a bot
+needs a real provider account per fake user. The ID token is fetched **per
+request and never cached** (`auth.ts:64`), because tokens last an hour and a
+cached copy silently turns into 401s. `api.ts:28-37` attaches it; signed out
+sends no header at all, which is how the free tier works with no identity.
+
+**c) The Firebase config is public on purpose** (`src/app/config.ts`). The API
+key identifies the project, it does not authorize anything. Volunteer that
+before someone "catches" you shipping a key in a bundle.
+
+**d) The lock is presentation; the gate is the Worker.** `Step.tsx:41` holds
+`denied: 401 | 402 | null`, taken from the status on a thrown `ApiError`, and
+renders either the sign-in prompt or the upgrade prompt. **The page never
+decides access, it renders a decision already made server-side.** This is
+Block 3c seen from the other end, and it is the answer to the paywall
+challenge in the rehearsal.
+
+**e) Writes are optimistic, with rollback.** `progress.ts:71-80`: redraw
+first, then tell the server; a failed write puts the checkbox back. The route
+is a PUT that **replaces** rather than toggles, so a burst of clicks settles
+on the last one instead of racing.
+
+**f) One poll in the entire app, bounded on both sides.** `Upgrade.tsx:130`:
+eight tries, two seconds apart, then it says refresh in a minute. It exists
+because the webhook usually beats Stripe's redirect, but not always (Block 4).
+
+**g) The map is pure geometry plus a thin component.** `roadmap-layout.ts`
+keeps `fitView`, `zoomAt` and `edgePath` as pure functions, which is the only
+reason they are unit-testable at all (Block 5a); `Roadmap.tsx` wraps them in
+an SVG canvas with drag, wheel and pinch. The bug worth telling: **a
+zero-height canvas produced a negative scale**, so the tree drew mirrored and
+microscopic and the roadmap looked empty. Nothing threw and nothing warned,
+which is why the test for it asserts on a refusal rather than on a number.
+
+**h) Markdown renders client-side, with four house marks.**
+`src/app/markdown.ts` turns `> **TLDR:**`, `> **Example:**`,
+`> **Interview phrasing:**` and `**term** [gloss]` into the coloured asides
+and the italic gloss. Those four strings are **a contract between the lessons
+and the renderer**: rename a label and every lesson using it silently
+un-styles, so `markdown.test.ts` pins the exact strings.
+
+**i) Theming is CSS custom properties and nothing else.** One stylesheet,
+colours defined only on `:root` with a `[data-theme='dark']` override, so a
+theme switch is one attribute on the root element. No CSS framework anywhere.
+
+**Weak spots to own.** There are **no component tests and no visual
+regression tests**: the unit layer covers pure functions (markdown, section
+splitting, geometry) and e2e covers whole flows, but nothing renders a
+component in isolation. That follows from the pyramid in ADR-010, so say it as
+a choice, not an oversight. Second, 3,600 lines with no state library is a
+choice that stops working at some size; the honest defence is that eight pages
+sharing one progress object sits well under that line, and `useProgress` is
+the one piece of shared state in the app.
+
+**Self-test:** an interviewer says *"your paywall is client-side, I can just
+edit the React state and read the paid lessons."* Answer in two sentences.
+
+---
+
+## Block 9 (5:40 to 6:00) Rehearse out loud
 
 From memory, speaking, not reading. If one stalls, go back to its block.
 
@@ -397,9 +548,13 @@ From memory, speaking, not reading. If one stalls, go back to its block.
    is the truth, reconcile rebuilds it; progress is lost, access is not.)
 5. Why is a mocked D1 binding worse than no test?
 6. Why did you throw away six services?
-7. What is the weakest part of this system?
+7. I can edit your React state, so I can read the paid lessons. (No: the lock
+   is presentation, the bytes never leave the Worker unentitled.)
+8. You changed one line in the Worker. How does it reach production, and what
+   would happen if you ran `wrangler deploy` yourself?
+9. What is the weakest part of this system?
 
-Question 7 separates people. Pick one and mean it: the 10ms CPU estimate is
+Question 9 separates people. Pick one and mean it: the 10ms CPU estimate is
 unmeasured, a stolen ID token is undetectable for an hour, reconcile does not
 walk refunds, single-vendor exposure. Give it without being asked.
 
