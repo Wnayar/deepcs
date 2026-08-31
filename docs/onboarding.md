@@ -340,6 +340,32 @@ and run `pnpm test:integration` again. Exactly one test goes red. That is what
 an unstubbed trust boundary buys you, and it is the fastest way to feel why
 the rule exists. Put the line back.
 
+**If you want the number, it is one command:**
+
+```bash
+pnpm test:coverage      # unit layer only
+```
+
+It prints **8.72% of statements**, and that figure argues for ADR-010's "no
+coverage target" rather than against it. Three things in the output say why:
+
+- It counts everything it can see, including `playwright.config.ts`,
+  `scripts/reconcile.mjs`, and every page component that only the browser
+  flows exercise. None of those are unit-testable and none should be.
+- It reports `src/worker` at **5%**, which is the most thoroughly tested code
+  in the repo. The 26 integration tests drive `auth.ts`, `webhook.ts`,
+  `content.ts` and `entitlement.ts` hard, and this number cannot see any of it.
+- Coverage cannot run on the integration suite at all. `@vitest/coverage-v8`
+  imports `node:inspector`, which workerd does not have, so the run dies
+  before collecting a single test. Cloudflare documents it as a known issue.
+
+The sharper point is the one below: both untested paths in the next paragraph
+would report as **covered**, because the lines execute. Coverage measures
+lines reached, not cases distinguished.
+
+**The answer to "what is your coverage?"** is not a percentage. It is: no
+target, on purpose, and here are the paths that are not covered, by name.
+
 **Weak spots to own here.** How the key pair was generated is written down
 nowhere; it arrived whole in commit `0be2ea9`. Nothing regenerates it, so if
 it were lost the answer is "generate another RS256 pair and match the `kid` on

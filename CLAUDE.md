@@ -155,6 +155,7 @@ npx wrangler d1 migrations apply deepcs --local   # once per fresh checkout
 pnpm dev                              # Vite only: hot reload, ungated content
 CONTENT_DIR=../deepcs-content pnpm build          # build against real content
 pnpm test                             # unit
+pnpm test:coverage                    # unit coverage; no target, see ADR-010
 pnpm test:integration                 # builds, then the real Worker in workerd
 ```
 
