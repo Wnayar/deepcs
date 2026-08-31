@@ -4,7 +4,7 @@
 
 ## Context
 
-The workload (DESIGN.md §3) is a portfolio-scale reader site: mostly
+The workload (DESIGN.md §2) is a portfolio-scale reader site: mostly
 anonymous reads, rare small writes, a few purchases. It has no component with
 a scaling profile of its own and no long-lived connection anywhere.
 

@@ -1,6 +1,6 @@
 # The public repo's CI: typecheck, unit, build, the workerd integration
 # suite, and the browser flows, all on the sample fixtures — fully green
-# with zero secrets (DESIGN.md §15). Deploys happen from the private content
+# with zero secrets (DESIGN.md §11). Deploys happen from the private content
 # repo's workflow, which is where the Cloudflare token lives.
 name: ci
 on:
