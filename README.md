@@ -66,7 +66,7 @@ testable from the public repo alone.
 
 ## Tests
 
-Sixty-five across three layers, every one of them offline and credential-free
+Sixty-six across three layers, every one of them offline and credential-free
 in CI. Verification is never stubbed: the tests mint real RS256 tokens against
 a committed throwaway key pair and really sign webhook payloads, so the Worker
 verifies both exactly as it does in production. The middle layer runs the real

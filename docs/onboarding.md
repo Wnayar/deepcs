@@ -230,20 +230,82 @@ euro, no threshold), and the 3.5% fee is the price of never having to.
 
 ## Block 5 (3:40 to 4:20) Bullet 5: tests and CI
 
-**Read:** `DESIGN.md:466-499` (section 11),
-`docs/adr/010-testing-strategy.md`, `test/integration/helpers.ts`, then skim
-all of `test/integration/paywall.test.ts`, then `.github/workflows/ci.yml`.
+**Read:** `DESIGN.md:466-499` (section 11), `docs/adr/010-testing-strategy.md`,
+the header comment in `test/fixtures/test-jwks.json`, then
+`test/integration/helpers.ts` (all 79 lines) beside the bindings block in
+`vitest.workers.config.ts:24-31`, then skim `test/integration/paywall.test.ts`,
+then `.github/workflows/ci.yml`.
 
-**Numbers:** 65 tests. 30 unit, 26 integration, 9 e2e. All offline and
+**Numbers:** 66 tests. 31 unit, 26 integration, 9 e2e. All offline and
 credential-free.
 
-**Lead with: verification is never stubbed.** Tests mint real RS256 tokens
-against a committed throwaway key pair (`test/integration/helpers.ts:14-27`)
-and really sign webhook payloads with Stripe's own HMAC scheme (`:36-49`). The
-reasoning is the good part: **verification code is precisely what a mock would
-fake, so faking it would test nothing.**
+**a) Three layers, and where each one lives.** The layout is itself the
+argument:
 
-**The middle layer is the interesting one.**
+| Layer | Lives | Runs against |
+|---|---|---|
+| Unit | beside its subject, `src/**/*.test.ts` | nothing, pure functions |
+| Integration | `test/integration/` | the real Worker in workerd, real local D1 |
+| E2E | `test/e2e/` | Chromium against `wrangler dev` |
+
+A unit test sits next to its code because it belongs to one module and should
+move and die with it. The other two belong to no single file, need a built
+`dist/` and their own runtime, so they get their own tree. Only `*.test.ts`
+and `*.spec.ts` are collected as suites; everything else under `test/` is
+support, and knowing which is which is most of reading the folder:
+`helpers.ts` builds inputs, `setup.ts` applies migrations before each file,
+`fixtures/` is fixed data rather than code, `env.d.ts` is types only.
+
+**b) The fixture chain. The one setup worth being able to draw.** This is what
+"tests mint real tokens" actually means, and it is five steps:
+
+1. `test/fixtures/test-jwks.json` holds **one RSA key pair, both halves**,
+   committed deliberately. Its header comment says why.
+2. The **public** half is handed to the Worker as configuration.
+   `vitest.workers.config.ts:27` reads the file and binds it as
+   `AUTH_JWKS_JSON`; `playwright.config.ts:43` passes the same thing to
+   `wrangler dev`.
+3. `src/worker/auth.ts:33-38` branches on that binding: **a JWKS present means
+   tests**, so build a local key set; **absent means production**, so fetch
+   Google's. That single branch is the entire difference between a test run
+   and a live one.
+4. The **private** half never leaves `helpers.ts`, where `mintToken` (`:13-27`)
+   signs a Firebase-shaped token with it.
+5. The Worker then runs the same `jwtVerify` it always runs: signature,
+   issuer, audience, expiry.
+
+Say it as **same lock, different key.** What is swapped is which key pair,
+never whether the checking happens.
+
+Stripe works the same way and is simpler, because HMAC is symmetric and needs
+no pair: one shared string, `whsec_test_secret`, in `helpers.ts:29` and
+configured at `vitest.workers.config.ts:29`. `stripeSignature` computes a real
+signature over the real body; `webhook.ts` recomputes it and compares.
+
+**c) The overrides are the point.** `mintToken` and `stripeSignature` each take
+an options object whose only job is to produce a credential that is **perfect
+in every respect except one**: a token whose audience is another project, a
+body signed with the wrong secret, a signature carrying an hour-old timestamp.
+Those near-misses are the actual attacks, and they are what Block 3b's
+audience claim rests on (`test/integration/api.test.ts:32`). A stub can
+express none of them, because with a stub there is no audience being checked
+in the first place.
+
+**d) Never stub verification, and what that does not mean.** The rule is
+narrow on purpose: never fake the two checks that decide whether to believe a
+caller, the Firebase token and the Stripe signature. Everything the app trusts
+flows from those two answers. The reasoning is the part worth saying out loud:
+**verification code is precisely what a mock would fake, so faking it would
+test nothing**, and a broken auth check does not crash or log, it silently
+admits strangers.
+
+It is not a ban on test doubles. `src/worker/rate-limit.test.ts:4` fakes the
+Cloudflare rate-limit binding, and that is correct: the binding has no local
+existence to run, and what is under test is the branching around it, not the
+binding. **Stub a dependency you are not asserting on; never stub the thing
+whose correctness is the claim.**
+
+**e) The middle layer is the interesting one.**
 `@cloudflare/vitest-pool-workers` runs the real Worker inside **workerd, the
 production runtime**, against a real local D1 with the real migrations. Name
 the rejected alternative: a mocked D1 binding **only ever agrees with
@@ -270,6 +332,31 @@ main and every PR, with **zero secrets**. That is deliberate: this repo has no
 deploy path. The only deploy is a workflow in the private `deepcs-content`
 repo, where the Cloudflare token lives, so nothing public can reach
 production.
+
+**Run all three, then break one thing:**
+
+```bash
+pnpm test               # 31 unit, milliseconds, no runtime
+pnpm test:integration   # builds, then 26 inside workerd
+pnpm test:e2e           # builds, migrates, 9 in Chromium
+```
+
+Then delete `audience: env.FIREBASE_PROJECT_ID` from `src/worker/auth.ts:61`
+and run `pnpm test:integration` again. Exactly one test goes red. That is what
+an unstubbed trust boundary buys you, and it is the fastest way to feel why
+the rule exists. Put the line back.
+
+**Weak spots to own here.** How the key pair was generated is written down
+nowhere; it arrived whole in commit `0be2ea9`. Nothing regenerates it, so if
+it were lost the answer is "generate another RS256 pair and match the `kid` on
+both halves", not "recover it". And two webhook paths have no test, because
+the helper cannot build the input: `webhook.ts` accepts **several** `v1`
+signatures to cover Stripe's secret rotation, but `stripeSignature` only ever
+emits one; and `completedEvent` has no way to set `payment_status`, so the
+`isPaid` condition of the grant is unpinned.
+
+**Self-test:** without looking, explain how a token this repo signs itself
+ends up accepted by the same code that accepts one from Google.
 
 ---
 
