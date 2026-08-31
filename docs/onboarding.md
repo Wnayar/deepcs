@@ -385,7 +385,10 @@ ends up accepted by the same code that accepts one from Google.
 **Read:** `.github/workflows/ci.yml` (all of it, it is short),
 `DESIGN.md:336-377` (section 7, the two repos and the deploy),
 `docs/adr/007-free-paid-line-two-repos.md`, and the **Deploying** section of
-`CLAUDE.md`.
+`CLAUDE.md`. Then open the private repo and read
+`deepcs-content/.github/workflows/deploy.yml` end to end: it is the only path
+to production and the half of this story that cannot be read from here, so
+skim it before any interview the way Block 2 says to skim the v1 archive.
 
 This is the part that sounds wrong until you say why. **The repo you are
 looking at has no deploy path at all**, on purpose.
