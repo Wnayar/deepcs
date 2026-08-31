@@ -93,6 +93,41 @@ Past that line:
 - A citation names its document (`DESIGN.md §9`, never a bare `§9`).
 - One fact, one home: mechanism in the comment, reasoning in the design doc.
 
+## 7. Tests
+
+**Three layers, always. The unit shape is fixed below; the other two are not
+written down yet.**
+
+A change is tested at the layer that can actually fail it:
+
+- **Unit**, colocated beside its subject. Pure logic, no runtime.
+- **Integration**, the real system in its real runtime, one process.
+- **End to end**, a browser against a running build.
+
+Something covered only by unit tests is untested where it meets the platform,
+which is where most of it lives. Something covered only end to end fails
+slowly and points at nothing.
+
+### Unit shape
+
+- `test('...')`, never `it('...')`. `describe` still groups.
+- Three labelled parts per body: `// Arrange` builds the inputs and names
+  them, `// Act` calls the thing under test and names its result, `// Assert`
+  checks it. The three labels are structure rather than narration, so §6 does
+  not delete them, and no fourth label joins them.
+- A loop that genuinely checks as it goes is labelled `// Act and assert`.
+  Two separate acts, though, means two tests.
+- A `/** */` description sits above every test. It is §6's opening sentence
+  for that test, placed above the call because the name it must not repeat
+  sits on the call. It says what breaks in the product when this test fails.
+  A description that only rephrases the test name is missing, not written.
+
+### Integration and end-to-end shape
+
+Not settled yet. Both drive a running system and read as scripts rather than
+as three labelled parts, so the unit rules above do not reach them. Match the
+file you are editing until this section says otherwise.
+
 ---
 
 ## The project
